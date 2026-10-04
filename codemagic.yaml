@@ -6,7 +6,7 @@ workflows:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
       - name: Assemble debug
-        script: ./gradlew assembleDebug
+        script: chmod +x ./gradlew && ./gradlew assembleDebug
     artifacts:
       - app/build/outputs/apk/debug/*.apk
   android-release:
@@ -16,6 +16,6 @@ workflows:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
       - name: Assemble release APK
-        script: ./gradlew assembleRelease
+        script: chmod +x ./gradlew && ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/release/*.apk
