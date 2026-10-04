@@ -197,8 +197,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             item { Archive(ui, vm) }
             item { ui.providerError?.let { ErrorBanner(it) } }
             item {
-                PitWall(
-                    ui = ui,
+                PitWall(                    ui = ui,
                     pool = pool,
                     errors = errors,
                     onFullscreenAll = { fullscreenMultiview = true },
@@ -397,8 +396,7 @@ private fun PitWall(
                     Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).clickable { onSetMainStream(stream.id) }, shape = RoundedCornerShape(7.dp), color = if (isMain) Color.Black.copy(alpha = .28f) else Red.copy(alpha = .18f)) {
                         Text(if (isMain) "MAIN" else "SET AS MAIN — REPLACE CURRENT", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
-                }
-            }
+                }            }
         }
     }
     Spacer(Modifier.height(12.dp))
@@ -597,8 +595,7 @@ private fun FullscreenMultiview(
     }
 
     val audioTracks = remember(activePlayer, trackVersion) {
-        activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->
-            if (group.type != C.TRACK_TYPE_AUDIO) emptyList()
+        activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->            if (group.type != C.TRACK_TYPE_AUDIO) emptyList()
             else (0 until group.length).mapNotNull { index -> if (!group.isTrackSupported(index)) null else Triple(groupIndex, index, group.getTrackFormat(index)) }
         } ?: emptyList()
     }
@@ -762,6 +759,8 @@ private fun FullscreenFeedControls(
     onPauseAll: () -> Unit,
     onSeekAll: (Long) -> Unit
 ) {
+    val context = LocalContext.current
+    val activity = context as? Activity
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var position by remember(stream.id) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0L)) }
     var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
@@ -797,8 +796,7 @@ private fun FullscreenFeedControls(
             Spacer(Modifier.weight(1f))
             MenuButton(if (pool.isMuted(stream.id)) "UNMUTE" else "MUTE") { onMute() }
             MenuButton("PIP") {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {
-                    val w = player.videoSize.width.coerceAtLeast(16)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {                    val w = player.videoSize.width.coerceAtLeast(16)
                     val h = player.videoSize.height.coerceAtLeast(9)
                     val ratio = Rational(w, h)
                     activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio).build())
@@ -997,8 +995,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                                             listOf(Quality.AUTO to "Auto",Quality.UHD to "4K",Quality.FHD to "1080p",Quality.HD to "720p",Quality.SD to "480p").forEach{(q,l)->Control(quality==q,l){quality=q;pool.setQuality(stream.id,q);menu=null}}
                                         }
                                     }
-                                    "audio"->{
-                                        Text("AUDIO TRACKS",color=Muted,fontSize=8.sp,fontWeight=FontWeight.Black)
+                                    "audio"->{                                        Text("AUDIO TRACKS",color=Muted,fontSize=8.sp,fontWeight=FontWeight.Black)
                                         if(audioTracks.isEmpty())Text("No alternate audio tracks reported by F1 TV.",color=Muted,fontSize=9.sp,modifier=Modifier.padding(top=7.dp))
                                         Row(Modifier.horizontalScroll(rememberScrollState()).padding(top=7.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
                                             audioTracks.forEachIndexed{index,(gi,ti,f)->Control(false,trackLabel(f,"Audio "+(index+1))){player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO,false).setOverrideForType(TrackSelectionOverride(player.currentTracks.groups[gi].mediaTrackGroup,ti)).build();menu=null}}
