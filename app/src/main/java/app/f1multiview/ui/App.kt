@@ -794,6 +794,17 @@ private fun FullscreenFeedControls(
             PlayerControlButton("10 ↷") { player.seekTo(player.currentPosition + 10_000L) }
             Spacer(Modifier.weight(1f))
             MenuButton(if (pool.isMuted(stream.id)) "UNMUTE" else "MUTE") { onMute() }
+            MenuButton("PIP") {
+                val context = LocalContext.current
+                val activity = context as? Activity
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {
+                    val w = player.videoSize.width.coerceAtLeast(16)
+                    val h = player.videoSize.height.coerceAtLeast(9)
+                    val ratio = Rational(w, h)
+                    activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio).build())
+                }
+            }
+            MenuButton("RETRY") { player.prepare(); player.play() }
             MenuButton("SPEED " + "%.2f".format(speed) + "x") { onMenu(if (menu == "speed") null else "speed") }
             MenuButton("QUALITY " + quality.label()) { onMenu(if (menu == "quality") null else "quality") }
             MenuButton("AUDIO") { onMenu(if (menu == "audio") null else "audio") }
