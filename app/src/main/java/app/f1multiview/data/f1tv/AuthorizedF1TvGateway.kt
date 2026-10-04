@@ -10,9 +10,9 @@ import kotlinx.coroutines.delay
 class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     private val api=F1TvApiClient()
     private val store=SessionStore(context)
-    override suspend fun signIn(credentials:ProviderCredentials):Result<Unit>=runCatching{api.login(credentials.username,credentials.password);api.authHeaders()["ascendontoken"]?.let(store::put)}
-    override suspend fun signInWithSessionToken(token:String):Result<Unit>=runCatching{api.initialize(token);api.authHeaders()["ascendontoken"]?.let(store::put)}
-    override suspend fun restoreSession():Result<Boolean>=runCatching{val token=store.get()?:return@runCatching false;api.initialize(token);api.isAuthenticated()}
+    override suspend fun signIn(credentials: ProviderCredentials): Result<Unit> =runCatching{api.login(credentials.username,credentials.password);api.authHeaders()["ascendontoken"]?.let(store::put)}
+    override suspend fun signInWithSessionToken(token: String): Result<Unit> =runCatching{api.initialize(token);api.authHeaders()["ascendontoken"]?.let(store::put)}
+    override suspend fun restoreSession(): Result<Boolean> =runCatching{val token=store.get()?:return@runCatching false;api.initialize(token);api.isAuthenticated()}
     override suspend fun signOut(){api.clear();store.clear()}
     override suspend fun sessions():Result<List<Session>> = runCatching {
         val out=mutableListOf<Session>(); val items=api.liveNow().optJSONObject("resultObj")?.optJSONArray("items")?:org.json.JSONArray()
