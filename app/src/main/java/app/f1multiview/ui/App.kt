@@ -656,13 +656,15 @@ private fun FullscreenMultiview(
         }
 
         if (active != null && controlsVisible) {
-            FullscreenFeedControls(
-                stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
-                speed = speed, quality = quality, fit = fit, menu = menu,
-                onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
-                onMute = { pool.setMuted(active.id, !pool.isMuted(active.id)) },
-                onPlayAll = ::playAll, onPauseAll = ::pauseAll, onSeekAll = ::seekAll
-            )
+            Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+                FullscreenFeedControls(
+                    stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
+                    speed = speed, quality = quality, fit = fit, menu = menu,
+                    onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
+                    onMute = { pool.setMuted(active.id, !pool.isMuted(active.id)) },
+                    onPlayAll = ::playAll, onPauseAll = ::pauseAll, onSeekAll = ::seekAll
+                )
+            }
         }
     }
 }
@@ -765,7 +767,7 @@ private fun FullscreenFeedControls(
             delay(250L)
         }
     }
-    Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .96f)))).padding(horizontal = 12.dp, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .96f)))).padding(horizontal = 12.dp, vertical = 10.dp)) {
         if (duration > 0L) {
             Slider(value = position.toFloat().coerceIn(0f, duration.toFloat()), onValueChange = { position = it.toLong() }, onValueChangeFinished = { player.seekTo(position.coerceIn(0L, duration)) }, valueRange = 0f..duration.toFloat(), colors = SliderDefaults.colors(thumbColor = Red, activeTrackColor = Red, inactiveTrackColor = Color.White.copy(alpha = .28f)))
         } else {
