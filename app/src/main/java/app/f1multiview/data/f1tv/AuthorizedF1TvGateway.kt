@@ -100,12 +100,70 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     }
 
     override suspend fun streams(sessionId:String):Result<List<StreamSource>> = runCatching {
-        val container=api.contentVideo(sessionId);val metadata=container.optJSONObject("metadata")?:return@runCatching emptyList();val additional=metadata.optJSONArray("additionalStreams")?:return@runCatching emptyList();val streams=mutableListOf<StreamSource>();var world=false;var data=false
-        for(i in 0 until additional.length()){val s=additional.optJSONObject(i)?:continue;val channel=s.optString("channelId").takeIf{it.isNotBlank()}?:continue;val identifier=s.optString("identifier").uppercase();val type=s.optString("type").lowercase();val title=s.optString("title").ifBlank{s.optString("reportingName")};val driver=listOf(s.optString("driverFirstName"),s.optString("driverLastName")).filter(String::isNotBlank).joinToString(" ").ifBlank{null}
-            val kind=when{identifier=="DATA"||type.contains("data")->StreamKind.DATA;identifier=="OBC"||type.contains("onboard")->StreamKind.ONBOARD;else->StreamKind.WORLD}
-            when(kind){StreamKind.DATA->if(!data){streams+=StreamSource("data-"+sessionId,title.ifBlank{"Data Channel"},kind,contentId=sessionId,channelId=channel);data=true};StreamKind.WORLD->if(!world){streams+=StreamSource("world-"+sessionId,title.ifBlank{"World Feed"},kind,contentId=sessionId,channelId=channel);world=true};StreamKind.ONBOARD->streams+=StreamSource("onboard-"+channel,title.ifBlank{"Onboard "+driver},kind,driver=driver,contentId=sessionId,channelId=channel);else->Unit}
+        val container=api.contentVideo(sessionId)
+        val metadata=container.optJSONObject("metadata")?:return@runCatching emptyList()
+        val additional=metadata.optJSONArray("additionalStreams")?:return@runCatching emptyList()
+
+        val world=mutableListOf<StreamSource>()
+        val data=mutableListOf<StreamSource>()
+        val timing=mutableListOf<StreamSource>()
+        val tracker=mutableListOf<StreamSource>()
+        val helicam=mutableListOf<StreamSource>()
+        val onboard=mutableListOf<StreamSource>()
+        val other=mutableListOf<StreamSource>()
+
+        for(i in 0 until additional.length()){
+            val s=additional.optJSONObject(i)?:continue
+            val channel=s.optString("channelId").takeIf{it.isNotBlank()}?:continue
+            val identifier=s.optString("identifier").uppercase()
+            val type=s.optString("type").lowercase()
+            val title=s.optString("title").ifBlank{s.optString("reportingName")}
+            val driver=listOf(s.optString("driverFirstName"),s.optString("driverLastName"))
+                .filter(String::isNotBlank).joinToString(" ").ifBlank{null}
+
+            val kind=when {
+                identifier=="DATA" || type.contains("data") -> StreamKind.DATA
+                identifier=="TIMING" || type.contains("timing") -> StreamKind.TIMING
+                identifier.contains("TRACK") || type.contains("tracker") -> StreamKind.TRACK
+                identifier=="HELICAM" || type.contains("helicam") || type.contains("helicopter") -> StreamKind.HELICAM
+                identifier=="OBC" || type.contains("onboard") -> StreamKind.ONBOARD
+                identifier.contains("WORLD") || type.contains("world") || title.contains("F1 LIVE",true) || title.contains("WORLD",true) -> StreamKind.WORLD
+                else -> StreamKind.WORLD
+            }
+
+            val source=StreamSource(
+                id=when(kind){
+                    StreamKind.ONBOARD -> "onboard-"+channel
+                    else -> kind.name.lowercase()+"-"+sessionId+"-"+channel
+                },
+                title=title.ifBlank{
+                    when(kind){
+                        StreamKind.DATA -> "Data"
+                        StreamKind.TIMING -> "Timing"
+                        StreamKind.TRACK -> "Driver Tracker"
+                        StreamKind.HELICAM -> "Helicam"
+                        StreamKind.ONBOARD -> "Onboard "+(driver ?: channel)
+                        else -> "F1 Live"
+                    }
+                },
+                kind=kind,
+                driver=driver,
+                contentId=sessionId,
+                channelId=channel
+            )
+
+            when(kind){
+                StreamKind.WORLD -> world += source
+                StreamKind.DATA -> data += source
+                StreamKind.TIMING -> timing += source
+                StreamKind.TRACK -> tracker += source
+                StreamKind.HELICAM -> helicam += source
+                StreamKind.ONBOARD -> onboard += source
+                else -> other += source
+            }
         }
-        streams
+
+        (world + data + timing + tracker + helicam + other + onboard).distinctBy { it.id }
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = runCatching {
         val tv=(context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)==Configuration.UI_MODE_TYPE_TELEVISION
