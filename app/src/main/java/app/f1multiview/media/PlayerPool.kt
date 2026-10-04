@@ -12,6 +12,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.model.StreamSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,8 +85,7 @@ class PlayerPool(context: Context) {
                             .setLicenseRequestHeaders(
                                 stream.drmRequestHeaders.ifEmpty { stream.requestHeaders }
                             )
-                            .setMultiSession(true)
-                            .build()
+                                .build()
                     )
                 }
             }
@@ -93,10 +93,19 @@ class PlayerPool(context: Context) {
 
         val dataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
+            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
             .setDefaultRequestProperties(stream.requestHeaders)
+        val drmProvider = DefaultDrmSessionManagerProvider().apply {
+            setDrmHttpDataSourceFactory(
+                DefaultHttpDataSource.Factory()
+                    .setAllowCrossProtocolRedirects(true)
+                    .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
+                    .setDefaultRequestProperties(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
+            )
+        }
 
         player.setMediaSource(
-            DefaultMediaSourceFactory(dataSource).createMediaSource(mediaItem)
+            DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider(drmProvider).createMediaSource(mediaItem)
         )
         player.prepare()
     }

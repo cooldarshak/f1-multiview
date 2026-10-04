@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -26,9 +27,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
-import androidx.media3.ui.PlayerView
+import androidx.media3.ui.compose.PlayerSurface
+import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.media.PlayerPool
 import app.f1multiview.media.SyncEngine
@@ -125,13 +127,23 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val pool = remember(context) { PlayerPool(context) }
     val sync = remember(pool) { SyncEngine(pool::all) }
     val errors by pool.errors.collectAsState()
+    var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
 
     DisposableEffect(pool) { onDispose { pool.release() } }
 
-    LaunchedEffect(ui.streams) {
+    LaunchedEffect(ui.streams, ui.layout) {
         pool.retain(ui.streams.map { it.id }.toSet())
         ui.streams.forEach(pool::load)
+        delay(350)
+        val visibleCount = when (ui.layout) {
+            LayoutPreset.SINGLE -> 1
+            LayoutPreset.SPLIT_2 -> 2
+            LayoutPreset.GRID_4 -> 4
+            LayoutPreset.GRID_6 -> 6
+        }
+        ui.streams.take(visibleCount).forEach { pool.play(it.id) }
     }
+
     LaunchedEffect(sync) {
         while (true) {
             sync.synchronize()
@@ -139,16 +151,21 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
+    BackHandler(enabled = fullscreenStreamId != null) { fullscreenStreamId = null }
+
+    val fullscreenStream = ui.streams.firstOrNull { it.id == fullscreenStreamId }
+    if (fullscreenStream != null) {
+        FullscreenPlayer(fullscreenStream, pool, errors[fullscreenStream.id]) { fullscreenStreamId = null }
+        return
+    }
+
     Column(Modifier.fillMaxSize().background(Bg)) {
         Header(ui, vm)
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = 16.dp)
-        ) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = 16.dp)) {
             item { Hero(ui) }
             item { Archive(ui, vm) }
             item { ui.providerError?.let { ErrorBanner(it) } }
-            item { PitWall(ui, pool, errors) }
+            item { PitWall(ui, pool, errors) { fullscreenStreamId = it } }
         }
         Controls(ui, vm, pool)
     }
@@ -297,7 +314,12 @@ private fun SessionCard(selected: Boolean, title: String, type: String, onClick:
 }
 
 @Composable
-private fun PitWall(ui: UiState, pool: PlayerPool, errors: Map<String, String>) {
+private fun PitWall(
+    ui: UiState,
+    pool: PlayerPool,
+    errors: Map<String, String>,
+    onFullscreen: (String) -> Unit
+) {
     val maxFeeds = when (ui.layout) {
         LayoutPreset.SINGLE -> 1
         LayoutPreset.SPLIT_2 -> 2
@@ -305,15 +327,11 @@ private fun PitWall(ui: UiState, pool: PlayerPool, errors: Map<String, String>) 
         LayoutPreset.GRID_6 -> 6
     }
     val feeds = ui.streams.take(maxFeeds)
-    Spacer(Modifier.height(20.dp))
-    SectionHeader("LIVE PIT WALL", "${feeds.size} FEEDS")
+    Spacer(Modifier.height(18.dp))
+    SectionHeader("LIVE PIT WALL", "${feeds.size}@@ FEEDS")
 
     if (feeds.isEmpty()) {
-        Card(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(190.dp),
-            shape = RoundedCornerShape(17.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface1)
-        ) {
+        Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(190.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
             Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
                 Text("NO VIDEO FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
                 Text("Select a session to load the authorized F1 TV feeds.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
@@ -322,27 +340,43 @@ private fun PitWall(ui: UiState, pool: PlayerPool, errors: Map<String, String>) 
         return
     }
 
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(top = 9.dp)) {
-        val columns = when (ui.layout) {
-            LayoutPreset.SINGLE -> 1
-            LayoutPreset.SPLIT_2, LayoutPreset.GRID_4 -> 2
-            LayoutPreset.GRID_6 -> if (maxWidth >= 900.dp) 3 else 2
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            feeds.chunked(columns).forEach { row ->
-                Row(Modifier.fillMaxWidth().height(if (columns == 1) 215.dp else 180.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    row.forEach { stream ->
-                        PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight())
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(top = 8.dp)) {
+        val compact = maxWidth < 700.dp
+        when {
+            compact -> Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                feeds.chunked(2).forEach { row ->
+                    Row(Modifier.fillMaxWidth().height(190.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        row.forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight(), onFullscreen) }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            ui.layout == LayoutPreset.SINGLE -> PlayerTile(feeds.first(), pool, errors[feeds.first().id], Modifier.fillMaxWidth().height(430.dp), onFullscreen)
+            ui.layout == LayoutPreset.SPLIT_2 -> Row(Modifier.fillMaxWidth().height(360.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                feeds.forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight(), onFullscreen) }
+            }
+            ui.layout == LayoutPreset.GRID_4 -> Row(Modifier.fillMaxWidth().height(390.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                PlayerTile(feeds[0], pool, errors[feeds[0].id], Modifier.weight(2.15f).fillMaxHeight(), onFullscreen)
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    feeds.drop(1).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
+                }
+            }
+            else -> Row(Modifier.fillMaxWidth().height(430.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlayerTile(feeds[0], pool, errors[feeds[0].id], Modifier.weight(2.9f).fillMaxHeight(), onFullscreen)
+                Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    feeds.drop(1).take(2).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
+                }
+                Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    feeds.drop(3).take(3).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
                 }
             }
         }
     }
 }
 
+@OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier) {
+private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit) {
     val player = remember(stream.id) { pool.get(stream.id) }
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
@@ -352,168 +386,91 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { playing = value }
-            override fun onPlaybackStateChanged(state: Int) {
-                ready = state == Player.STATE_READY
-            }
+            override fun onPlaybackStateChanged(state: Int) { ready = state == Player.STATE_READY }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
 
-    Card(
-        modifier.border(1.dp, Color.White.copy(alpha = .08f), RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Black)
-    ) {
+    Card(modifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             if (stream.url != null) {
-                AndroidView(
-                    factory = { c -> PlayerView(c).apply { useController = false; this.player = player } },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { it.player = player }
-                )
+                PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
             } else {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
                     Text("CONNECTING…", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-
-            Row(
-                Modifier.fillMaxWidth().align(Alignment.TopStart)
-                    .background(Color.Black.copy(alpha = .58f))
-                    .padding(horizontal = 9.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth().align(Alignment.TopStart).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = Red, shape = RoundedCornerShape(4.dp)) {
-                    Text(
-                        if (stream.isLive) "LIVE" else "REPLAY",
-                        color = White,
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
+                    Text(if (stream.isLive) "LIVE" else "REPLAY", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
                 }
                 Spacer(Modifier.width(7.dp))
-                Text(
-                    stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
-                    color = White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
-                Text(
-                    when {
-                        !ready -> "LOADING"
-                        playing -> "PLAYING"
-                        else -> "PAUSED"
-                    },
-                    color = Color.White.copy(alpha = .6f),
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Surface(Modifier.clickable { onFullscreen(stream.id) }.focusable(), color = Color.Black.copy(alpha = .68f), shape = RoundedCornerShape(6.dp)) {
+                    Text("⛶", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                }
+                Spacer(Modifier.width(7.dp))
+                Text(when { error != null -> "ERROR"; !ready -> "LOADING"; playing -> "PLAYING"; else -> "PAUSED" }, color = if (error != null) Color(0xFFFF7777) else Color.White.copy(alpha = .6f), fontSize = 7.sp, fontWeight = FontWeight.Bold)
             }
-
             if (error != null) {
-                Surface(
-                    Modifier.align(Alignment.Center).padding(12.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.Black.copy(alpha = .9f),
-                    border = BorderStroke(1.dp, Red.copy(alpha = .6f))
-                ) {
-                    Column(Modifier.padding(11.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(Modifier.align(Alignment.Center).padding(12.dp), shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = .92f), border = BorderStroke(1.dp, Red.copy(alpha = .65f))) {
+                    Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("PLAYBACK UNAVAILABLE", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(
-                            error.replace("PlaybackException: ", "").replace("Source error", "Source unavailable"),
-                            color = Muted,
-                            fontSize = 8.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            // Player-local controls: quality is available only after the media has prepared,
-            // like a normal video player.
-            if (ready) {
-                Row(
-                    Modifier.align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = .86f))
-                            )
-                        )
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Surface(
-                        Modifier.clickable {
-                            if (playing) pool.pause(stream.id) else pool.play(stream.id)
-                        }.focusable(),
-                        shape = RoundedCornerShape(50),
-                        color = Red
-                    ) {
-                        Text(
-                            if (playing) "PAUSE" else "PLAY",
-                            color = White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
-                        )
-                    }
-
-                    Spacer(Modifier.weight(1f))
-
-                    Box {
-                        Surface(
-                            Modifier.clickable { qualityMenu = true }.focusable(),
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.Black.copy(alpha = .72f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
-                        ) {
-                            Text(
-                                "QUALITY  ${quality.label()}",
-                                color = White,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = qualityMenu,
-                            onDismissRequest = { qualityMenu = false }
-                        ) {
-                            listOf(
-                                Quality.AUTO to "Auto",
-                                Quality.UHD to "4K",
-                                Quality.FHD to "1080p",
-                                Quality.HD to "720p",
-                                Quality.SD to "480p"
-                            ).forEach { (option, label) ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (option == quality) "✓  " + label else label,
-                                            fontWeight = if (option == quality) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
-                                    onClick = {
-                                        quality = option
-                                        qualityMenu = false
-                                        pool.setQuality(stream.id, option)
-                                    }
-                                )
-                            }
+                        Text(error.replace("PlaybackException: ", "").replace("Source error", "Source unavailable"), color = Muted, fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Surface(Modifier.clickable { pool.clear(stream.id); pool.load(stream); pool.play(stream.id) }.focusable(), color = Red, shape = RoundedCornerShape(50)) {
+                            Text("RETRY", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                         }
                     }
                 }
             }
+            Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .9f)))).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
+                Surface(Modifier.clickable { if (playing) pool.pause(stream.id) else pool.play(stream.id) }.focusable(), shape = RoundedCornerShape(50), color = Red) {
+                    Text(if (playing) "PAUSE" else "PLAY", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Box {
+                    Surface(Modifier.clickable(enabled = ready) { qualityMenu = true }.focusable(), shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = .72f), border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))) {
+                        Text("QUALITY  ${quality.label()}@@", color = White, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
+                    }
+                    DropdownMenu(expanded = qualityMenu, onDismissRequest = { qualityMenu = false }) {
+                        listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (option, label) ->
+                            DropdownMenuItem(text = { Text(if (option == quality) "✓  $label" else label, fontWeight = if (option == quality) FontWeight.Bold else FontWeight.Normal) }, onClick = { quality = option; qualityMenu = false; pool.setQuality(stream.id, option) })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: String?, onClose: () -> Unit) {
+    val player = remember(stream.id) { pool.get(stream.id) }
+    var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener { override fun onIsPlayingChanged(value: Boolean) { playing = value } }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
+        Row(Modifier.fillMaxWidth().align(Alignment.TopStart).background(Color.Black.copy(alpha = .62f)).padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.clickable { onClose() }.focusable(), color = Color.White.copy(alpha = .12f), shape = RoundedCornerShape(8.dp)) {
+                Text("‹  BACK", color = White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text(if (error != null) "ERROR" else if (playing) "PLAYING" else "PAUSED", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+        if (error != null) Text(error.replace("PlaybackException: ", ""), color = Color(0xFFFF8A8A), fontSize = 11.sp, modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .8f), RoundedCornerShape(10.dp)).padding(14.dp))
+        Surface(Modifier.align(Alignment.BottomEnd).padding(18.dp).clickable { if (playing) pool.pause(stream.id) else pool.play(stream.id) }.focusable(), color = Red, shape = RoundedCornerShape(50)) {
+            Text(if (playing) "PAUSE" else "PLAY", color = White, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
         }
     }
 }
@@ -535,6 +492,57 @@ private fun ErrorBanner(message: String) {
         border = BorderStroke(1.dp, Red.copy(alpha = .35f))
     ) {
         Text(message, color = Color(0xFFFFB4B4), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(11.dp))
+    }
+}
+
+@Composable
+private fun Controls(ui: UiState, vm: MultiViewViewModel, pool: PlayerPool) {
+    Surface(Modifier.fillMaxWidth(), color = Color(0xFF111217), shadowElevation = 10.dp) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("LAYOUT", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+            listOf(LayoutPreset.SINGLE, LayoutPreset.SPLIT_2, LayoutPreset.GRID_4, LayoutPreset.GRID_6).forEach { preset ->
+                LayoutOption(preset, ui.layout == preset) { vm.setLayout(preset) }
+            }
+            DividerV()
+            Action("PLAY ALL") { pool.playAll() }
+            Action("PAUSE ALL") { pool.pauseAll() }
+            Action("TIMING") { vm.panel("timing") }
+        }
+    }
+}
+
+@Composable
+private fun LayoutOption(preset: LayoutPreset, selected: Boolean, onClick: () -> Unit) {
+    Surface(Modifier.size(width = 50.dp, height = 38.dp).clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))) {
+        Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) { LayoutGlyph(preset) }
+    }
+}
+
+@Composable
+private fun LayoutGlyph(preset: LayoutPreset) {
+    val c = Color.White.copy(alpha = .9f)
+    val gap = 2.dp
+    when (preset) {
+        LayoutPreset.SINGLE -> Box(Modifier.fillMaxSize().border(2.dp, c, RoundedCornerShape(2.dp)))
+        LayoutPreset.SPLIT_2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            Box(Modifier.weight(1f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
+            Box(Modifier.weight(1f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
+        }
+        LayoutPreset.GRID_4 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            Box(Modifier.weight(2f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                repeat(3) { Box(Modifier.weight(1f).fillMaxWidth().border(2.dp, c, RoundedCornerShape(2.dp))) }
+            }
+        }
+        LayoutPreset.GRID_6 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            Box(Modifier.weight(3f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
+            Column(Modifier.weight(1.4f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                repeat(2) { Box(Modifier.weight(1f).fillMaxWidth().border(2.dp, c, RoundedCornerShape(2.dp))) }
+            }
+            Column(Modifier.weight(1.4f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                repeat(3) { Box(Modifier.weight(1f).fillMaxWidth().border(2.dp, c, RoundedCornerShape(2.dp))) }
+            }
+        }
     }
 }
 
