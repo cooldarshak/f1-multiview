@@ -147,22 +147,30 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         pool.retain(selectedIds)
-        val ordered = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
-        var startedAny = false
-        ordered.forEachIndexed { index, stream ->
+        val ordered = ui.selectedStreamIds.mapNotNull { id ->
+            ui.streams.firstOrNull { it.id == id && it.url != null }
+        }
+        ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
-                if (index > 0) delay(900L)
                 pool.load(stream)
-                pool.play(stream.id)
                 startedFeeds[stream.id] = true
-                startedAny = true
+                delay(500L)
             }
         }
         val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
-        if (startedAny && mainId != null && ordered.all { startedFeeds[it.id] == true }) {
-            delay(1200L)
-            pool.syncToMain(mainId)
+        if (ordered.isNotEmpty()) {
+            pool.playAll()
+            delay(1800L)
+            if (mainId != null) pool.syncToMain(mainId)
+        }
+    }
+
+    LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
+        while (true) {
+            delay(12_000L)
+            val mainId = ui.mainStreamId ?: continue
+            if (ui.selectedStreamIds.size > 1) pool.syncToMain(mainId)
         }
     }
 
@@ -217,8 +225,7 @@ private fun Header(ui: UiState, vm: MultiViewViewModel) {
     ) {
         F1TvLogo()
         Spacer(Modifier.width(22.dp))
-        Box(Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = .1f)))
-        Spacer(Modifier.width(16.dp))
+        Box(Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = .1f)))        Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(ui.session?.name ?: "F1 MULTIVIEW", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(if (ui.session?.live == true) "LIVE NOW" else "F1 TV", color = if (ui.session?.live == true) Red else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -437,8 +444,7 @@ private fun ResizableCompactWall(selected: List<StreamSource>, pool: PlayerPool,
                 PlayerTile(selected[1],pool,errors[selected[1].id],Modifier.weight(splitX).fillMaxHeight(),onFullscreen)
                 ResizeHandle(Orientation.Horizontal,editSize){delta->splitX=(splitX+delta/700f).coerceIn(.2f,.8f)}
                 PlayerTile(selected[2],pool,errors[selected[2].id],Modifier.weight(1f-splitX).fillMaxHeight(),onFullscreen)
-                if(selected.size>3){
-                    // Additional feeds stay visible in a second compact row.
+                if(selected.size>3){                    // Additional feeds stay visible in a second compact row.
                 }
             }
         }
@@ -610,6 +616,13 @@ private fun FullscreenMultiview(
     fun pauseAll() = selected.forEach { pool.pause(it.id) }
     fun seekAll(deltaMs: Long) = selected.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
+    LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
+        if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
+            delay(5_000L)
+            controlsVisible = false
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize())
 
@@ -620,7 +633,7 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.width(7.dp))
                     Text("MULTIVIEW", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.width(6.dp))
-                    Text("\${selected.size} FEEDS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                    Text("${selected.size} FEEDS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
                     Spacer(Modifier.weight(1f))
                     listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4", LayoutPreset.GRID_6 to "6").forEach { (preset, label) ->
                         Control(layout == preset, "LAYOUT " + label) { layout = preset; onLayout(preset) }
@@ -628,9 +641,14 @@ private fun FullscreenMultiview(
                     }
                     Control(editSize, if (editSize) "DONE RESIZE" else "RESIZE") { editSize = !editSize }
                     Spacer(Modifier.width(5.dp))
-                    Control(false, "FEEDS \${ui.streams.size}") { feedPickerOpen = !feedPickerOpen }
+                    Control(false, "FEEDS ${ui.streams.size}") { feedPickerOpen = !feedPickerOpen }
                     Spacer(Modifier.width(5.dp))
-                    Control(false, "SYNC ALL") { val mainId = ui.mainStreamId ?: active?.id; if (mainId != null) pool.syncToMain(mainId) }
+                    Control(false, "SYNC ALL") {
+                        val mainId = ui.mainStreamId ?: active?.id
+                        if (mainId != null) pool.syncToMain(mainId)
+                    }
+                    Spacer(Modifier.width(5.dp))
+                    Control(false, "HIDE") { controlsVisible = false }
                 }
                 if (feedPickerOpen) {
                     Spacer(Modifier.height(8.dp))
@@ -656,9 +674,19 @@ private fun FullscreenMultiview(
             }
         }
 
+        if (!controlsVisible) {
+            Surface(
+                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable(),
+                color = Color.Black.copy(alpha = .65f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("SHOW CONTROLS", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+            }
+        }
+
         if (active != null && controlsVisible) {
-            Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
-                FullscreenFeedControls(
+            Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {                FullscreenFeedControls(
                     stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
                     speed = speed, quality = quality, fit = fit, menu = menu,
                     onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
@@ -683,61 +711,71 @@ private fun CanonicalMultiviewLayout(
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
     var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
     var mainX by rememberSaveable { mutableFloatStateOf(.62f) }
-    var gridX by rememberSaveable { mutableFloatStateOf(.33f) }
-    var gridX2 by rememberSaveable { mutableFloatStateOf(.5f) }
+    var topX by rememberSaveable { mutableFloatStateOf(.33f) }
+    var topX2 by rememberSaveable { mutableFloatStateOf(.5f) }
+    var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
+    var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
     var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
 
     Box(modifier) {
         when {
-            selected.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold) }
-            selected.size == 1 -> PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus)
-            selected.size == 2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus)
-                ResizeHandle(Orientation.Horizontal, editSize) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus)
-            }
-            selected.size == 3 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus)
-                ResizeHandle(Orientation.Horizontal, editSize) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
-                Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus)
-                    ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                    PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus)
+            selected.isEmpty() ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
-            }
-            else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(gridX).fillMaxHeight(), {}, onFocus)
-                    ResizeHandle(Orientation.Horizontal, editSize) { gridX = (gridX + it / 1400f).coerceIn(.18f, .52f) }
-                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - gridX) * gridX2).fillMaxHeight(), {}, onFocus)
-                    if (selected.size >= 5) {
-                        ResizeHandle(Orientation.Horizontal, editSize) { gridX2 = (gridX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - gridX) * (1f - gridX2)).fillMaxHeight(), {}, onFocus)
+            selected.size == 1 ->
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus)
+            selected.size == 2 ->
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus)
+                    ResizeHandle(Orientation.Horizontal, editSize) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
+                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus)
+                }
+            selected.size == 3 ->
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus)
+                    ResizeHandle(Orientation.Horizontal, editSize) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
+                    Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus)
+                        ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus)
                     }
                 }
-                ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
-                Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[if (selected.size >= 5) 3 else 2], pool, errors[selected[if (selected.size >= 5) 3 else 2].id], Modifier.weight(gridX).fillMaxHeight(), {}, onFocus)
-                    if (selected.size >= 5) {
-                        ResizeHandle(Orientation.Horizontal, editSize) { gridX = (gridX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - gridX) * gridX2).fillMaxHeight(), {}, onFocus)
-                        if (selected.size >= 6) {
-                            ResizeHandle(Orientation.Horizontal, editSize) { gridX2 = (gridX2 + it / 1200f).coerceIn(.25f, .75f) }
-                            PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - gridX) * (1f - gridX2)).fillMaxHeight(), {}, onFocus)
-                        } else {
-                            Spacer(Modifier.weight((1f - gridX) * (1f - gridX2)))
-                        }
-                    } else if (selected.size == 4) {
-                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(1f - gridX).fillMaxHeight(), {}, onFocus)
-                    } else {
-                        Spacer(Modifier.weight(1f - gridX))
+            selected.size == 4 ->
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus)
+                        ResizeHandle(Orientation.Horizontal, editSize) { topX = (topX + it / 1400f).coerceIn(.25f, .75f) }
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - topX).fillMaxHeight(), {}, onFocus)
+                    }
+                    ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
+                    Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus)
+                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.25f, .75f) }
+                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(1f - bottomX).fillMaxHeight(), {}, onFocus)
                     }
                 }
-            }
+            else ->
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus)
+                        ResizeHandle(Orientation.Horizontal, editSize) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus)
+                        ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus)
+                    }
+                    ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
+                    Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus)
+                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
+                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus)
+                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
+                        PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus)
+                    }
+                }
         }
     }
 }
-
 @OptIn(UnstableApi::class)
 @Composable
 private fun FullscreenFeedControls(
@@ -877,8 +915,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
             override fun onPlaybackStateChanged(state: Int) { ready = state == Player.STATE_READY }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { trackVersion++ }
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-                duration = player.duration.takeIf { it > 0 } ?: 0L
-            }
+                duration = player.duration.takeIf { it > 0 } ?: 0L            }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -1097,8 +1134,7 @@ private fun LayoutGlyph(preset: LayoutPreset, selected: Boolean) {
             Column(Modifier.weight(1.4f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
                 repeat(3) { Box(Modifier.weight(1f).fillMaxWidth().border(2.dp, c, RoundedCornerShape(2.dp))) }
             }
-        }
-    }
+        }    }
 }
 
 @Composable
