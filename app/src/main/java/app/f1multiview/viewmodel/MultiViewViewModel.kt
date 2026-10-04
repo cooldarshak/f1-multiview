@@ -140,11 +140,8 @@ fun toggleStream(id:String)=viewModelScope.launch{
             LayoutPreset.GRID_4->4
             LayoutPreset.GRID_6->6
         }
-        val next=if(id in current){
-            listOf(id)+current.filterNot{it==id}
-        }else{
-            listOf(id)+current.filterNot{it==_ui.value.mainStreamId}
-        }
+        val oldMain = _ui.value.mainStreamId
+        val next = listOf(id) + current.filterNot { it == id || it == oldMain }
         _ui.value=_ui.value.copy(selectedStreamIds=next.distinct().take(maxFeeds),mainStreamId=id,providerError=null)
         persist()
         if(source.url==null) resolveSource(source)
