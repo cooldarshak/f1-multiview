@@ -109,11 +109,18 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = runCatching {
         val tv=(context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)==Configuration.UI_MODE_TYPE_TELEVISION
-        val platforms=if(tv)listOf("BIG_SCREEN_DASH","BIG_SCREEN_HLS","WEB_DASH","WEB_HLS")else listOf("MOBILE_HLS","WEB_HLS","MOBILE_DASH","WEB_DASH")
+        val platforms=listOf("WEB_DASH","BIG_SCREEN_DASH","WEB_HLS","BIG_SCREEN_HLS","MOBILE_HLS","MOBILE_DASH")
         var last:Throwable?=null
         for((index,platform) in platforms.withIndex()){try{
             val result=api.contentPlay(request.contentId,request.channelId,platform);var playToken=result.playToken;var manifestLicense:String?=null
-            if(result.manifestUrl.contains(".mpd",true)){val probe=api.prepareManifest(result.manifestUrl);if(probe.successful){playToken=probe.playToken?:playToken;manifestLicense=probe.licenseUrl}}
+            if(result.manifestUrl.contains(".mpd",true)){
+                val probe=api.prepareManifest(result.manifestUrl)
+                if(!probe.successful){
+                    throw F1TvException("F1 TV playback manifest unavailable on " + platform)
+                }
+                playToken=probe.playToken?:playToken
+                manifestLicense=probe.licenseUrl
+            }
             val license=result.licenseUrl?:manifestLicense?:if(result.manifestUrl.contains(".mpd",true))api.fallbackLicense(request.contentId,request.channelId,platform,result.pipelineVersion,result.streamType)else null
             if(result.manifestUrl.contains(".mpd",true)&&license==null)throw F1TvException("Protected DASH manifest has no Widevine license endpoint")
             val streamHeaders=buildMap{put("Origin",F1TvApiClient.BASE);put("Referer",F1TvApiClient.BASE+"/");put("User-Agent",F1TvApiClient.BROWSER_UA);api.authHeaders()["ascendontoken"]?.let{put("ascendontoken",it)};(result.entitlementToken?:api.authHeaders()["entitlementtoken"])?.let{put("entitlementtoken",it)};playToken?.let{put("Cookie","playToken="+it)}}

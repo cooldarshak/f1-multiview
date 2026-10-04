@@ -67,7 +67,9 @@ class F1TvApiClient {
         return JSONObject(response.body).optJSONObject("resultObj")?.optJSONArray("containers")?:org.json.JSONArray()
     }
     suspend fun prepareManifest(manifestUrl:String):ManifestProbe=withContext(Dispatchers.IO){
-        val request=Request.Builder().url(manifestUrl).get().header("User-Agent",BROWSER_UA).header("Origin",BASE).header("Referer",BASE+"/").header("Accept","application/dash+xml, application/xml, */*").apply{authHeaders().forEach{(k,v)->header(k,v)}}.build()
+        val builder=Request.Builder().url(manifestUrl).get().header("User-Agent",BROWSER_UA).header("Origin",BASE).header("Referer",BASE+"/").header("Accept","application/dash+xml, application/xml, */*").apply{authHeaders().forEach{(k,v)->header(k,v)}}
+            extractPlayToken(manifestUrl)?.takeIf { it.length >= 4 }?.let { builder.header("Cookie","playToken=" + it) }
+            val request=builder.build()
         http.newCall(request).execute().use{response->
             val body=response.body?.string().orEmpty()
             val cookie=response.headers.values("Set-Cookie").firstNotNullOfOrNull{c->c.substringBefore(';').takeIf{it.startsWith("playToken=",true)}?.substringAfter('=')}
@@ -99,10 +101,16 @@ class F1TvApiClient {
         return BASE+"/2.0/R/"+LANG+"/"+platform+"/ALL/CONTENT/LA/widevine?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
     }
     private fun extractPlayToken(url:String):String?{
-        val marker="/pa_";val start=url.indexOf(marker);if(start<0)return null
-        val end=url.indexOf('/',start+marker.length).let{if(it<0)url.length else it};val encoded=url.substring(start+marker.length,end).replace('-','+').replace('_','/')
-        val padded=encoded+"=".repeat((4-encoded.length%4)%4)
-        return runCatching{String(Base64.decode(padded,Base64.DEFAULT),Charsets.ISO_8859_1).split('|').firstNotNullOfOrNull{field->field.substringAfter("token:","").takeIf{field.startsWith("token:")&&it.isNotBlank()}}}.getOrNull()
+        return runCatching {
+            val match=Regex("/pa_([^/?#]+)",RegexOption.IGNORE_CASE).find(url) ?: return@runCatching null
+            var encoded=match.groupValues[1].replace('-','+').replace('_','/')
+            encoded += "=".repeat((4-encoded.length%4)%4)
+            val decoded=String(Base64.decode(encoded,Base64.DEFAULT),Charsets.ISO_8859_1)
+            decoded.split('|').mapNotNull { part ->
+                val idx=part.indexOf(':')
+                if(idx>0) part.substring(0,idx) to part.substring(idx+1) else null
+            }.toMap()["token"]?.takeIf { it.length >= 4 && it.none { ch -> ch.code in 0..31 || ch.code == 127 } }
+        }.getOrNull()
     }
     private fun ensureSuccess(response:HttpResponse,operation:String){
         if(!response.isSuccessful)throw F1TvException("F1 TV "+operation+" failed: HTTP "+response.code)

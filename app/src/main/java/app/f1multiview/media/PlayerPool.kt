@@ -12,7 +12,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
+import android.os.Handler
+import android.os.Looper
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.model.StreamSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +28,7 @@ class PlayerPool(context: Context) {
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
     private var audioPlayerId: String? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
     val errors: StateFlow<Map<String, String>> = _errors.asStateFlow()
 
@@ -33,7 +38,7 @@ class PlayerPool(context: Context) {
         .build()
 
     fun get(id: String): ExoPlayer = players.getOrPut(id) {
-        ExoPlayer.Builder(appContext)
+        ExoPlayer.Builder(appContext, DefaultRenderersFactory(appContext).setEnableDecoderFallback(true))
             .setLoadControl(ProductionLoadControl.create())
             .build()
             .also { player ->
@@ -95,18 +100,24 @@ class PlayerPool(context: Context) {
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
             .setDefaultRequestProperties(stream.requestHeaders)
-        val drmProvider = DefaultDrmSessionManagerProvider().apply {
-            setDrmHttpDataSourceFactory(
-                DefaultHttpDataSource.Factory()
-                    .setAllowCrossProtocolRedirects(true)
-                    .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
-                    .setDefaultRequestProperties(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
-            )
+        val drmHeaders = stream.drmRequestHeaders.ifEmpty { stream.requestHeaders }
+        val drmDataSource = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
+            .setDefaultRequestProperties(drmHeaders)
+        val licenseUrl = stream.drmLicenseUrl
+        val mediaSourceFactory = if (!licenseUrl.isNullOrBlank()) {
+            val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
+            drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
+            val drmManager = DefaultDrmSessionManager.Builder()
+                .setMultiSession(false)
+                .build(callback)
+            DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
+        } else {
+            DefaultMediaSourceFactory(dataSource)
         }
 
-        player.setMediaSource(
-            DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider(drmProvider).createMediaSource(mediaItem)
-        )
+        player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
 
@@ -194,7 +205,10 @@ class PlayerPool(context: Context) {
 
     fun playAll() {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        players.values.forEach { it.play() }
+        val ids = players.keys.toList()
+        ids.forEachIndexed { index, id ->
+            mainHandler.postDelayed({ players[id]?.play() }, index * 600L)
+        }
     }
 
     fun pauseAll() {
@@ -212,6 +226,7 @@ class PlayerPool(context: Context) {
     }
 
     fun release() {
+        mainHandler.removeCallbacksAndMessages(null)
         players.values.forEach { it.release() }
         players.clear()
         audioPlayerId = null

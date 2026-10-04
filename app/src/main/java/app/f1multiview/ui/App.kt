@@ -131,19 +131,15 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
 
     DisposableEffect(pool) { onDispose { pool.release() } }
 
-    LaunchedEffect(ui.streams, ui.layout) {
-        pool.retain(ui.streams.map { it.id }.toSet())
-        ui.streams.forEach(pool::load)
-        delay(350)
-        val visibleCount = when (ui.layout) {
-            LayoutPreset.SINGLE -> 1
-            LayoutPreset.SPLIT_2 -> 2
-            LayoutPreset.GRID_4 -> 4
-            LayoutPreset.GRID_6 -> 6
+    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.layout) {
+        val selectedIds = ui.selectedStreamIds.toSet()
+        pool.retain(selectedIds)
+        ui.streams.filter { it.id in selectedIds && it.url != null }.forEach(pool::load)
+        ui.selectedStreamIds.forEachIndexed { index, id ->
+            delay(if (index == 0) 250L else 600L)
+            pool.play(id)
         }
-        ui.streams.take(visibleCount).forEach { pool.play(it.id) }
     }
-
     LaunchedEffect(sync) {
         while (true) {
             sync.synchronize()
@@ -165,7 +161,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             item { Hero(ui) }
             item { Archive(ui, vm) }
             item { ui.providerError?.let { ErrorBanner(it) } }
-            item { PitWall(ui, pool, errors) { fullscreenStreamId = it } }
+            item { PitWall(ui, pool, errors, { fullscreenStreamId = it }, vm::toggleStream) }
         }
         Controls(ui, vm, pool)
     }
@@ -318,7 +314,8 @@ private fun PitWall(
     ui: UiState,
     pool: PlayerPool,
     errors: Map<String, String>,
-    onFullscreen: (String) -> Unit
+    onFullscreen: (String) -> Unit,
+    onToggleStream: (String) -> Unit
 ) {
     val maxFeeds = when (ui.layout) {
         LayoutPreset.SINGLE -> 1
@@ -326,48 +323,79 @@ private fun PitWall(
         LayoutPreset.GRID_4 -> 4
         LayoutPreset.GRID_6 -> 6
     }
-    val feeds = ui.streams.take(maxFeeds)
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(maxFeeds)
     Spacer(Modifier.height(18.dp))
-    SectionHeader("LIVE PIT WALL", "${feeds.size}@@ FEEDS")
+    SectionHeader("LIVE PIT WALL", "FEEDS")
 
-    if (feeds.isEmpty()) {
-        Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(190.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
+    LazyRow(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        contentPadding = PaddingValues(horizontal = 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(ui.streams) { stream ->
+            val picked = stream.id in ui.selectedStreamIds
+            Surface(
+                Modifier.clip(RoundedCornerShape(10.dp)).clickable { onToggleStream(stream.id) }.focusable(),
+                shape = RoundedCornerShape(10.dp),
+                color = if (picked) Red else Surface2,
+                border = BorderStroke(1.dp, if (picked) Red else Color.White.copy(alpha = .08f))
+            ) {
+                Column(Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) {
+                    Text(
+                        stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
+                        color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        if (picked) "IN LAYOUT" else stream.kind.name,
+                        color = if (picked) White.copy(alpha = .85f) else Muted,
+                        fontSize = 7.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(9.dp))
+    if (selected.isEmpty()) {
+        Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(170.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
             Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
-                Text("NO VIDEO FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
-                Text("Select a session to load the authorized F1 TV feeds.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("CHOOSE YOUR FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
+                Text("Pick up to " + maxFeeds + " feeds from the shelf above.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
         return
     }
 
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(top = 8.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
         val compact = maxWidth < 700.dp
         when {
             compact -> Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                feeds.chunked(2).forEach { row ->
+                selected.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth().height(190.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                         row.forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight(), onFullscreen) }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
-            ui.layout == LayoutPreset.SINGLE -> PlayerTile(feeds.first(), pool, errors[feeds.first().id], Modifier.fillMaxWidth().height(430.dp), onFullscreen)
+            ui.layout == LayoutPreset.SINGLE -> PlayerTile(selected.first(), pool, errors[selected.first().id], Modifier.fillMaxWidth().height(430.dp), onFullscreen)
             ui.layout == LayoutPreset.SPLIT_2 -> Row(Modifier.fillMaxWidth().height(360.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                feeds.forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight(), onFullscreen) }
+                selected.forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight(), onFullscreen) }
             }
             ui.layout == LayoutPreset.GRID_4 -> Row(Modifier.fillMaxWidth().height(390.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                PlayerTile(feeds[0], pool, errors[feeds[0].id], Modifier.weight(2.15f).fillMaxHeight(), onFullscreen)
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(2.15f).fillMaxHeight(), onFullscreen)
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    feeds.drop(1).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
+                    selected.drop(1).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
                 }
             }
             else -> Row(Modifier.fillMaxWidth().height(430.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PlayerTile(feeds[0], pool, errors[feeds[0].id], Modifier.weight(2.9f).fillMaxHeight(), onFullscreen)
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(2.9f).fillMaxHeight(), onFullscreen)
                 Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    feeds.drop(1).take(2).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
+                    selected.drop(1).take(2).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
                 }
                 Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    feeds.drop(3).take(3).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
+                    selected.drop(3).take(3).forEach { stream -> PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxWidth(), onFullscreen) }
                 }
             }
         }
@@ -394,9 +422,8 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
 
     Card(modifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            if (stream.url != null) {
-                PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
-            } else {
+            PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
+            if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
                     Text("CONNECTING…", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
@@ -434,7 +461,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                 Spacer(Modifier.weight(1f))
                 Box {
                     Surface(Modifier.clickable(enabled = ready) { qualityMenu = true }.focusable(), shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = .72f), border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))) {
-                        Text("QUALITY  ${quality.label()}@@", color = White, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
+                        Text("QUALITY  " + quality.label(), color = White, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
                     }
                     DropdownMenu(expanded = qualityMenu, onDismissRequest = { qualityMenu = false }) {
                         listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (option, label) ->
@@ -568,7 +595,8 @@ private fun DividerV() {
 private fun prettyEvent(name: String): String {
     return name.replace("FORMULA 1", "F1", ignoreCase = true)
         .replace("ULA 1", "F1", ignoreCase = true)
-        .replace(Regex("\\s+"), " ")
+        .replace(Regex("\s+"), " ")
         .trim()
-        .replace(Regex("\\s+(20[0-9]{2})$"), "")
+        .replace(Regex("\s+(20[0-9]{2})$"), "")
+        .replace(Regex("\s+(?:in|at)\s+[A-Z][A-Za-z .'-]+$"), "")
 }
