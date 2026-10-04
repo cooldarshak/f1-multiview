@@ -39,7 +39,6 @@ import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.media.PlayerPool
-import app.f1multiview.media.SyncEngine
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
 import android.app.Activity
@@ -136,27 +135,28 @@ private fun LoginScreen(auth: AuthState, vm: MultiViewViewModel) {
 private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val context = LocalContext.current
     val pool = remember(context) { PlayerPool(context) }
-    val sync = remember(pool) { SyncEngine(pool::all) }
     val errors by pool.errors.collectAsState()
     var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
     var fullscreenMultiview by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(pool) { onDispose { pool.release() } }
 
-    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.layout) {
+    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.layout, ui.mainStreamId) {
         val selectedIds = ui.selectedStreamIds.toSet()
         pool.retain(selectedIds)
-        ui.streams.filter { it.id in selectedIds && it.url != null }.forEach(pool::load)
-        ui.selectedStreamIds.forEachIndexed { index, id ->
-            delay(if (index == 0) 250L else 600L)
-            pool.play(id)
+        val ordered = ui.selectedStreamIds.mapNotNull { id ->
+            ui.streams.firstOrNull { it.id == id && it.url != null }
         }
-    }
-    LaunchedEffect(sync) {
-        while (true) {
-            sync.synchronize()
-            delay(250)
+        ordered.firstOrNull()?.let { main ->
+            pool.load(main)
+            pool.play(main.id)
         }
+        ordered.drop(1).forEach { stream ->
+            delay(900L)
+            pool.load(stream)
+            pool.play(stream.id)
+        }
+        pool.setAudioPlayer(ui.mainStreamId ?: ordered.firstOrNull()?.id)
     }
 
     BackHandler(enabled = fullscreenStreamId != null || fullscreenMultiview) {
@@ -194,6 +194,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
                     onFullscreen = { fullscreenStreamId = it },
                     onFullscreenAll = { fullscreenMultiview = true },
                     onToggleStream = vm::toggleStream,
+                    onSetMainStream = vm::setMainStream,
                     onLayout = vm::setLayout
                 )
             }
@@ -351,6 +352,7 @@ private fun PitWall(
     onFullscreen: (String) -> Unit,
     onFullscreenAll: () -> Unit,
     onToggleStream: (String) -> Unit,
+    onSetMainStream: (String) -> Unit,
     onLayout: (LayoutPreset) -> Unit
 ) {
     val maxFeeds = when (ui.layout) {
@@ -414,24 +416,37 @@ private fun PitWall(
     ) {
         items(ui.streams) { stream ->
             val picked = stream.id in ui.selectedStreamIds
+            val isMain = stream.id == ui.mainStreamId
             Surface(
-                Modifier.clip(RoundedCornerShape(10.dp)).clickable { onToggleStream(stream.id) }.focusable(),
+                Modifier.clip(RoundedCornerShape(10.dp)),
                 shape = RoundedCornerShape(10.dp),
-                color = if (picked) Red else Surface2,
-                border = BorderStroke(1.dp, if (picked) Red else Color.White.copy(alpha = .08f))
+                color = if (isMain) Red else if (picked) Color(0xFF5A1012) else Surface2,
+                border = BorderStroke(1.dp, if (isMain) Red else Color.White.copy(alpha = .08f))
             ) {
-                Column(Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) {
-                    Text(
-                        stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
-                        color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        if (picked) "IN LAYOUT" else stream.kind.name,
-                        color = if (picked) White.copy(alpha = .85f) else Muted,
-                        fontSize = 7.sp, fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
+                Column(Modifier.widthIn(min = 120.dp, max = 170.dp).padding(horizontal = 9.dp, vertical = 7.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).clickable { onToggleStream(stream.id) }.focusable(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                when { isMain -> "MAIN FEED"; picked -> "IN LAYOUT"; else -> stream.kind.name },
+                                color = if (isMain || picked) White.copy(alpha = .88f) else Muted,
+                                fontSize = 7.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        Text(if (picked) "✓" else "+", color = White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                    }
+                    Spacer(Modifier.height(5.dp))
+                    Surface(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).clickable { onSetMainStream(stream.id) }.focusable(),
+                        shape = RoundedCornerShape(7.dp),
+                        color = if (isMain) Color.Black.copy(alpha = .28f) else Color.White.copy(alpha = .08f)
+                    ) {
+                        Text(if (isMain) "MAIN" else "SET AS MAIN", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
                 }
             }
         }
