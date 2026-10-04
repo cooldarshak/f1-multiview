@@ -547,26 +547,6 @@ private fun LayoutGlyph(preset: LayoutPreset) {
 }
 
 @Composable
-private fun Controls(ui: UiState, vm: MultiViewViewModel, pool: PlayerPool) {
-    Surface(Modifier.fillMaxWidth(), color = Color(0xFF111217), shadowElevation = 10.dp) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 13.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("VIEW", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
-            listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4", LayoutPreset.GRID_6 to "6").forEach { (preset, label) ->
-                Control(ui.layout == preset, label) { vm.setLayout(preset) }
-            }
-            DividerV()
-            Action("PLAY ALL") { pool.playAll() }
-            Action("PAUSE ALL") { pool.pauseAll() }
-            Action("TIMING") { vm.panel("timing") }
-        }
-    }
-}
-
-@Composable
 private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
     Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(8.dp), color = if (selected) Red else Surface2) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
