@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -192,6 +193,43 @@ class PlayerPool(context: Context) {
         players.forEach { (pid, player) ->
             player.volume = if (pid == audioPlayerId) 1f else 0f
         }
+    }
+
+    fun setMuted(id: String, muted: Boolean) {
+        players[id]?.volume = if (muted) 0f else 1f
+    }
+
+    fun isMuted(id: String): Boolean = players[id]?.volume?.let { it <= 0.001f } ?: true
+
+    /**
+     * One-shot synchronization only. We deliberately do not run a continuous
+     * seek loop because F1 TV feed types have different live latencies.
+     * When both manifests expose Unix-epoch window start times, align the
+     * secondary feeds to the main feed's presentation timestamp.
+     */
+    fun syncToMain(mainId: String) {
+        val main = players[mainId] ?: return
+        val mainEpoch = absolutePresentationTime(main) ?: return
+        players.forEach { (id, player) ->
+            if (id == mainId || player.currentTimeline.isEmpty) return@forEach
+            val target = mainEpoch - windowStart(player)
+            val duration = player.duration
+            val clamped = if (duration > 0L) target.coerceIn(0L, duration) else target.coerceAtLeast(0L)
+            player.seekTo(clamped)
+        }
+    }
+
+    private fun windowStart(player: ExoPlayer): Long {
+        if (player.currentTimeline.isEmpty) return C.TIME_UNSET
+        val window = Timeline.Window()
+        player.currentTimeline.getWindow(player.currentMediaItemIndex, window)
+        return window.windowStartTimeMs
+    }
+
+    private fun absolutePresentationTime(player: ExoPlayer): Long? {
+        val start = windowStart(player)
+        if (start == C.TIME_UNSET) return null
+        return start + player.currentPosition
     }
 
     fun play(id: String) {
