@@ -212,7 +212,9 @@ class PlayerPool(context: Context) {
         val mainEpoch = absolutePresentationTime(main) ?: return
         players.forEach { (id, player) ->
             if (id == mainId || player.currentTimeline.isEmpty) return@forEach
-            val target = mainEpoch - windowStart(player)
+            val start = windowStart(player)
+            if (start == C.TIME_UNSET) return@forEach
+            val target = mainEpoch - start
             val duration = player.duration
             val clamped = if (duration > 0L) target.coerceIn(0L, duration) else target.coerceAtLeast(0L)
             player.seekTo(clamped)
