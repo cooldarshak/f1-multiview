@@ -161,7 +161,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             item { Hero(ui) }
             item { Archive(ui, vm) }
             item { ui.providerError?.let { ErrorBanner(it) } }
-            item { PitWall(ui, pool, errors, { fullscreenStreamId = it }, vm::toggleStream) }
+            item { PitWall(ui, pool, errors, { fullscreenStreamId = it }, vm::toggleStream, vm::setLayout) }
         }
         Controls(ui, vm, pool)
     }
@@ -315,7 +315,8 @@ private fun PitWall(
     pool: PlayerPool,
     errors: Map<String, String>,
     onFullscreen: (String) -> Unit,
-    onToggleStream: (String) -> Unit
+    onToggleStream: (String) -> Unit,
+    onLayout: (LayoutPreset) -> Unit
 ) {
     val maxFeeds = when (ui.layout) {
         LayoutPreset.SINGLE -> 1
@@ -325,7 +326,18 @@ private fun PitWall(
     }
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(maxFeeds)
     Spacer(Modifier.height(18.dp))
-    SectionHeader("LIVE PIT WALL", "FEEDS")
+    SectionHeader("MULTIVIEW", "LAYOUT")
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        listOf(LayoutPreset.SINGLE, LayoutPreset.SPLIT_2, LayoutPreset.GRID_4, LayoutPreset.GRID_6).forEachIndexed { index, preset ->
+            LayoutOption(preset, ui.layout == preset) { onLayout(preset) }
+            if (index < 3) Spacer(Modifier.width(8.dp))
+        }
+    }
+    SectionHeader("LIVE PIT WALL", if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + "/" + maxFeeds)
 
     LazyRow(
         Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -526,11 +538,6 @@ private fun ErrorBanner(message: String) {
 private fun Controls(ui: UiState, vm: MultiViewViewModel, pool: PlayerPool) {
     Surface(Modifier.fillMaxWidth(), color = Color(0xFF111217), shadowElevation = 10.dp) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("LAYOUT", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
-            listOf(LayoutPreset.SINGLE, LayoutPreset.SPLIT_2, LayoutPreset.GRID_4, LayoutPreset.GRID_6).forEach { preset ->
-                LayoutOption(preset, ui.layout == preset) { vm.setLayout(preset) }
-            }
-            DividerV()
             Action("PLAY ALL") { pool.playAll() }
             Action("PAUSE ALL") { pool.pauseAll() }
             Action("TIMING") { vm.panel("timing") }
@@ -541,13 +548,13 @@ private fun Controls(ui: UiState, vm: MultiViewViewModel, pool: PlayerPool) {
 @Composable
 private fun LayoutOption(preset: LayoutPreset, selected: Boolean, onClick: () -> Unit) {
     Surface(Modifier.size(width = 50.dp, height = 38.dp).clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))) {
-        Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) { LayoutGlyph(preset) }
+        Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) { LayoutGlyph(preset, selected) }
     }
 }
 
 @Composable
-private fun LayoutGlyph(preset: LayoutPreset) {
-    val c = Color.White.copy(alpha = .9f)
+private fun LayoutGlyph(preset: LayoutPreset, selected: Boolean) {
+    val c = if (selected) Color.Black.copy(alpha = .9f) else Color.White.copy(alpha = .9f)
     val gap = 2.dp
     when (preset) {
         LayoutPreset.SINGLE -> Box(Modifier.fillMaxSize().border(2.dp, c, RoundedCornerShape(2.dp)))
