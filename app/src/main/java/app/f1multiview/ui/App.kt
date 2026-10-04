@@ -647,7 +647,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
         PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
 
         if (controlsVisible) {
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f)))) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f))))) {
                 Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
                     Surface(Modifier.clickable { onClose() }.focusable(), color=Color.Black.copy(alpha=.65f), shape=RoundedCornerShape(9.dp)) {
                         Text("‹  BACK", color=White, fontSize=10.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
