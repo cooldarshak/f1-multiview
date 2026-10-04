@@ -21,11 +21,11 @@ sealed interface AuthState {
 }
 data class UiState(
     val auth:AuthState=AuthState.Checking,val layout:LayoutPreset=LayoutPreset.GRID_4,val session:Session?=null,
-    val sessions:List<Session>=emptyList(),val streams:List<StreamSource>=emptyList(),
-    val telemetry:List<DriverTelemetry>=DemoRepository.telemetry(),val timing:List<TimingRow>=DemoRepository.timing(),
-    val raceControl:List<RaceControlEvent>=DemoRepository.raceControl(),val selectedPanel:String?=null,val syncOffsetMs:Long=0,
-    val providerError:String?=null,val vodSeasons:List<VodSeason>=emptyList(),val selectedSeason:VodSeason?=null,
-    val vodEvents:List<VodEvent>=emptyList(),val selectedEvent:VodEvent?=null,val vodSessions:List<VodSession>=emptyList(),
+    val sessions: List<Session> =emptyList(),val streams: List<StreamSource> =emptyList(),
+    val telemetry: List<DriverTelemetry> =DemoRepository.telemetry(),val timing: List<TimingRow> =DemoRepository.timing(),
+    val raceControl: List<RaceControlEvent> =DemoRepository.raceControl(),val selectedPanel:String?=null,val syncOffsetMs:Long=0,
+    val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
+    val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE"
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
