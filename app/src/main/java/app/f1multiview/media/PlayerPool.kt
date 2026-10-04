@@ -209,15 +209,23 @@ class PlayerPool(context: Context) {
      */
     fun syncToMain(mainId: String) {
         val main = players[mainId] ?: return
-        val mainEpoch = absolutePresentationTime(main) ?: return
+        val mainEpoch = absolutePresentationTime(main)
+        val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET }
         players.forEach { (id, player) ->
             if (id == mainId || player.currentTimeline.isEmpty) return@forEach
             val start = windowStart(player)
-            if (start == C.TIME_UNSET) return@forEach
-            val target = mainEpoch - start
-            val duration = player.duration
-            val clamped = if (duration > 0L) target.coerceIn(0L, duration) else target.coerceAtLeast(0L)
-            player.seekTo(clamped)
+            if (mainEpoch != null && start != C.TIME_UNSET) {
+                val target = mainEpoch - start
+                val duration = player.duration
+                val clamped = if (duration > 0L) target.coerceIn(0L, duration) else target.coerceAtLeast(0L)
+                player.seekTo(clamped)
+            } else if (mainLiveOffset != null) {
+                val secondaryOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET }
+                if (secondaryOffset != null) {
+                    val delta = secondaryOffset - mainLiveOffset
+                    player.seekTo((player.currentPosition + delta).coerceAtLeast(0L))
+                }
+            }
         }
     }
 
