@@ -54,7 +54,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session){provider.streams(session.id).fold({sources->_ui.value=_ui.value.copy(streams=sources.take(6),providerError=null);resolveVisible(sources.take(6))},{_ui.value=_ui.value.copy(providerError=it.message?:"Unable to load streams")})}
     private suspend fun resolveVisible(sources:List<StreamSource>){sources.forEach{source->val contentId=source.contentId?:return@forEach;provider.resolve(PlaybackRequest(contentId,source.channelId,_ui.value.quality)).onSuccess{playback->_ui.value=_ui.value.copy(streams=_ui.value.streams.map{if(it.id==source.id)it.copy(url=playback.manifestUrl,drmLicenseUrl=playback.licenseUrl,requestHeaders=playback.streamHeaders,drmRequestHeaders=playback.licenseHeaders)else it})}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}}
-    fun setLayout(layout:LayoutPreset){val count=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6};_ui.value=_ui.value.copy(layout=layout,streams=_ui.value.streams.take(count));persist()}
+    fun setLayout(layout:LayoutPreset){_ui.value=_ui.value.copy(layout=layout);persist()}
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
