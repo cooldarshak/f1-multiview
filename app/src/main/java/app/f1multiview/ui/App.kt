@@ -595,8 +595,8 @@ private fun DividerV() {
 private fun prettyEvent(name: String): String {
     return name.replace("FORMULA 1", "F1", ignoreCase = true)
         .replace("ULA 1", "F1", ignoreCase = true)
-        .replace(Regex("\s+"), " ")
+        .replace(Regex("""\s+"""), " ")
         .trim()
-        .replace(Regex("\s+(20[0-9]{2})$"), "")
-        .replace(Regex("\s+(?:in|at)\s+[A-Z][A-Za-z .'-]+$"), "")
+        .replace(Regex("""\s+(20[0-9]{2})$"""), "")
+        .replace(Regex("""\s+(?:in|at)\s+[A-Z][A-Za-z .'-]+$"""), "")
 }
