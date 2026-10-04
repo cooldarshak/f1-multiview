@@ -1,0 +1,21 @@
+workflows:
+  android-debug:
+    name: F1 MultiView Debug APK
+    max_build_duration: 60
+    scripts:
+      - name: Configure Android SDK
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+      - name: Assemble debug
+        script: ./gradlew assembleDebug
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
+  android-release:
+    name: F1 MultiView Release APK
+    max_build_duration: 60
+    scripts:
+      - name: Configure Android SDK
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+      - name: Assemble release APK
+        script: ./gradlew assembleRelease
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
