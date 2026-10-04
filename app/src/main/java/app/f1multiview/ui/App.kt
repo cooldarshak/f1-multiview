@@ -71,7 +71,7 @@ import kotlinx.coroutines.delay
     val player=remember(s.id){pool.get(s.id)};var playing by remember(s.id){mutableStateOf(player.isPlaying)}
     DisposableEffect(player){val l=object:Player.Listener{override fun onIsPlayingChanged(v:Boolean){playing=v}};player.addListener(l);onDispose{player.removeListener(l)}}
     Card(m.border(1.dp,Color(0xFF292C34)).focusable()){Box(Modifier.fillMaxSize().background(Color(0xFF15171C))){
-        if(s.url!=null)AndroidView(Modifier.fillMaxSize(),factory={c->PlayerView(c).apply{useController=false;this.player=player}},update={it.player=player}) else Column(Modifier.align(Alignment.Center),horizontalAlignment=Alignment.CenterHorizontally){Text(s.title);Text("WAITING FOR AUTHORIZED STREAM",color=Color.LightGray)}
+        if(s.url!=null)AndroidView(factory={c->PlayerView(c).apply{useController=false;this.player=player}},modifier=Modifier.fillMaxSize(),update={it.player=player}) else Column(Modifier.align(Alignment.Center),horizontalAlignment=Alignment.CenterHorizontally){Text(s.title);Text("WAITING FOR AUTHORIZED STREAM",color=Color.LightGray)}
         error?.let{Text("PLAYBACK ERROR: "+it,Modifier.align(Alignment.Center).padding(16.dp),color=Color.White)}
         Row(Modifier.align(Alignment.TopStart).padding(8.dp)){AssistChip({pool.setAudioPlayer(s.id)},label={Text(if(s.driver.isNullOrBlank())"LIVE" else s.driver)})}
         if(s.url!=null)Button({if(playing)pool.pause(s.id)else pool.play(s.id)},Modifier.align(Alignment.BottomStart).padding(8.dp)){Text(if(playing)"PAUSE" else "PLAY")}
