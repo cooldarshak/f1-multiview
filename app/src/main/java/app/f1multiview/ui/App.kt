@@ -139,6 +139,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val sync = remember(pool) { SyncEngine(pool::all) }
     val errors by pool.errors.collectAsState()
     var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
+    var fullscreenMultiview by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(pool) { onDispose { pool.release() } }
 
@@ -158,7 +159,20 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
-    BackHandler(enabled = fullscreenStreamId != null) { fullscreenStreamId = null }
+    BackHandler(enabled = fullscreenStreamId != null || fullscreenMultiview) {
+        fullscreenStreamId = null
+        fullscreenMultiview = false
+    }
+
+    if (fullscreenMultiview) {
+        FullscreenMultiview(
+            ui = ui,
+            pool = pool,
+            errors = errors,
+            onClose = { fullscreenMultiview = false }
+        )
+        return
+    }
 
     val fullscreenStream = ui.streams.firstOrNull { it.id == fullscreenStreamId }
     if (fullscreenStream != null) {
@@ -172,7 +186,17 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             item { Hero(ui) }
             item { Archive(ui, vm) }
             item { ui.providerError?.let { ErrorBanner(it) } }
-            item { PitWall(ui, pool, errors, { fullscreenStreamId = it }, vm::toggleStream, vm::setLayout) }
+            item {
+                PitWall(
+                    ui = ui,
+                    pool = pool,
+                    errors = errors,
+                    onFullscreen = { fullscreenStreamId = it },
+                    onFullscreenAll = { fullscreenMultiview = true },
+                    onToggleStream = vm::toggleStream,
+                    onLayout = vm::setLayout
+                )
+            }
         }
     }
 }
@@ -325,6 +349,7 @@ private fun PitWall(
     pool: PlayerPool,
     errors: Map<String, String>,
     onFullscreen: (String) -> Unit,
+    onFullscreenAll: () -> Unit,
     onToggleStream: (String) -> Unit,
     onLayout: (LayoutPreset) -> Unit
 ) {
@@ -360,10 +385,25 @@ private fun PitWall(
         Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + "/" + maxFeeds, color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Surface(
-            Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).clickable { feedPanelOpen = !feedPanelOpen }.focusable(),
-            shape = RoundedCornerShape(9.dp), color = Surface2
+            Modifier
+                .height(38.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { feedPanelOpen = !feedPanelOpen }
+                .focusable(),
+            shape = RoundedCornerShape(10.dp),
+            color = if (feedPanelOpen) Red else Surface2,
+            border = if (feedPanelOpen) null else BorderStroke(1.dp, Color.White.copy(alpha = .09f))
         ) {
-            Box(contentAlignment = Alignment.Center) { Text(if (feedPanelOpen) "⌃" else "⌄", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+            Row(
+                Modifier.padding(horizontal = 13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("FEEDS", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.width(7.dp))
+                Text(ui.streams.size.toString(), color = White.copy(alpha = .72f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(7.dp))
+                Text(if (feedPanelOpen) "▲" else "▼", color = White, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            }
         }
     }
 
@@ -415,10 +455,17 @@ private fun PitWall(
     ) {
         if (selected.size > 1) {
             Surface(
+                Modifier.clip(RoundedCornerShape(8.dp)).clickable { onFullscreenAll() }.focusable(),
+                shape = RoundedCornerShape(8.dp), color = Red
+            ) {
+                Text("FULLSCREEN", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            }
+            Spacer(Modifier.width(7.dp))
+            Surface(
                 Modifier.clip(RoundedCornerShape(8.dp)).clickable { editSize = !editSize }.focusable(),
                 shape = RoundedCornerShape(8.dp), color = if (editSize) Red else Surface2
             ) {
-                Text(if (editSize) "DONE" else "RESIZE", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+                Text(if (editSize) "DONE" else "RESIZE", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
             }
         }
     }
@@ -567,6 +614,78 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
     }
 }
 
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun FullscreenMultiview(
+    ui: UiState,
+    pool: PlayerPool,
+    errors: Map<String, String>,
+    onClose: () -> Unit
+) {
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
+    var controlsVisible by rememberSaveable { mutableStateOf(true) }
+
+    fun playAll() = selected.forEach { pool.play(it.id) }
+    fun pauseAll() = selected.forEach { pool.get(it.id).pause() }
+    fun seekAll(deltaMs: Long) = selected.forEach {
+        val player = pool.get(it.id)
+        player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0L))
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(Color.Black)
+            .clickable { controlsVisible = !controlsVisible }
+    ) {
+        when {
+            selected.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
+            }
+            selected.size == 1 -> PlayerTile(selected.first(), pool, errors[selected.first().id], Modifier.fillMaxSize(), {})
+            selected.size == 2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(1f).fillMaxHeight(), {})
+                PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f).fillMaxHeight(), {})
+            }
+            selected.size == 3 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(.62f).fillMaxHeight(), {})
+                Column(Modifier.weight(.38f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f).fillMaxWidth(), {})
+                    PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f).fillMaxWidth(), {})
+                }
+            }
+            else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                selected.chunked(2).forEach { row ->
+                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        row.forEach { stream ->
+                            PlayerTile(stream, pool, errors[stream.id], Modifier.weight(1f).fillMaxHeight(), {})
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        if (controlsVisible) {
+            Row(
+                Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                    .background(Color.Black.copy(alpha = .78f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(Modifier.clickable(onClick = onClose).focusable(), color = Surface2, shape = RoundedCornerShape(8.dp)) {
+                    Text("‹ BACK", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("MULTIVIEW • " + selected.size + " FEEDS", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.weight(1f))
+                PlayerControlButton("↶ 10") { seekAll(-10_000L) }
+                PlayerControlButton("PLAY ALL") { playAll() }
+                PlayerControlButton("PAUSE ALL") { pauseAll() }
+                PlayerControlButton("10 ↷") { seekAll(10_000L) }
+            }
+        }
+    }
+}
 
 @OptIn(UnstableApi::class)
 @Composable
