@@ -38,7 +38,18 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.rows.collect{rows->if(rows.isNotEmpty())_ui.value=_ui.value.copy(timing=rows)}}
         viewModelScope.launch{timingClient.status.collect{status->_ui.value=_ui.value.copy(timingStatus=status)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
-        viewModelScope.launch{store.setup.collect{setup->if(setup!=null&&setup.streamIds.isNotEmpty()){val streams=_ui.value.streams.filter{it.id in setup.streamIds};if(streams.isNotEmpty())_ui.value=_ui.value.copy(layout=setup.layout,streams=streams,selectedStreamIds=setup.streamIds.filter{it in streams.map{source->source.id}})}}}
+        viewModelScope.launch{
+            store.setup.collect{setup->
+                if(setup!=null&&setup.streamIds.isNotEmpty()&&_ui.value.streams.isNotEmpty()){
+                    val allStreams=_ui.value.streams
+                    val mainId=allStreams.firstOrNull()?.id
+                    val restored=setup.streamIds.filter{it in allStreams.map{source->source.id}}
+                    val maxFeeds=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
+                    val selected=(listOfNotNull(mainId)+restored.filterNot{it==mainId}).distinct().take(maxFeeds)
+                    _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected)
+                }
+            }
+        }
     }
     fun signInWithSessionToken(token:String)=viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signInWithSessionToken(token).fold({ _ui.value=_ui.value.copy(auth=AuthState.SignedIn);loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Browser sign-in failed"),providerError=it.message)})}
     fun signIn(username:String,password:String){if(username.isBlank()||password.isBlank())return;viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signIn(ProviderCredentials(username.trim(),password)).fold({_ui.value=_ui.value.copy(auth=AuthState.SignedIn);loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Sign-in failed"),providerError=it.message)})}}
