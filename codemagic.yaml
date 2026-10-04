@@ -20,3 +20,5 @@ workflows:
         script: chmod +x ./gradlew && ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/release/*.apk
+
+# Build trigger: 2026-10-04
