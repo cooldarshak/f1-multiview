@@ -33,29 +33,72 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         map.entries.sortedByDescending{it.key}.map{VodSeason(it.key,it.value)}
     }
     override suspend fun vodEvents(season:VodSeason):Result<List<VodEvent>> = runCatching {
-        val containers=api.fetchPage(season.pageId);val map=linkedMapOf<Int,VodEvent>();val now=System.currentTimeMillis()
-        for(i in 0 until containers.length()){val c=containers.optJSONObject(i)?:continue;val subs=c.optJSONObject("retrieveItems")?.optJSONArray("containers")?:continue
-            for(j in 0 until subs.length()){val s=subs.optJSONObject(j)?:continue;val actions=s.optJSONArray("actions")?:continue;var pageId:Int?=null
-                for(k in 0 until actions.length()){val a=actions.optJSONObject(k)?:continue;val m=Regex("/PAGE/(\\d+)/").find(a.optString("uri"));if(a.optString("key")=="onClick"&&m!=null){pageId=m.groupValues[1].toIntOrNull();break}}
-                val meta=s.optJSONObject("metadata")?:org.json.JSONObject();val emf=meta.optJSONObject("emfAttributes")?:org.json.JSONObject();val props=s.optJSONArray("properties")?.optJSONObject(0)?:org.json.JSONObject();val title=s.optString("title").ifBlank{meta.optString("title")};val upper=title.uppercase()
-                if(pageId==null||!(upper.contains("GRAND PRIX")||upper.contains("FORMULA 1")||emf.optString("VideoType")=="meetings"||meta.optString("contentSubtype")=="MEETING"))continue
-                if(upper.contains(" F2 ")||upper.contains(" F3 "))continue
-                val start=props.optString("meeting_Start_Date").toLongOrNull()?:props.optLong("meeting_Start_Date",0L);if(start>now)continue
-                val number=props.optInt("meeting_Number",emf.optInt("Meeting_Number",0));map.putIfAbsent(pageId,VodEvent(pageId,title.trim(),number,season.year,upper.contains("TEST")))
+        val root=api.fetchPage(season.pageId); val map=linkedMapOf<Int,VodEvent>(); val now=System.currentTimeMillis()
+        val nodes=flattenObjects(root)
+        for(s in nodes){
+            val actions=s.optJSONArray("actions")?:continue
+            var pageId:Int?=null
+            for(k in 0 until actions.length()){
+                val a=actions.optJSONObject(k)?:continue
+                val uri=a.optString("uri")
+                val m=Regex("/PAGE/(\\d+)/",RegexOption.IGNORE_CASE).find(uri)
+                if(m!=null){pageId=m.groupValues[1].toIntOrNull();if(a.optString("key").equals("onClick",true))break}
             }
+            if(pageId==null)continue
+            val meta=s.optJSONObject("metadata")?:org.json.JSONObject()
+            val emf=meta.optJSONObject("emfAttributes")?:org.json.JSONObject()
+            val props=s.optJSONArray("properties")?.optJSONObject(0)?:org.json.JSONObject()
+            val title=listOf(s.optString("title"),meta.optString("title"),meta.optString("plainText"),emf.optString("Meeting_Name"))
+                .firstOrNull{it.isNotBlank()}?.trim().orEmpty()
+            val upper=title.uppercase()
+            val looksLikeMeeting=upper.contains("GRAND PRIX")||upper.contains("FORMULA 1")||
+                emf.optString("VideoType").equals("meetings",true)||meta.optString("contentSubtype").equals("MEETING",true)||
+                meta.optString("contentType").contains("meeting",true)
+            if(!looksLikeMeeting||upper.contains(" F2 ")||upper.contains(" F3 "))continue
+            val rawDate=listOf(
+                props.optString("meeting_Start_Date"), props.optString("meetingStartDate"),
+                meta.optString("meeting_Start_Date"), meta.optString("meetingStartDate")
+            ).firstOrNull{it.isNotBlank()}
+            val startDate=rawDate?.toLongOrNull() ?: 0L
+            if(startDate>now)continue
+            val number=props.optInt("meeting_Number",emf.optInt("Meeting_Number",0))
+            map.putIfAbsent(pageId,VodEvent(pageId,title,number,season.year,upper.contains("TEST")))
         }
-        map.values.sortedBy{it.meetingNumber}
+        map.values.sortedWith(compareBy<VodEvent>{it.meetingNumber==0}.thenBy{it.meetingNumber}.thenBy{it.meetingName})
     }
     override suspend fun vodSessions(event:VodEvent):Result<List<VodSession>> = runCatching {
-        val containers=api.fetchPage(event.pageId);val out=mutableListOf<VodSession>()
-        for(i in 0 until containers.length()){val c=containers.optJSONObject(i)?:continue;val subs=c.optJSONObject("retrieveItems")?.optJSONArray("containers")?:continue
-            for(j in 0 until subs.length()){val s=subs.optJSONObject(j)?:continue;val meta=s.optJSONObject("metadata")?:continue;val emf=meta.optJSONObject("emfAttributes")?:org.json.JSONObject();val contentId=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue
-                val subtype=meta.optString("contentSubtype");val videoType=emf.optString("VideoType");if(videoType!="meetingSession"||subtype!="REPLAY")continue
-                val title=s.optString("title").ifBlank{meta.optString("title")}.trim();out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId)
-            }
+        val root=api.fetchPage(event.pageId); val out=mutableListOf<VodSession>()
+        for(s in flattenObjects(root)){
+            val meta=s.optJSONObject("metadata")?:continue
+            val emf=meta.optJSONObject("emfAttributes")?:org.json.JSONObject()
+            val contentId=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue
+            val subtype=meta.optString("contentSubtype")
+            val videoType=emf.optString("VideoType")
+            val title=s.optString("title").ifBlank{meta.optString("title")}.trim()
+            val looksLikeSession=videoType.equals("meetingSession",true)||
+                title.contains("race",true)||title.contains("qualifying",true)||title.contains("practice",true)||
+                title.contains("sprint",true)
+            if(!looksLikeSession)continue
+            out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId)
         }
         out.distinctBy{it.contentId}
     }
+
+    private fun flattenObjects(root:org.json.JSONArray):List<org.json.JSONObject>{
+        val out=mutableListOf<org.json.JSONObject>()
+        fun walk(value:Any?){
+            when(value){
+                is org.json.JSONObject->{
+                    out+=value
+                    val keys=value.keys()
+                    while(keys.hasNext()) walk(value.opt(keys.next()))
+                }
+                is org.json.JSONArray->for(i in 0 until value.length()) walk(value.opt(i))
+            }
+        }
+        walk(root); return out
+    }
+
     override suspend fun streams(sessionId:String):Result<List<StreamSource>> = runCatching {
         val container=api.contentVideo(sessionId);val metadata=container.optJSONObject("metadata")?:return@runCatching emptyList();val additional=metadata.optJSONArray("additionalStreams")?:return@runCatching emptyList();val streams=mutableListOf<StreamSource>();var world=false;var data=false
         for(i in 0 until additional.length()){val s=additional.optJSONObject(i)?:continue;val channel=s.optString("channelId").takeIf{it.isNotBlank()}?:continue;val identifier=s.optString("identifier").uppercase();val type=s.optString("type").lowercase();val title=s.optString("title").ifBlank{s.optString("reportingName")};val driver=listOf(s.optString("driverFirstName"),s.optString("driverLastName")).filter(String::isNotBlank).joinToString(" ").ifBlank{null}
