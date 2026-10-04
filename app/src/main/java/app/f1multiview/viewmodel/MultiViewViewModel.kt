@@ -43,11 +43,13 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             store.setup.collect{setup->
                 if(setup!=null&&setup.streamIds.isNotEmpty()&&_ui.value.streams.isNotEmpty()){
                     val allStreams=_ui.value.streams
-                    val mainId=allStreams.firstOrNull()?.id
-                    val restored=setup.streamIds.filter{it in allStreams.map{source->source.id}}
+                    val availableIds=allStreams.map { it.id }.toSet()
+                    val restored=setup.streamIds.filter { it in availableIds }
+                    val savedMain=setup.mainStreamId?.takeIf { it in restored }
                     val maxFeeds=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
-                    val selected=(listOfNotNull(mainId)+restored.filterNot{it==mainId}).distinct().take(maxFeeds)
-                    _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected,mainStreamId=selected.firstOrNull())
+                    val mainId=savedMain ?: restored.firstOrNull()
+                    val selected=(listOfNotNull(mainId)+restored.filterNot { it==mainId }).distinct().take(maxFeeds)
+                    _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected,mainStreamId=mainId)
                 }
             }
         }
@@ -150,7 +152,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
-    fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("default",name,current.layout,current.selectedStreamIds))}}
+    fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("default",name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
     fun clearSavedSetup()=viewModelScope.launch{store.clear()}
     override fun onCleared(){timingClient.stop();super.onCleared()}
     private fun persist(){saveCurrentSetup()}
