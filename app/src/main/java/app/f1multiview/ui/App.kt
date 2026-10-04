@@ -345,10 +345,16 @@ private fun PitWall(ui: UiState, pool: PlayerPool, errors: Map<String, String>) 
 private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier) {
     val player = remember(stream.id) { pool.get(stream.id) }
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
+    var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
+    var quality by rememberSaveable(stream.id) { mutableStateOf(Quality.AUTO) }
+    var qualityMenu by remember(stream.id) { mutableStateOf(false) }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { playing = value }
+            override fun onPlaybackStateChanged(state: Int) {
+                ready = state == Player.STATE_READY
+            }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -374,16 +380,40 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
             }
 
             Row(
-                Modifier.fillMaxWidth().align(Alignment.TopStart).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 9.dp, vertical = 7.dp),
+                Modifier.fillMaxWidth().align(Alignment.TopStart)
+                    .background(Color.Black.copy(alpha = .58f))
+                    .padding(horizontal = 9.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(color = Red, shape = RoundedCornerShape(4.dp)) {
-                    Text(if (stream.isLive) "LIVE" else "REPLAY", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+                    Text(
+                        if (stream.isLive) "LIVE" else "REPLAY",
+                        color = White,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
                 }
                 Spacer(Modifier.width(7.dp))
-                Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
+                    color = White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Spacer(Modifier.weight(1f))
-                Text(if (playing) "PLAYING" else "PAUSED", color = Color.White.copy(alpha = .6f), fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        !ready -> "LOADING"
+                        playing -> "PLAYING"
+                        else -> "PAUSED"
+                    },
+                    color = Color.White.copy(alpha = .6f),
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             if (error != null) {
@@ -395,20 +425,105 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                 ) {
                     Column(Modifier.padding(11.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("PLAYBACK UNAVAILABLE", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(error.replace("PlaybackException: ", "").replace("Source error", "Source unavailable"), color = Muted, fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        Text(
+                            error.replace("PlaybackException: ", "").replace("Source error", "Source unavailable"),
+                            color = Muted,
+                            fontSize = 8.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
                     }
                 }
             }
 
-            Surface(
-                Modifier.align(Alignment.BottomStart).padding(8.dp).clickable { if (playing) pool.pause(stream.id) else pool.play(stream.id) }.focusable(),
-                shape = RoundedCornerShape(50),
-                color = Red
-            ) {
-                Text(if (playing) "PAUSE" else "PLAY", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp))
+            // Player-local controls: quality is available only after the media has prepared,
+            // like a normal video player.
+            if (ready) {
+                Row(
+                    Modifier.align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = .86f))
+                            )
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Surface(
+                        Modifier.clickable {
+                            if (playing) pool.pause(stream.id) else pool.play(stream.id)
+                        }.focusable(),
+                        shape = RoundedCornerShape(50),
+                        color = Red
+                    ) {
+                        Text(
+                            if (playing) "PAUSE" else "PLAY",
+                            color = White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    Box {
+                        Surface(
+                            Modifier.clickable { qualityMenu = true }.focusable(),
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Black.copy(alpha = .72f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
+                        ) {
+                            Text(
+                                "QUALITY  ${quality.label()}",
+                                color = White,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = qualityMenu,
+                            onDismissRequest = { qualityMenu = false }
+                        ) {
+                            listOf(
+                                Quality.AUTO to "Auto",
+                                Quality.UHD to "4K",
+                                Quality.FHD to "1080p",
+                                Quality.HD to "720p",
+                                Quality.SD to "480p"
+                            ).forEach { (option, label) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (option == quality) "✓  " + label else label,
+                                            fontWeight = if (option == quality) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        quality = option
+                                        qualityMenu = false
+                                        pool.setQuality(stream.id, option)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+private fun Quality.label(): String = when (this) {
+    Quality.AUTO -> "AUTO"
+    Quality.UHD -> "4K"
+    Quality.FHD -> "1080"
+    Quality.HD -> "720"
+    Quality.SD -> "480"
 }
 
 @Composable
@@ -434,11 +549,6 @@ private fun Controls(ui: UiState, vm: MultiViewViewModel, pool: PlayerPool) {
             Text("VIEW", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
             listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4", LayoutPreset.GRID_6 to "6").forEach { (preset, label) ->
                 Control(ui.layout == preset, label) { vm.setLayout(preset) }
-            }
-            DividerV()
-            Text("QUALITY", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
-            listOf(Quality.AUTO to "AUTO", Quality.UHD to "4K", Quality.FHD to "1080", Quality.HD to "720", Quality.SD to "480").forEach { (quality, label) ->
-                Control(ui.quality == quality, label) { vm.setQuality(quality); pool.setQuality(quality) }
             }
             DividerV()
             Action("PLAY ALL") { pool.playAll() }
