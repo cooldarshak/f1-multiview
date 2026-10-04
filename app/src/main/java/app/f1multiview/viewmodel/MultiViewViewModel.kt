@@ -26,7 +26,8 @@ data class UiState(
     val raceControl: List<RaceControlEvent> =DemoRepository.raceControl(),val selectedPanel:String?=null,val syncOffsetMs:Long=0,
     val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
-    val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList()
+    val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
+    val mainStreamId:String? = null
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -46,7 +47,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     val restored=setup.streamIds.filter{it in allStreams.map{source->source.id}}
                     val maxFeeds=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
                     val selected=(listOfNotNull(mainId)+restored.filterNot{it==mainId}).distinct().take(maxFeeds)
-                    _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected)
+                    _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected,mainStreamId=selected.firstOrNull())
                 }
             }
         }
@@ -57,7 +58,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private suspend fun loadSessions(){provider.sessions().fold({sessions->val first=sessions.firstOrNull();_ui.value=_ui.value.copy(auth=AuthState.SignedIn,sessions=sessions,session=first);if(first!=null)loadStreams(first)},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Unable to load F1 TV sessions"),providerError=it.message)})}
     fun loadVodSeasons()=viewModelScope.launch{provider.vodSeasons().onSuccess{seasons->val selected=seasons.firstOrNull();_ui.value=_ui.value.copy(vodSeasons=seasons,selectedSeason=selected);if(selected!=null)loadVodEvents(selected)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     private suspend fun loadVodEvents(season:VodSeason){provider.vodEvents(season).onSuccess{events->val selected=events.maxWithOrNull(compareBy<VodEvent>{it.meetingNumber}.thenBy{it.meetingName})?:events.firstOrNull();_ui.value=_ui.value.copy(vodEvents=events,selectedEvent=selected);if(selected!=null)loadVodSessions(selected)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
-    private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.type.equals("race",true)&&!it.title.contains("highlight",true)->0;it.type.equals("race",true)->1;it.type.equals("sprint",true)->2;it.type.equals("qualifying",true)->3;it.type.equals("practice",true)->4;else->5}}.thenByDescending{it.title});val selected=ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.type);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.type.equals("race",true)&&!it.title.contains("highlight",true)->0;it.type.equals("race",true)->1;it.type.equals("sprint",true)->2;it.type.equals("qualifying",true)->3;it.type.equals("practice",true)->4;else->5}}.thenByDescending{it.title});val selected=ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.type);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null);loadStreams(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun selectVodSeason(season:VodSeason)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedSeason=season,selectedEvent=null,vodEvents=emptyList(),vodSessions=emptyList());loadVodEvents(season)}
     fun selectVodEvent(event:VodEvent)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedEvent=event,vodSessions=emptyList());loadVodSessions(event)}
     fun selectVodSession(vod:VodSession)=viewModelScope.launch{val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
@@ -71,6 +72,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                 _ui.value=_ui.value.copy(
                     streams=visible,
                     selectedStreamIds=listOfNotNull(mainSource?.id),
+                    mainStreamId=mainSource?.id,
                     providerError=null
                 )
                 if (mainSource != null && mainSource.url == null) {
@@ -107,7 +109,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val current=_ui.value.selectedStreamIds
     val maxFeeds=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
     if(id in current){
-        if(id == _ui.value.streams.firstOrNull()?.id) return@launch
+        if(id == _ui.value.mainStreamId) return@launch
         _ui.value=_ui.value.copy(selectedStreamIds=current.filterNot{it==id})
         persist()
         return@launch
@@ -127,6 +129,26 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null) resolveSource(source)
 }
+    fun setMainStream(id:String)=viewModelScope.launch{
+        val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
+        val current=_ui.value.selectedStreamIds
+        val maxFeeds=when(_ui.value.layout){
+            LayoutPreset.SINGLE->1
+            LayoutPreset.SPLIT_2->2
+            LayoutPreset.GRID_4->4
+            LayoutPreset.GRID_6->6
+        }
+        val next=if(id in current){
+            listOf(id)+current.filterNot{it==id}
+        }else if(current.size<maxFeeds){
+            listOf(id)+current
+        }else{
+            listOf(id)+current.drop(1)
+        }
+        _ui.value=_ui.value.copy(selectedStreamIds=next.distinct().take(maxFeeds),mainStreamId=id,providerError=null)
+        persist()
+        if(source.url==null) resolveSource(source)
+    }
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
