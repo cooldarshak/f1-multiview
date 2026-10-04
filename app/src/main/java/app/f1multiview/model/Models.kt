@@ -1,0 +1,18 @@
+package app.f1multiview.model
+
+enum class StreamKind { WORLD, ONBOARD, TIMING, TRACK, HELICAM, DATA }
+enum class LayoutPreset { SINGLE, SPLIT_2, GRID_4, GRID_6 }
+data class StreamSource(
+    val id: String, val title: String, val kind: StreamKind, val url: String? = null,
+    val driver: String? = null, val drmLicenseUrl: String? = null,
+    val requestHeaders: Map<String, String> = emptyMap(), val drmRequestHeaders: Map<String, String> = emptyMap(),
+    val contentId: String? = null, val channelId: String? = null, val isLive: Boolean = true
+)
+data class DriverTelemetry(val driver: String, val speed: Int, val rpm: Int, val gear: Int, val throttle: Int, val brake: Int, val drs: Boolean, val lap: Int, val lapTime: String)
+data class TimingRow(val position: Int, val driver: String, val gap: String, val lastLap: String, val tyre: String, val pitStops: Int)
+data class RaceControlEvent(val time: String, val message: String, val severity: String)
+data class Session(
+    val id: String, val name: String, val country: String, val dateLabel: String, val live: Boolean,
+    val seasonYear: Int? = null, val eventPageId: Int? = null, val series: String = "F1", val sessionType: String = "other"
+)
+data class SavedSetup(val id: String, val name: String, val layout: LayoutPreset, val streamIds: List<String>)
