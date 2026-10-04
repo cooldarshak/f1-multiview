@@ -41,12 +41,14 @@ class PlayerPool(context: Context) {
                 player.videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
                 player.setHandleAudioBecomingNoisy(true)
 
-                // Prefer the broadly supported AVC decoder first. HEVC remains available
-                // for devices/streams that expose it as the compatible track.
-                player.trackSelectionParameters = player.trackSelectionParameters
-                    .buildUpon()
+                // AUTO is intentionally conservative on phones. The user can raise
+                // quality from the controls inside an opened player.
+                val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
+                    Configuration.UI_MODE_TYPE_TELEVISION
+                val initialBuilder = player.trackSelectionParameters.buildUpon()
                     .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
-                    .build()
+                if (!isTv) initialBuilder.setMaxVideoSize(1920, 1080)
+                player.trackSelectionParameters = initialBuilder.build()
 
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
@@ -99,47 +101,51 @@ class PlayerPool(context: Context) {
         player.prepare()
     }
 
+    fun setQuality(id: String, quality: Quality) {
+        players[id]?.let { applyQuality(it, quality) }
+    }
+
     fun setQuality(quality: Quality) {
+        players.values.forEach { applyQuality(it, quality) }
+    }
+
+    private fun applyQuality(player: ExoPlayer, quality: Quality) {
         val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
             Configuration.UI_MODE_TYPE_TELEVISION
 
-        players.values.forEach { player ->
-            val builder = player.trackSelectionParameters.buildUpon()
+        val builder = player.trackSelectionParameters.buildUpon()
 
-            when (quality) {
-                Quality.UHD -> builder
-                    .setMaxVideoSize(3840, 2160)
-                    .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264))
+        when (quality) {
+            Quality.UHD -> builder
+                .setMaxVideoSize(3840, 2160)
+                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264))
 
-                Quality.FHD -> builder
-                    .setMaxVideoSize(1920, 1080)
-                    .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+            Quality.FHD -> builder
+                .setMaxVideoSize(1920, 1080)
+                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
 
-                Quality.HD -> builder
-                    .setMaxVideoSize(1280, 720)
-                    .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+            Quality.HD -> builder
+                .setMaxVideoSize(1280, 720)
+                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
 
-                Quality.SD -> builder
-                    .setMaxVideoSize(854, 480)
-                    .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+            Quality.SD -> builder
+                .setMaxVideoSize(854, 480)
+                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
 
-                Quality.AUTO -> {
-                    if (isTv) {
-                        builder
-                            .clearVideoSizeConstraints()
-                            .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
-                    } else {
-                        // Avoid automatically selecting a 4K HEVC representation on phones.
-                        // The user can explicitly request UHD.
-                        builder
-                            .setMaxVideoSize(1920, 1080)
-                            .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
-                    }
+            Quality.AUTO -> {
+                if (isTv) {
+                    builder
+                        .clearVideoSizeConstraints()
+                        .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                } else {
+                    builder
+                        .setMaxVideoSize(1920, 1080)
+                        .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
                 }
             }
-
-            player.trackSelectionParameters = builder.build()
         }
+
+        player.trackSelectionParameters = builder.build()
     }
 
     private fun isDecoderFailure(error: PlaybackException): Boolean {
