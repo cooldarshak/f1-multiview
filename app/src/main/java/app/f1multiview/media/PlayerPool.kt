@@ -46,7 +46,7 @@ class PlayerPool(context: Context) {
                 val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
                     Configuration.UI_MODE_TYPE_TELEVISION
                 val initialBuilder = player.trackSelectionParameters.buildUpon()
-                    .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                    .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
                 if (!isTv) initialBuilder.setMaxVideoSize(1920, 1080)
                 player.trackSelectionParameters = initialBuilder.build()
 
@@ -118,29 +118,29 @@ class PlayerPool(context: Context) {
         when (quality) {
             Quality.UHD -> builder
                 .setMaxVideoSize(3840, 2160)
-                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264))
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264)
 
             Quality.FHD -> builder
                 .setMaxVideoSize(1920, 1080)
-                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
 
             Quality.HD -> builder
                 .setMaxVideoSize(1280, 720)
-                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
 
             Quality.SD -> builder
                 .setMaxVideoSize(854, 480)
-                .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
 
             Quality.AUTO -> {
                 if (isTv) {
                     builder
                         .clearVideoSizeConstraints()
-                        .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
                 } else {
                     builder
                         .setMaxVideoSize(1920, 1080)
-                        .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
                 }
             }
         }
@@ -159,7 +159,7 @@ class PlayerPool(context: Context) {
         player.trackSelectionParameters = player.trackSelectionParameters
             .buildUpon()
             .setMaxVideoSize(1920, 1080)
-            .setPreferredVideoMimeTypes(arrayOf(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265))
+            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
             .build()
 
         player.prepare()
