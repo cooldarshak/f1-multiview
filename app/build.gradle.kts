@@ -14,6 +14,13 @@ android {
         versionName="1.0.0"
     }
     buildFeatures { compose=true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     signingConfigs {
         create("release") {
@@ -30,10 +37,10 @@ android {
         }
     }
     buildTypes { getByName("release") {
-            if (signingConfigs.getByName("release").storeFile != null) {
-                signingConfig = signingConfigs.getByName("release")
-            }
-        } }
+        if (signingConfigs.getByName("release").storeFile != null) {
+            signingConfig = signingConfigs.getByName("release")
+        }
+    } }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
