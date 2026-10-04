@@ -109,7 +109,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = runCatching {
         val tv=(context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)==Configuration.UI_MODE_TYPE_TELEVISION
-        val platforms=if(tv)listOf("BIG_SCREEN_DASH","WEB_DASH","BIG_SCREEN_HLS","WEB_HLS")else listOf("MOBILE_DASH","WEB_DASH","MOBILE_HLS","WEB_HLS")
+        val platforms=if(tv)listOf("BIG_SCREEN_DASH","BIG_SCREEN_HLS","WEB_DASH","WEB_HLS")else listOf("MOBILE_HLS","WEB_HLS","MOBILE_DASH","WEB_DASH")
         var last:Throwable?=null
         for((index,platform) in platforms.withIndex()){try{
             val result=api.contentPlay(request.contentId,request.channelId,platform);var playToken=result.playToken;var manifestLicense:String?=null
