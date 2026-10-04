@@ -85,7 +85,7 @@ class F1TvApiClient {
         return null
     }
     fun clear(){subscriptionToken=null;entitlementToken=null}
-    fun authHeaders():Map<String,String>=buildMap{
+    fun authHeaders(): Map<String, String> =buildMap{
         put("Accept","application/json, text/plain, */*");put("User-Agent","F1MultiView/1.0 Android")
         subscriptionToken?.let{put("ascendontoken",it)};entitlementToken?.let{put("entitlementtoken",it)}
     }
