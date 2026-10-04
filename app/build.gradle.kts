@@ -5,7 +5,7 @@ plugins {
 }
 android {
     namespace="app.f1multiview"
-    compileSdk=35
+    compileSdk=36
     defaultConfig {
         applicationId="app.f1multiview"
         minSdk=26
