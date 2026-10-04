@@ -65,7 +65,18 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session){
         provider.streams(session.id).fold(
-            {sources->val visible=sources.take(6);val main=visible.firstOrNull()?.id;_ui.value=_ui.value.copy(streams=visible,selectedStreamIds=listOfNotNull(main),providerError=null)},
+            {sources->
+                val visible=sources
+                val mainSource=visible.firstOrNull { it.kind == StreamKind.WORLD } ?: visible.firstOrNull()
+                _ui.value=_ui.value.copy(
+                    streams=visible,
+                    selectedStreamIds=listOfNotNull(mainSource?.id),
+                    providerError=null
+                )
+                if (mainSource != null && mainSource.url == null) {
+                    resolveSource(mainSource)
+                }
+            },
             {_ui.value=_ui.value.copy(providerError=it.message?:"Unable to load streams")}
         )
     }
