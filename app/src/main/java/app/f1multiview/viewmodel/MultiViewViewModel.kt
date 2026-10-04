@@ -54,7 +54,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session){
         provider.streams(session.id).fold(
-            {sources->_ui.value=_ui.value.copy(streams=sources.take(6),providerError=null)},
+            {sources->val visible=sources.take(6);val main=visible.firstOrNull()?.id;_ui.value=_ui.value.copy(streams=visible,selectedStreamIds=listOfNotNull(main),providerError=null)},
             {_ui.value=_ui.value.copy(providerError=it.message?:"Unable to load streams")}
         )
     }
@@ -85,12 +85,22 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val current=_ui.value.selectedStreamIds
     val maxFeeds=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
     if(id in current){
+        if(id == _ui.value.streams.firstOrNull()?.id) return@launch
         _ui.value=_ui.value.copy(selectedStreamIds=current.filterNot{it==id})
         persist()
         return@launch
     }
-    if(current.size>=maxFeeds) return@launch
-    _ui.value=_ui.value.copy(selectedStreamIds=current+id,providerError=null)
+    if(current.size>=6) return@launch
+    val needed=current.size+1
+    val requiredLayout=when{
+        needed<=1->LayoutPreset.SINGLE
+        needed<=2->LayoutPreset.SPLIT_2
+        needed<=4->LayoutPreset.GRID_4
+        else->LayoutPreset.GRID_6
+    }
+    val currentMax=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
+    val targetLayout=if(currentMax<needed)requiredLayout else _ui.value.layout
+    _ui.value=_ui.value.copy(layout=targetLayout,selectedStreamIds=current+id,providerError=null)
     persist()
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null) resolveSource(source)
