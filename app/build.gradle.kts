@@ -17,15 +17,23 @@ android {
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     signingConfigs {
         create("release") {
-            if (System.getenv("CI") == "true") {
-                storeFile = file(System.getenv("CM_KEYSTORE_PATH"))
-                storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("CM_KEY_ALIAS")
-                keyPassword = System.getenv("CM_KEY_PASSWORD")
+            val keystorePath = System.getenv("CM_KEYSTORE_PATH")
+            val keystorePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+            val keyAliasValue = System.getenv("CM_KEY_ALIAS")
+            val keyPasswordValue = System.getenv("CM_KEY_PASSWORD")
+            if (!keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() && !keyAliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
             }
         }
     }
-    buildTypes { getByName("release") { signingConfig = signingConfigs.getByName("release") } }
+    buildTypes { getByName("release") {
+            if (signingConfigs.getByName("release").storeFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        } }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
