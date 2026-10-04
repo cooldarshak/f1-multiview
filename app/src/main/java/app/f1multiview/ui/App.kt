@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -83,8 +85,8 @@ import kotlinx.coroutines.delay
 @Composable private fun RaceControl(rows:List<RaceControlEvent>){LazyColumn{items(rows){r->Text(r.time+"  "+r.message,Modifier.padding(8.dp))}}}
 
 @Composable private fun BottomBar(ui:UiState,vm:MultiViewViewModel,pool:PlayerPool){
-    Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically){
-        Text("LAYOUT");listOf(LayoutPreset.SINGLE to "1",LayoutPreset.SPLIT_2 to "2",LayoutPreset.GRID_4 to "4",LayoutPreset.GRID_6 to "6").forEach{(p,t)->FilterChip(ui.layout==p,{vm.setLayout(p)},label={Text(t)})};Spacer(Modifier.weight(1f));Text("QUALITY")
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically){
+        Text("LAYOUT",color=Color.White);listOf(LayoutPreset.SINGLE to "1",LayoutPreset.SPLIT_2 to "2",LayoutPreset.GRID_4 to "4",LayoutPreset.GRID_6 to "6").forEach{(p,t)->FilterChip(ui.layout==p,{vm.setLayout(p)},label={Text(t)})};Spacer(Modifier.weight(1f));Text("QUALITY",color=Color.White)
         listOf(Quality.AUTO to "AUTO",Quality.UHD to "4K",Quality.FHD to "1080",Quality.HD to "720",Quality.SD to "480").forEach{(q,label)->FilterChip(ui.quality==q,{vm.setQuality(q);pool.setQuality(q)},label={Text(label)})}
         AssistChip({pool.playAll()},{Text("PLAY ALL")});AssistChip({pool.pauseAll()},{Text("PAUSE ALL")});AssistChip({vm.panel("timing")},{Text("TIMING "+ui.timingStatus)})
     }
