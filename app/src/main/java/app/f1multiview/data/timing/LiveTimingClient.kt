@@ -19,7 +19,7 @@ class LiveTimingClient(private val scope:CoroutineScope){
         private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingAppData","TimingStats","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree")
     }
     private val http=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(0,TimeUnit.MILLISECONDS).build()
-    private val _rows=MutableStateFlow<List<TimingRow>>(emptyList());val rows:StateFlow<List<TimingRow>>=_rows.asStateFlow()
+    private val _rows=MutableStateFlow<List<TimingRow>>(emptyList());val rows: StateFlow<List<TimingRow>> = _rows.asStateFlow()
     private val _status=MutableStateFlow("OFFLINE");val status:StateFlow<String> = _status.asStateFlow()
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
