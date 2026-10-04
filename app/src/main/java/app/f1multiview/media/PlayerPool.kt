@@ -195,7 +195,6 @@ class PlayerPool(context: Context) {
     }
 
     fun play(id: String) {
-        setAudioPlayer(id)
         get(id).play()
     }
 
