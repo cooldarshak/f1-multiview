@@ -500,6 +500,8 @@ private fun ResizeHandle(orientation:Orientation,enabled:Boolean,onDelta:(Float)
 @Composable
 private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null) {
     val player = remember(stream.id) { pool.get(stream.id) }
+    val context = LocalContext.current
+    val activity = context as? Activity
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
 
@@ -795,8 +797,6 @@ private fun FullscreenFeedControls(
             Spacer(Modifier.weight(1f))
             MenuButton(if (pool.isMuted(stream.id)) "UNMUTE" else "MUTE") { onMute() }
             MenuButton("PIP") {
-                val context = LocalContext.current
-                val activity = context as? Activity
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {
                     val w = player.videoSize.width.coerceAtLeast(16)
                     val h = player.videoSize.height.coerceAtLeast(9)
