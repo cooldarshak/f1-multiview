@@ -532,6 +532,8 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                 Spacer(Modifier.width(7.dp))
                 Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
+                Text(if (pool.isMuted(stream.id)) "MUTED" else "AUDIO ON", color = if (pool.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A), fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(6.dp))
                 Text(when { error != null -> "ERROR"; !ready -> "LOADING"; playing -> "PLAYING"; else -> "PAUSED" }, color = if (error != null) Color(0xFFFF7777) else Color.White.copy(alpha = .6f), fontSize = 7.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(7.dp))
 
@@ -682,7 +684,8 @@ private fun CanonicalMultiviewLayout(
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
     var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
     var mainX by rememberSaveable { mutableFloatStateOf(.62f) }
-    var gridX by rememberSaveable { mutableFloatStateOf(.5f) }
+    var gridX by rememberSaveable { mutableFloatStateOf(.33f) }
+    var gridX2 by rememberSaveable { mutableFloatStateOf(.5f) }
     var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
 
     Box(modifier) {
@@ -706,17 +709,25 @@ private fun CanonicalMultiviewLayout(
             else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                 Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(gridX).fillMaxHeight(), {}, onFocus)
-                    ResizeHandle(Orientation.Horizontal, editSize) { gridX = (gridX + it / 1000f).coerceIn(.2f, .8f) }
-                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - gridX).fillMaxHeight(), {}, onFocus)
-                    if (selected.size >= 5) PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f).fillMaxHeight(), {}, onFocus)
+                    ResizeHandle(Orientation.Horizontal, editSize) { gridX = (gridX + it / 1400f).coerceIn(.18f, .52f) }
+                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - gridX) * gridX2).fillMaxHeight(), {}, onFocus)
+                    if (selected.size >= 5) {
+                        ResizeHandle(Orientation.Horizontal, editSize) { gridX2 = (gridX2 + it / 1200f).coerceIn(.25f, .75f) }
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - gridX) * (1f - gridX2)).fillMaxHeight(), {}, onFocus)
+                    }
                 }
                 ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                 Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     PlayerTile(selected[if (selected.size >= 5) 3 else 2], pool, errors[selected[if (selected.size >= 5) 3 else 2].id], Modifier.weight(gridX).fillMaxHeight(), {}, onFocus)
                     if (selected.size >= 5) {
-                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight(1f).fillMaxHeight(), {}, onFocus)
-                        if (selected.size >= 6) PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight(1f).fillMaxHeight(), {}, onFocus)
-                        else Spacer(Modifier.weight(1f))
+                        ResizeHandle(Orientation.Horizontal, editSize) { gridX = (gridX + it / 1400f).coerceIn(.18f, .52f) }
+                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - gridX) * gridX2).fillMaxHeight(), {}, onFocus)
+                        if (selected.size >= 6) {
+                            ResizeHandle(Orientation.Horizontal, editSize) { gridX2 = (gridX2 + it / 1200f).coerceIn(.25f, .75f) }
+                            PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - gridX) * (1f - gridX2)).fillMaxHeight(), {}, onFocus)
+                        } else {
+                            Spacer(Modifier.weight((1f - gridX) * (1f - gridX2)))
+                        }
                     } else if (selected.size == 4) {
                         PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(1f - gridX).fillMaxHeight(), {}, onFocus)
                     } else {
