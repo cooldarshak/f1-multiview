@@ -44,8 +44,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusGroup
-import androidx.compose.ui.focus.focusable
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -352,7 +351,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
         LazyRow(
             contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.focusGroup()
+            modifier = Modifier
         ) {
             items(ui.vodSeasons) { season ->
                 ArchivePill(ui.selectedSeason == season, season.year.toString()) {
@@ -366,7 +365,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.focusGroup()
+                modifier = Modifier
             ) {
                 items(seriesOptions) { series ->
                     ArchivePill(selectedSeries == series, series) { vm.setSeries(series) }
@@ -390,7 +389,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
-                modifier = Modifier.focusGroup()
+                modifier = Modifier
             ) {
                 items(eventsForSeries) { event ->
                     ArchiveEventCard(
@@ -613,7 +612,7 @@ private fun WeekendSessions(
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
-                modifier = Modifier.focusGroup()
+                modifier = Modifier
             ) {
                 items(stageSessions) { session ->
                     SessionCard(
@@ -977,7 +976,7 @@ private fun ResizeHandle(
         .then(
             if (enabled) {
                 Modifier
-                    .focusable()
+                    .focusTarget()
                     .onFocusChanged { focused = it.isFocused }
                     .onKeyEvent { event ->
                         val delta = when (event.key) {
@@ -1652,7 +1651,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = .14f))
             ) {
-                LazyRow(contentPadding = PaddingValues(10.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.focusGroup()) {
+                LazyRow(contentPadding = PaddingValues(10.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier) {
                     items(ui.streams) { candidate ->
                         val active = candidate.id == stream.id
                         Control(active, candidate.driver?.takeIf { it.isNotBlank() } ?: candidate.title) {
