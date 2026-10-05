@@ -144,7 +144,10 @@ class PlayerPool(context: Context) {
         } else {
             baseDataSource
         }
-        val drmHeaders = stream.drmRequestHeaders.ifEmpty { stream.requestHeaders }
+        val drmHeaders = buildMap {
+            putAll(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
+            stream.playToken?.takeIf { it.isNotBlank() }?.let { put("Cookie", "playToken=" + it) }
+        }
         val drmDataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
