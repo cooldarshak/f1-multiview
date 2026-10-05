@@ -54,6 +54,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
+import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.media.PlayerPool
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.model.*
@@ -1206,28 +1207,7 @@ private fun FullscreenMultiview(
             }
         }
 
-        if (channelPickerOpen) {
-            Surface(
-                Modifier.align(Alignment.TopCenter).padding(top = 62.dp).fillMaxWidth(0.92f),
-                color = Color(0xFF101116).copy(alpha = .98f),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = .14f))
-            ) {
-                LazyRow(
-                    contentPadding = PaddingValues(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    modifier = Modifier.focusGroup()
-                ) {
-                    items(ui.streams) { candidate ->
-                        val active = candidate.id == stream.id
-                        Control(active, candidate.driver?.takeIf { it.isNotBlank() } ?: candidate.title) {
-                            channelPickerOpen = false
-                            onSwitchStream(candidate.id)
-                        }
-                    }
-                }
-            }
-        }
+
 
         if (controlsVisible) {
             Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
@@ -1657,6 +1637,25 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             ) {
                 Text("SHOW CONTROLS", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black,
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+            }
+        }
+
+        if (channelPickerOpen) {
+            Surface(
+                Modifier.align(Alignment.TopCenter).padding(top = 62.dp).fillMaxWidth(0.92f),
+                color = Color(0xFF101116).copy(alpha = .98f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = .14f))
+            ) {
+                LazyRow(contentPadding = PaddingValues(10.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.focusGroup()) {
+                    items(ui.streams) { candidate ->
+                        val active = candidate.id == stream.id
+                        Control(active, candidate.driver?.takeIf { it.isNotBlank() } ?: candidate.title) {
+                            channelPickerOpen = false
+                            onSwitchStream(candidate.id)
+                        }
+                    }
+                }
             }
         }
 
