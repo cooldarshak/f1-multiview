@@ -4,7 +4,7 @@ import kotlin.math.abs
 class SyncEngine(private val players: () -> Collection<Player> = { emptyList() }) {
     var toleranceMs = 180L
     var hardSeekThresholdMs = 1500L
-    var correctionRate = 0.025f
+    var correctionRate = 0.015f
     fun targetPosition(positions: List<Long>): Long? = positions.sorted().takeIf { it.isNotEmpty() }?.let { it[it.size / 2] }
     fun synchronize() {
         val active = players().filter { it.playbackState != Player.STATE_IDLE && it.currentPosition > 0 }
