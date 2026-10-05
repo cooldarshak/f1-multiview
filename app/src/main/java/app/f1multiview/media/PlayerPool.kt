@@ -236,7 +236,22 @@ class PlayerPool(context: Context) {
 
         val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
         val mainEpoch = absolutePresentationTime(main)
-        val live = main.isCurrentWindowLive
+        // F1 live manifests may not always flag the window as live even though Media3
+        // exposes a valid live offset. Treat a valid live offset as the authoritative live signal.
+        val live = main.isCurrentWindowLive || mainLiveOffset != null
+
+        // The reference feed controls the wall. If it buffers or is stopped, hold the
+        // followers instead of letting them run ahead and forcing a later seek.
+        if (!main.isPlaying) {
+            players.forEach { (id, player) ->
+                if (id != mainId) {
+                    player.setPlaybackSpeed(1f)
+                    if (player.isPlaying) player.pause()
+                    player.playWhenReady = true
+                }
+            }
+            return
+        }
 
         players.forEach { (id, player) ->
             if (id == mainId) return@forEach
