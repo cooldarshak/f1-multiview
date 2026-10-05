@@ -119,8 +119,8 @@ fun F1BrowserLogin(
             }
 
             AndroidView(
-                Modifier.fillMaxWidth().weight(1f),
-                factory = { context ->
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                factory = { context: Context ->
                     WebView(context).apply {
                         webViewRef = this
                         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -285,15 +285,9 @@ fun F1BrowserLogin(
                         }
 
                         fun fillLoginForm(login: String, password: String, autoSubmit: Boolean) {
-                            val escapedLogin = login
-                                .replace("\\", "\\\\")
-                                .replace("'", "\\'")
-                                .replace("\n", "\\n")
-                            val escapedPassword = password
-                                .replace("\\", "\\\\")
-                                .replace("'", "\\'")
-                                .replace("\n", "\\n")
-                            val submit = if (autoSubmit) "true" else "false"
+                            val loginJs = JSONObject.quote(login)
+                            val passwordJs = JSONObject.quote(password)
+                            val submitJs = autoSubmit.toString()
 
                             evaluateJavascript(
                                 """
@@ -339,7 +333,7 @@ fun F1BrowserLogin(
 
                                         if (!loginFilled || !passwordFilled) return false;
 
-                                        if (\${submit} && loginButton) {
+                                        if (${submitJs} && loginButton) {
                                             setTimeout(function() { loginButton.click(); }, 500);
                                         }
                                         return true;
@@ -422,7 +416,7 @@ fun F1BrowserLogin(
                         handler.postDelayed({ installCookieConsentAutomation() }, 1800L)
                     }
                 },
-                update = { webViewRef = it }
+                update = { webView: WebView -> webViewRef = webView }
             )
         }
     }
