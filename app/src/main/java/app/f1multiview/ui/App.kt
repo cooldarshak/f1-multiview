@@ -1662,18 +1662,16 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                                         val diagnostics = pool.currentVideoDiagnostics(stream.id)
                                         Text("VIDEO QUALITY",color=Muted,fontSize=8.sp,fontWeight=FontWeight.Black)
                                         Text(
-                                            if (diagnostics != null) {
-                                                "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
-                                                    if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
+                                            (
+                                                if (diagnostics != null) {
+                                                    "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
+                                                        if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
+                                                } else if (resolutions.isNotEmpty()) {
+                                                    "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
+                                                } else "TRACKS NOT READY"
                                             ) + if (diagnostics?.hdr == true) {
                                                 if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
-                                            } else ""
-                                            ) + if (diagnostics?.hdr == true) {
-                                                if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
-                                            } else ""
-                                            } else if (resolutions.isNotEmpty()) {
-                                                "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
-                                            } else "TRACKS NOT READY",
+                                            } else "",
                                             color=White.copy(alpha=.72f), fontSize=7.sp, fontWeight=FontWeight.Bold,
                                             modifier=Modifier.padding(top=5.dp)
                                         )
