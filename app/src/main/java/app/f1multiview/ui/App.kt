@@ -1875,7 +1875,7 @@ private fun LayoutOption(preset: LayoutPreset, selected: Boolean, onClick: () ->
     run { var focused by remember { mutableStateOf(false) }
     Surface(
         Modifier.size(width = 50.dp, height = 38.dp).clip(RoundedCornerShape(9.dp))
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick).focusable()
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(9.dp),
         color = if (selected) Red else Surface2,
@@ -1918,7 +1918,7 @@ private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         Modifier.clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick).focusable()
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) Red else Surface2,
