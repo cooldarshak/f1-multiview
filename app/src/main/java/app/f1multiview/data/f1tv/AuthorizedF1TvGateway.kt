@@ -16,7 +16,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     override suspend fun signOut(){api.clear();store.clear()}
     override suspend fun sessions():Result<List<Session>> = runCatching {
         val out=mutableListOf<Session>(); val items=api.liveNow().optJSONObject("resultObj")?.optJSONArray("items")?:org.json.JSONArray()
-        for(i in 0 until items.length()){val item=items.optJSONObject(i)?:continue;val meta=item.optJSONObject("metadata")?:continue;val id=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue;val title=meta.optString("title").ifBlank{meta.optJSONObject("emfAttributes")?.optString("Global_Title")?:"Live"};out+=Session(id,title,"LIVE","Live now",true)}
+        for(i in 0 until items.length()){val item=items.optJSONObject(i)?:continue;val meta=item.optJSONObject("metadata")?:continue;val id=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue;val title=meta.optString("title").ifBlank{meta.optJSONObject("emfAttributes")?.optString("Global_Title")?:"Live"};out+=Session(id,title,"LIVE","Live now",true,artworkUrl=findArtworkUrl(item))}
         out
     }
     override suspend fun vodSeasons():Result<List<VodSeason>> = runCatching {
@@ -62,7 +62,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             val startDate=rawDate?.toLongOrNull() ?: 0L
             if(startDate>now)continue
             val number=props.optInt("meeting_Number",emf.optInt("Meeting_Number",0))
-            map.putIfAbsent(pageId,VodEvent(pageId,title,number,season.year,upper.contains("TEST")))
+            map.putIfAbsent(pageId,VodEvent(pageId,title,number,season.year,upper.contains("TEST"),findArtworkUrl(s)))
         }
         map.values.sortedWith(compareBy<VodEvent>{it.meetingNumber==0}.thenBy{it.meetingNumber}.thenBy{it.meetingName})
     }
@@ -79,9 +79,47 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 title.contains("race",true)||title.contains("qualifying",true)||title.contains("practice",true)||
                 title.contains("sprint",true)
             if(!looksLikeSession)continue
-            out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId)
+            out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId,findArtworkUrl(s)?:event.artworkUrl)
         }
         out.distinctBy{it.contentId}
+    }
+
+    private fun findArtworkUrl(root:Any?, depth:Int=0):String?{
+        if(depth>7) return null
+        val preferred= listOf(
+            "artworkUrl","imageUrl","thumbnailUrl","posterUrl","heroImageUrl","backgroundImageUrl",
+            "landscapeImageUrl","stillImageUrl","image","thumbnail","poster","heroImage","backgroundImage",
+            "landscapeImage","stillImage","artwork"
+        )
+        when(root){
+            is org.json.JSONObject->{
+                for(key in preferred){
+                    val value=root.opt(key)
+                    if(value is String && value.startsWith("http",true)) return value
+                }
+                val keys=root.keys()
+                while(keys.hasNext()){
+                    val key=keys.next()
+                    val value=root.opt(key)
+                    if(key.contains("image",true)||key.contains("thumb",true)||key.contains("poster",true)||key.contains("artwork",true)||key.contains("backdrop",true)){
+                        if(value is String && value.startsWith("http",true)) return value
+                    }
+                }
+                val keys2=root.keys()
+                while(keys2.hasNext()){
+                    val value=root.opt(keys2.next())
+                    val found=findArtworkUrl(value,depth+1)
+                    if(found!=null) return found
+                }
+            }
+            is org.json.JSONArray->{
+                for(i in 0 until root.length()){
+                    val found=findArtworkUrl(root.opt(i),depth+1)
+                    if(found!=null) return found
+                }
+            }
+        }
+        return null
     }
 
     private fun flattenObjects(root:org.json.JSONArray):List<org.json.JSONObject>{
