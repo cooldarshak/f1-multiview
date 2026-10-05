@@ -1104,7 +1104,8 @@ private fun FullscreenMultiview(
     BackHandler(enabled = true) {
         when {
             menu != null -> menu = null
-            channelPickerOpen -> channelPickerOpen = false
+            feedPickerOpen -> feedPickerOpen = false
+            editSize -> editSize = false
             controlsVisible -> controlsVisible = false
             else -> onClose()
         }
