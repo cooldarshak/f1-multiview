@@ -240,6 +240,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             }
         }
         }
+        if (ui.selectedPanel != null) UgisInfoPanel(ui, vm, isTv)
     }
 }
 
@@ -284,6 +285,9 @@ private fun Header(ui: UiState, vm: MultiViewViewModel, compactPhone: Boolean) {
                     Text(ui.timingStatus, color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+        TextButton({ vm.panel(if (ui.selectedPanel == "info") null else "info") }, contentPadding = PaddingValues(horizontal = if (compactPhone) 4.dp else 8.dp)) {
+            Text("INFO", color = White, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
         }
         TextButton({ vm.signOut() }, contentPadding = PaddingValues(horizontal = if (compactPhone) 4.dp else 8.dp)) {
             Text("SIGN OUT", color = White, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
