@@ -262,13 +262,13 @@ class PlayerPool(context: Context) {
             val secondaryEpoch = absolutePresentationTime(player)
 
             // correctionMs is always expressed as: positive = follower must move forward.
-            val correctionMs: Long? = when {
+            val correctionMs: Long = when {
                 mainLiveOffset != null && secondaryLiveOffset != null ->
                     secondaryLiveOffset - mainLiveOffset
                 mainEpoch != null && secondaryEpoch != null ->
                     mainEpoch - secondaryEpoch
-                else -> null
-            } ?: return@forEach
+                else -> return@forEach
+            }
 
             val absCorrection = kotlin.math.abs(correctionMs)
 
@@ -330,6 +330,7 @@ class PlayerPool(context: Context) {
     }
 
     fun clear(id: String) {
+        desiredPlaying.remove(id)
         players.remove(id)?.release()
         if (audioPlayerId == id) setAudioPlayer(null)
     }
@@ -338,6 +339,7 @@ class PlayerPool(context: Context) {
         mainHandler.removeCallbacksAndMessages(null)
         players.values.forEach { it.release() }
         players.clear()
+        desiredPlaying.clear()
         audioPlayerId = null
     }
 
