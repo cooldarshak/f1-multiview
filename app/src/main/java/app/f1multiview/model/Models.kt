@@ -18,6 +18,7 @@ data class Session(
     val id: String, val name: String, val country: String, val dateLabel: String, val live: Boolean,
     val seasonYear: Int? = null, val eventPageId: Int? = null, val series: String = "F1",
     val sessionType: String = "other",
+    val meetingNumber: Int? = null,
     val artworkUrl: String? = null,
     val backgroundArtworkUrl: String? = null
 )
