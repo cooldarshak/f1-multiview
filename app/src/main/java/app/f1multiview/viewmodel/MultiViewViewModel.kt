@@ -38,6 +38,7 @@ data class UiState(
     val standings: List<StandingRow> = emptyList(),
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
+    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(),
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1"
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
