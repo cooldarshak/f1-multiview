@@ -117,7 +117,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                         streamType=playback.streamType,
                         ascendonToken=playback.ascendonToken,
                         entitlementToken=playback.entitlementToken,
-                        drmType=playback.drmType
+                        drmType=playback.drmType,
+                        playToken=playback.playToken
                     ) else it
                 },
                 providerError=null
