@@ -17,8 +17,11 @@ workflows:
       - app/build/outputs/apk/debug/*.apk
       - build-debug.log
   android-release:
-    name: F1 MultiView Release APK
+    name: F1 MultiView Signed APK
     max_build_duration: 60
+    environment:
+      android_signing:
+        - f1-multiview-release
     scripts:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
