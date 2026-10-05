@@ -172,7 +172,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     // follower drift. The sync engine never touches the main player's transport.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         while (true) {
-            delay(2_000L)
+            delay(1_000L)
             val mainId = ui.mainStreamId ?: continue
             if (ui.selectedStreamIds.size > 1) pool.syncToMain(mainId)
         }
