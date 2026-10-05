@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -43,6 +42,10 @@ import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusGroup
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
@@ -308,6 +311,13 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
     }
     val eventsForSeries = ui.vodEvents.filter { it.series == selectedSeries || selectedSeries == "F1" && it.series == "F1" }
     val activeEvent = selectedEvent?.takeIf { it in eventsForSeries } ?: eventsForSeries.firstOrNull()
+    val firstEventFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(ui.selectedSeason?.year, selectedSeries, eventsForSeries.size) {
+        if (isTv && eventsForSeries.isNotEmpty()) {
+            delay(80L)
+            firstEventFocusRequester.requestFocus()
+        }
+    }
     val sessionsForEvent = if (activeEvent != null) {
         ui.vodSessions.filter { it.eventPageId == activeEvent.pageId && (selectedSeries == "F1" || it.series == selectedSeries) }
     } else emptyList()
@@ -321,7 +331,8 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
         SectionHeader("F1 TV ARCHIVE", "SEASONS", side)
         LazyRow(
             contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.focusGroup()
         ) {
             items(ui.vodSeasons) { season ->
                 ArchivePill(ui.selectedSeason == season, season.year.toString()) {
@@ -334,7 +345,8 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             SectionHeader("SERIES", selectedSeries.uppercase(), side)
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.focusGroup()
             ) {
                 items(seriesOptions) { series ->
                     ArchivePill(selectedSeries == series, series) { selectedSeries = series }
@@ -357,13 +369,15 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
         } else {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 9.dp),
-                horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp)
+                horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
+                modifier = Modifier.focusGroup()
             ) {
                 items(eventsForSeries) { event ->
                     ArchiveEventCard(
                         event = event,
                         selected = activeEvent?.pageId == event.pageId,
                         compactPhone = compactPhone,
+                        focusRequester = if (event.pageId == eventsForSeries.firstOrNull()?.pageId) firstEventFocusRequester else null,
                         onClick = { vm.selectVodEvent(event) }
                     )
                 }
@@ -474,7 +488,7 @@ private fun ArchiveHero(event: VodEvent, compactPhone: Boolean, isTv: Boolean) {
 @Composable
 private fun ArchivePill(selected: Boolean, title: String, onClick: () -> Unit) {
     Surface(
-        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable(),
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = if (selected) Red else Surface2,
         border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
@@ -494,8 +508,10 @@ private fun ArchiveEventCard(
     event: VodEvent,
     selected: Boolean,
     compactPhone: Boolean,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
+    var focused by remember { mutableStateOf(false) }
     val width = if (compactPhone) 205.dp else 270.dp
     val height = if (compactPhone) 145.dp else 175.dp
     Surface(
@@ -506,7 +522,7 @@ private fun ArchiveEventCard(
             .focusable(),
         shape = RoundedCornerShape(10.dp),
         color = Surface2,
-        border = BorderStroke(2.dp, if (selected) Red else Color.White.copy(alpha = .07f))
+        border = BorderStroke(2.dp, if (selected || focused) Red else Color.White.copy(alpha = .07f))
     ) {
         Box(Modifier.fillMaxSize()) {
             F1Artwork(
@@ -572,7 +588,8 @@ private fun WeekendSessions(
             SectionHeader(heading, stageSessions.size.toString() + " VIDEOS", side)
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp)
+                horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
+                modifier = Modifier.focusGroup()
             ) {
                 items(stageSessions) { session ->
                     SessionCard(
