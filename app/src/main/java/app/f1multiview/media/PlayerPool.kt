@@ -185,6 +185,21 @@ class PlayerPool(context: Context) {
             .sortedByDescending { it.second }
     }
 
+    /** Includes tracks Media3 reports as supported when capability checks are relaxed, matching the reference TV quality picker. */
+    fun availableVideoResolutionsForQualityMenu(id: String): List<Pair<Int,Int>> {
+        val player = players[id] ?: return emptyList()
+        return player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    val format = group.getTrackFormat(index)
+                    if (format.width > 0 && format.height > 0 && group.isTrackSupported(index, true)) format.width to format.height else null
+                }
+            }
+            .distinct()
+            .sortedByDescending { it.second }
+    }
+
     private fun applyQuality(player: ExoPlayer, quality: Quality, isMain: Boolean) {
         player.trackSelectionParameters = buildQualityParameters(
             player = player,
