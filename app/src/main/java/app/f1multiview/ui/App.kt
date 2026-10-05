@@ -1558,8 +1558,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
     BackHandler(enabled = true) {
         when {
             menu != null -> menu = null
-            feedPickerOpen -> feedPickerOpen = false
-            editSize -> editSize = false
+            channelPickerOpen -> channelPickerOpen = false
             controlsVisible -> controlsVisible = false
             else -> onClose()
         }
@@ -1628,8 +1627,8 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
-            .onKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionCenter && !controlsVisible) {
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionCenter && !controlsVisible) {
                     controlsVisible = true
                     true
                 } else false
