@@ -3,7 +3,6 @@ package app.f1multiview
 import android.content.res.Configuration
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -30,13 +29,6 @@ class MainActivity : ComponentActivity() {
             App(vm)
         }
 
-        if (isAndroidTv()) {
-            window.decorView.post {
-                window.decorView.isFocusableInTouchMode = true
-                window.decorView.clearFocus()
-                window.decorView.focusSearch(View.FOCUS_DOWN)?.requestFocus()
-            }
-        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
