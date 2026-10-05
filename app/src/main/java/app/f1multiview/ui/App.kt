@@ -326,8 +326,18 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             .sortedWith(compareBy({ if (it == "F1") 0 else 1 }, { it }))
     }
     val selectedSeries = ui.selectedSeries.takeIf { it in seriesOptions } ?: seriesOptions.firstOrNull() ?: "F1"
-    val eventsForSeries = ui.vodEvents.filter { it.series == selectedSeries || selectedSeries == "F1" && it.series == "F1" }
-    val activeEvent = selectedEvent?.takeIf { it in eventsForSeries } ?: eventsForSeries.firstOrNull()
+    // Archive hierarchy is strictly Year -> Grand Prix -> Weekend sessions.
+    // Keep an extra season-year guard here so an API response containing events
+    // from multiple years can never leak another year's races into the selected year.
+    val selectedYear = ui.selectedSeason?.year
+    val eventsForSeries = ui.vodEvents.filter { event ->
+        val matchesSeries = event.series == selectedSeries || selectedSeries == "F1" && event.series == "F1"
+        val matchesYear = selectedYear == null || event.seasonYear == selectedYear
+        matchesSeries && matchesYear
+    }
+    val activeEvent = selectedEvent?.takeIf { event ->
+        event in eventsForSeries && (selectedYear == null || event.seasonYear == selectedYear)
+    } ?: eventsForSeries.firstOrNull()
     val firstEventFocusRequester = remember { FocusRequester() }
     LaunchedEffect(ui.selectedSeason?.year, selectedSeries, eventsForSeries.size) {
         if (isTv && eventsForSeries.isNotEmpty()) {
@@ -345,7 +355,8 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             Spacer(Modifier.height(if (compactPhone) 14.dp else 20.dp))
         }
 
-        SectionHeader("F1 TV ARCHIVE", "SEASONS", side)
+        // LEVEL 1: YEAR
+        SectionHeader("YEAR", ui.selectedSeason?.year?.toString() ?: "", side)
         LazyRow(
             contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -371,9 +382,10 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             }
         }
 
+        // LEVEL 2: GRAND PRIX / EVENT
         SectionHeader(
             if (selectedSeries == "F1") "GRAND PRIX" else "EVENTS",
-            ui.selectedSeason?.year?.toString() ?: "",
+            selectedYear?.toString() ?: "",
             side
         )
         if (eventsForSeries.isEmpty()) {
@@ -403,6 +415,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
 
         if (activeEvent != null) {
             Spacer(Modifier.height(if (compactPhone) 8.dp else 12.dp))
+            // LEVEL 3: SESSIONS for the selected Grand Prix
             WeekendSessions(
                 sessions = sessionsForEvent,
                 compactPhone = compactPhone,
