@@ -519,7 +519,7 @@ private fun ArchiveEventCard(
             .width(width)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .focusable(),
+            ,
         shape = RoundedCornerShape(10.dp),
         color = Surface2,
         border = BorderStroke(2.dp, if (selected || focused) Red else Color.White.copy(alpha = .07f))
@@ -618,7 +618,7 @@ private fun SectionHeader(title: String, meta: String, side: androidx.compose.ui
 
 @Composable
 private fun Pill(selected: Boolean, title: String, onClick: () -> Unit) {
-    Surface(Modifier.clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .07f))) {
+    Surface(Modifier.clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .07f))) {
         Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp))
     }
 }
@@ -632,7 +632,7 @@ private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPh
             .width(width)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .focusable(),
+            ,
         shape = RoundedCornerShape(10.dp),
         color = Surface2,
         border = BorderStroke(2.dp, if (selected) Red else Color.White.copy(alpha = .08f))
@@ -680,7 +680,7 @@ private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPh
 private fun EventCard(selected: Boolean, title: String, artworkUrl: String?, seasonYear: Int, isTv: Boolean, onClick: () -> Unit) {
     val width = if (isTv) 280.dp else 220.dp
     val imageHeight = if (isTv) 158.dp else 124.dp
-    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface1, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
+    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface1, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
         Column {
             Box(Modifier.fillMaxWidth().height(imageHeight)) {
                 F1Artwork(artworkUrl, title, Modifier.fillMaxSize(), ContentScale.Crop, title + seasonYear)
@@ -700,7 +700,7 @@ private fun EventCard(selected: Boolean, title: String, artworkUrl: String?, sea
 private fun SessionCard(selected: Boolean, title: String, type: String, artworkUrl: String?, isTv: Boolean, onClick: () -> Unit) {
     val width = if (isTv) 280.dp else 220.dp
     val imageHeight = if (isTv) 158.dp else 124.dp
-    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface2, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
+    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface2, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
         Column {
             Box(Modifier.fillMaxWidth().height(imageHeight)) {
                 F1Artwork(artworkUrl, title, Modifier.fillMaxSize(), ContentScale.Crop, title + type)
@@ -909,7 +909,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                         Text("PLAYBACK UNAVAILABLE", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                         Text(error.replace("PlaybackException: ", "").replace("Source error", "Source unavailable"), color = Muted, fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                         Spacer(Modifier.height(8.dp))
-                        Surface(Modifier.clickable { pool.clear(stream.id); pool.load(stream); pool.play(stream.id) }.focusable(), color = Red, shape = RoundedCornerShape(50)) {
+                        Surface(Modifier.clickable { pool.clear(stream.id); pool.load(stream); pool.play(stream.id) }, color = Red, shape = RoundedCornerShape(50)) {
                             Text("RETRY", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                         }
                     }
@@ -1007,7 +1007,7 @@ private fun FullscreenMultiview(
                     .zIndex(20f)
             )
             Surface(
-                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable().zIndex(21f),
+                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.zIndex(21f),
                 color = Color.Black.copy(alpha = .78f),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
@@ -1352,7 +1352,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
 
         if (!controlsVisible) {
             Surface(
-                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable(),
+                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true },
                 color = Color.Black.copy(alpha = .78f),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
@@ -1365,7 +1365,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f))))) {
                 Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
-                    Surface(Modifier.clickable { onClose() }.focusable(), color=Color.Black.copy(alpha=.65f), shape=RoundedCornerShape(9.dp)) {
+                    Surface(Modifier.clickable { onClose() }, color=Color.Black.copy(alpha=.65f), shape=RoundedCornerShape(9.dp)) {
                         Text("‹  BACK", color=White, fontSize=10.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
                     }
                     Spacer(Modifier.width(12.dp))
@@ -1395,7 +1395,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
                             Text("LIVE",color=Red,fontSize=8.sp,fontWeight=FontWeight.Black)
                             Spacer(Modifier.weight(1f))
-                            Surface(Modifier.clickable{player.seekToDefaultPosition();player.play()}.focusable(),color=Red,shape=RoundedCornerShape(50)){
+                            Surface(Modifier.clickable{player.seekToDefaultPosition();player.play()},color=Red,shape=RoundedCornerShape(50)){
                                 Text("GO LIVE",color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=11.dp,vertical=7.dp))
                             }
                         }
@@ -1461,17 +1461,17 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     }
 }
 @Composable private fun SmallPlayerButton(label:String,onClick:()->Unit){
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).focusable(),color=Color.Black.copy(alpha=.65f),shape=RoundedCornerShape(8.dp)){
+    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick),color=Color.Black.copy(alpha=.65f),shape=RoundedCornerShape(8.dp)){
         Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=7.dp))
     }
 }
 @Composable private fun PlayerControlButton(label:String,onClick:()->Unit){
-    Surface(Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick).focusable(),color=if(label=="PAUSE"||label=="PLAY")Red else Color.White.copy(alpha=.12f),shape=RoundedCornerShape(50)){
+    Surface(Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick),color=if(label=="PAUSE"||label=="PLAY")Red else Color.White.copy(alpha=.12f),shape=RoundedCornerShape(50)){
         Text(label,color=White,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=11.dp,vertical=8.dp))
     }
 }
 @Composable private fun MenuButton(label:String,onClick:()->Unit){
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).focusable(),color=Color.White.copy(alpha=.08f),shape=RoundedCornerShape(8.dp)){
+    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick),color=Color.White.copy(alpha=.08f),shape=RoundedCornerShape(8.dp)){
         Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=9.dp,vertical=8.dp))
     }
 }
@@ -1502,7 +1502,7 @@ private fun ErrorBanner(message: String) {
 
 @Composable
 private fun LayoutOption(preset: LayoutPreset, selected: Boolean, onClick: () -> Unit) {
-    Surface(Modifier.size(width = 50.dp, height = 38.dp).clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))) {
+    Surface(Modifier.size(width = 50.dp, height = 38.dp).clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))) {
         Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) { LayoutGlyph(preset, selected) }
     }
 }
@@ -1536,14 +1536,14 @@ private fun LayoutGlyph(preset: LayoutPreset, selected: Boolean) {
 
 @Composable
 private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(8.dp), color = if (selected) Red else Surface2) {
+    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(8.dp), color = if (selected) Red else Surface2) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
     }
 }
 
 @Composable
 private fun Action(label: String, onClick: () -> Unit) {
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .07f)) {
+    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .07f)) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
     }
 }
