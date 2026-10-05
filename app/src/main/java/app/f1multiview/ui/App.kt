@@ -198,9 +198,9 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         return
     }
 
-    val backgroundArtwork = ui.session?.artworkUrl
-        ?: ui.vodSessions.firstOrNull()?.artworkUrl
-        ?: ui.selectedEvent?.artworkUrl
+    val backgroundArtwork = ui.session?.backgroundArtworkUrl
+        ?: ui.vodSessions.firstOrNull()?.backgroundArtworkUrl
+        ?: ui.selectedEvent?.backgroundArtworkUrl
 
     Box(Modifier.fillMaxSize().background(Bg)) {
         if (!backgroundArtwork.isNullOrBlank()) {
