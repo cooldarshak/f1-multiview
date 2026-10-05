@@ -35,7 +35,7 @@ fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
             handler.removeCallbacksAndMessages(null)
             webViewRef?.apply {
                 stopLoading()
-                webViewClient = null
+                webViewClient = WebViewClient()
                 destroy()
             }
             webViewRef = null
