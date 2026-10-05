@@ -259,6 +259,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         (world + data + timing + tracker + helicam + other + onboard).distinctBy { it.id }
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = runCatching {
+        ensurePlaybackSession()
         val tv=(context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)==Configuration.UI_MODE_TYPE_TELEVISION
         // Prefer the native big-screen DASH profile on TV, then fall back through
         // the same authorized F1 TV profiles used by the reference implementation.
@@ -286,6 +287,16 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         }catch(t:Throwable){last=t;if(index<platforms.lastIndex)delay(450)}}
         throw last?:F1TvException("No F1 TV playback profile succeeded")
     }
+    private suspend fun ensurePlaybackSession() {
+        val saved = store.get() ?: return
+        if (api.isTokenExpired(saved, 5 * 60L) || !api.isAuthenticated()) {
+            val fresh = if (api.isTokenExpired(saved, 5 * 60L)) refreshFromBrowserSession() else saved
+            if (fresh.isNullOrBlank()) throw F1TvException("F1 TV session expired. Please sign in again.")
+            api.initialize(fresh)
+            store.put(fresh)
+        }
+    }
+
     private fun mapSessionType(subtype:String,videoType:String,title:String):String{val s=subtype+" "+videoType+" "+title.lowercase();return when{"sprint" in s->"sprint";"qualifying" in s||"quali" in s->"qualifying";"practice" in s||"fp1" in s||"fp2" in s||"fp3" in s->"practice";"race" in s->"race";else->"other"}}
     private fun normalizeSeries(raw:String):String=when(raw.uppercase().trim()){"FORMULA 1",""->"F1";"FORMULA 2"->"F2";"FORMULA 3"->"F3";"F1 ACADEMY"->"F1 Academy";"PORSCHE"->"Porsche Supercup";else->raw}
 }
