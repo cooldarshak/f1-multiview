@@ -209,23 +209,37 @@ class PlayerPool(context: Context) {
      */
     fun syncToMain(mainId: String) {
         val main = players[mainId] ?: return
+        if (main.playbackState != Player.STATE_READY && main.playbackState != Player.STATE_BUFFERING) return
+
         val mainEpoch = absolutePresentationTime(main)
         val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET }
+
         players.forEach { (id, player) ->
             if (id == mainId || player.currentTimeline.isEmpty) return@forEach
-            val start = windowStart(player)
-            if (mainEpoch != null && start != C.TIME_UNSET) {
-                val target = mainEpoch - start
-                val duration = player.duration
-                val clamped = if (duration > 0L) target.coerceIn(0L, duration) else target.coerceAtLeast(0L)
-                player.seekTo(clamped)
-            } else if (mainLiveOffset != null) {
-                val secondaryOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET }
-                if (secondaryOffset != null) {
-                    val delta = secondaryOffset - mainLiveOffset
-                    player.seekTo((player.currentPosition + delta).coerceAtLeast(0L))
-                }
+            if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) {
+                player.playWhenReady = true
+                return@forEach
             }
+
+            val secondaryEpoch = absolutePresentationTime(player)
+            val diff = when {
+                mainEpoch != null && secondaryEpoch != null -> mainEpoch - secondaryEpoch
+                mainLiveOffset != null -> {
+                    val secondaryOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET }
+                    secondaryOffset?.let { it - mainLiveOffset }
+                }
+                else -> null
+            } ?: return@forEach
+
+            // Positive diff means the secondary feed is behind the main feed.
+            // Make a single correction only when the drift is material; this
+            // avoids the old seek-loop/rewind behaviour.
+            if (kotlin.math.abs(diff) >= 750L) {
+                val target = (player.currentPosition + diff).coerceAtLeast(0L)
+                val duration = player.duration
+                player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+            }
+            player.playWhenReady = true
         }
     }
 
@@ -252,9 +266,11 @@ class PlayerPool(context: Context) {
 
     fun playAll() {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        val ids = players.keys.toList()
-        ids.forEachIndexed { index, id ->
-            mainHandler.postDelayed({ players[id]?.play() }, index * 600L)
+        // All selected feeds must enter playWhenReady together. Delaying each
+        // player by hundreds of milliseconds caused secondary feeds to remain
+        // paused while the main feed consumed the available decoder/buffer time.
+        players.values.forEach { player ->
+            player.playWhenReady = true
         }
     }
 
