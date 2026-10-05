@@ -646,8 +646,17 @@ private fun FullscreenMultiview(
         CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize(), SURFACE_TYPE_TEXTURE_VIEW)
 
         if (!controlsVisible) {
+            // SurfaceView/TextureView can consume touch events underneath Compose.
+            // Keep a transparent Compose hit target over the whole fullscreen area so
+            // a normal tap always brings the controls back.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable { controlsVisible = true }
+                    .zIndex(20f)
+            )
             Surface(
-                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable(),
+                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable().zIndex(21f),
                 color = Color.Black.copy(alpha = .78f),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
