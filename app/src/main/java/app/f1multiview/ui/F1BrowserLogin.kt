@@ -1,15 +1,13 @@
 package app.f1multiview.ui
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.os.Handler
-import android.os.Looper
-import app.f1multiview.data.f1tv.F1TvApiClient
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.unit.dp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -20,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.f1multiview.viewmodel.MultiViewViewModel
 import java.net.URLDecoder
@@ -30,6 +29,7 @@ import org.json.JSONObject
 fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
     val handler = remember { Handler(Looper.getMainLooper()) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
     DisposableEffect(Unit) {
         onDispose {
             handler.removeCallbacksAndMessages(null)
@@ -41,52 +41,96 @@ fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
             webViewRef = null
         }
     }
-    AlertDialog(onDismissRequest = onClose, title = { Text("Sign in to F1 TV") }, text = {
-        AndroidView(modifier = Modifier.fillMaxWidth().height(520.dp), factory = { context ->
-            WebView(context).apply {
-                var captured = false
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.userAgentString = F1TvApiClient.BROWSER_UA
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-                fun captureToken() {
-                    if (captured) return
-                    val cm = CookieManager.getInstance()
-                    val token = listOf(
-                        "https://account.formula1.com/",
-                        "https://formula1.com/",
-                        "https://f1tv.formula1.com/"
-                    ).asSequence()
-                        .mapNotNull { readSubscriptionToken(cm.getCookie(it)) }
-                        .firstOrNull()
-                    if (token != null) {
-                        captured = true
-                        cm.flush()
-                        vm.signInWithSessionToken(token)
-                    } else {
-                        handler.postDelayed({ captureToken() }, 700L)
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Sign in to F1 TV") },
+        text = {
+            AndroidView(
+                modifier = Modifier.fillMaxWidth().height(520.dp),
+                factory = { context ->
+                    WebView(context).apply {
+                        webViewRef = this
+                        var captured = false
+
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+
+                        // Do not override the WebView user agent. The reference implementation
+                        // uses the platform WebView identity and F1's login page is sensitive to
+                        // browser identity.
+                        CookieManager.getInstance().setAcceptCookie(true)
+                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+                        fun captureToken() {
+                            if (captured) return
+
+                            val cm = CookieManager.getInstance()
+                            val token = listOf(
+                                "https://account.formula1.com/",
+                                "https://formula1.com/",
+                                "https://f1tv.formula1.com/"
+                            ).asSequence()
+                                .mapNotNull { readSubscriptionToken(cm.getCookie(it)) }
+                                .firstOrNull()
+
+                            if (token != null) {
+                                captured = true
+                                cm.flush()
+                                vm.signInWithSessionToken(token)
+                                return
+                            }
+
+                            handler.postDelayed({ captureToken() }, 700L)
+                        }
+
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(
+                                view: WebView?,
+                                url: String?,
+                                favicon: android.graphics.Bitmap?
+                            ) {
+                                super.onPageStarted(view, url, favicon)
+                                captureToken()
+                            }
+
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                captureToken()
+                            }
+                        }
+
+                        // Match the reference repo: go directly to the F1 login route instead
+                        // of loading the account root and relying on a redirect.
+                        loadUrl("https://account.formula1.com/#/en/login")
+                        handler.postDelayed({ captureToken() }, 1000L)
                     }
                 }
-
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        captureToken()
-                    }
-                }
-                loadUrl("https://account.formula1.com/")
-                handler.postDelayed({ captureToken() }, 1000L)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onClose) {
+                Text("CLOSE")
             }
-        })
-    }, confirmButton = { TextButton(onClick = onClose) { Text("CLOSE") } })
+        }
+    )
 }
+
 private fun readSubscriptionToken(cookieHeader: String?): String? {
     if (cookieHeader.isNullOrBlank()) return null
-    val cookie = cookieHeader.split(';').map { it.trim() }.firstOrNull { it.startsWith("login-session=") } ?: return null
+
+    val cookie = cookieHeader
+        .split(';')
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("login-session=") }
+        ?: return null
+
     return runCatching {
-        val json = JSONObject(URLDecoder.decode(cookie.substringAfter('='), "UTF-8"))
+        val json = JSONObject(
+            URLDecoder.decode(cookie.substringAfter('='), "UTF-8")
+        )
         val data = json.optJSONObject("data")
-        data?.optString("subscriptionToken")?.takeIf { it.length >= 50 } ?: json.optString("subscriptionToken").takeIf { it.length >= 50 }
+        data?.optString("subscriptionToken")?.takeIf { it.length >= 50 }
+            ?: json.optString("subscriptionToken").takeIf { it.length >= 50 }
     }.getOrNull()
 }
