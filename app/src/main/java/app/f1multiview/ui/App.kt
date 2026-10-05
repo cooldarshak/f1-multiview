@@ -634,6 +634,7 @@ private fun Pill(selected: Boolean, title: String, onClick: () -> Unit) {
 
 @Composable
 private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPhone: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     val width = if (compactPhone) 360.dp else 470.dp
     val imageHeight = if (compactPhone) 205.dp else 265.dp
     Surface(
@@ -641,10 +642,11 @@ private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPh
             .width(width)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
+            .onFocusChanged { focused = it.isFocused }
             ,
         shape = RoundedCornerShape(10.dp),
         color = Surface2,
-        border = BorderStroke(2.dp, if (selected) Red else Color.White.copy(alpha = .08f))
+        border = BorderStroke(2.dp, if (selected) Red else if (focused) White else Color.White.copy(alpha = .08f))
     ) {
         Column {
             Box(Modifier.fillMaxWidth().height(imageHeight)) {
@@ -687,9 +689,15 @@ private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPh
 
 @Composable
 private fun EventCard(selected: Boolean, title: String, artworkUrl: String?, seasonYear: Int, isTv: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     val width = if (isTv) 280.dp else 220.dp
     val imageHeight = if (isTv) 158.dp else 124.dp
-    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface1, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
+    Surface(
+        Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).onFocusChanged { focused = it.isFocused },
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Color(0xFF2A0D0F) else Surface1,
+        border = BorderStroke(2.dp, if (selected) Red else if (focused) White else Color.White.copy(alpha = .07f))
+    ) {
         Column {
             Box(Modifier.fillMaxWidth().height(imageHeight)) {
                 F1Artwork(artworkUrl, title, Modifier.fillMaxSize(), ContentScale.Crop, title + seasonYear)
@@ -784,7 +792,15 @@ private fun PitWall(
                         Text(if (picked) "✓" else "+", color = White, fontSize = 12.sp, fontWeight = FontWeight.Black)
                     }
                     Spacer(Modifier.height(5.dp))
-                    Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).clickable { onSetMainStream(stream.id) }, shape = RoundedCornerShape(7.dp), color = if (isMain) Color.Black.copy(alpha = .28f) else Red.copy(alpha = .18f)) {
+                    var mainActionFocused by remember { mutableStateOf(false) }
+                    Surface(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp))
+                            .clickable { onSetMainStream(stream.id) }
+                            .onFocusChanged { mainActionFocused = it.isFocused },
+                        shape = RoundedCornerShape(7.dp),
+                        color = if (isMain) Color.Black.copy(alpha = .28f) else Red.copy(alpha = .18f),
+                        border = BorderStroke(2.dp, if (mainActionFocused) White else Color.Transparent)
+                    ) {
                         Text(if (isMain) "MAIN" else "SET AS MAIN — REPLACE CURRENT", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }            }
@@ -965,7 +981,11 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
         onDispose { player.removeListener(listener) }
     }
 
-    val tileModifier = if (onFocus != null) modifier.clickable { onFocus(stream.id) } else modifier
+    var tileFocused by remember { mutableStateOf(false) }
+    val tileModifier = if (onFocus != null) {
+        modifier.clickable { onFocus(stream.id) }.onFocusChanged { tileFocused = it.isFocused }
+            .then(if (tileFocused) Modifier.border(2.dp, White, RoundedCornerShape(10.dp)) else Modifier)
+    } else modifier
     Card(tileModifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             ContentFrame(player = player, modifier = Modifier.fillMaxSize(), surfaceType = surfaceType, contentScale = ContentScale.Fit, keepContentOnReset = true)
