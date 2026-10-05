@@ -44,8 +44,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusGroup
+import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -972,55 +972,49 @@ private fun ResizeHandle(
 ) {
     var focused by remember { mutableStateOf(false) }
     val step = 28f
-    val keyModifier = if (enabled) {
-        Modifier
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .focusable()
-            .onFocusChanged { focused = it.isFocused }
-            .onKeyEvent { event ->
-                if (event.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) false
-                else {
-                    val delta = when {
-                        orientation == Orientation.Horizontal && event.key == Key.DirectionLeft -> -step
-                        orientation == Orientation.Horizontal && event.key == Key.DirectionRight -> step
-                        orientation == Orientation.Vertical && event.key == Key.DirectionUp -> -step
-                        orientation == Orientation.Vertical && event.key == Key.DirectionDown -> step
-                        else -> null
+    val modifier = Modifier
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        .then(
+            if (enabled) {
+                Modifier
+                    .focusable()
+                    .onFocusChanged { focused = it.isFocused }
+                    .onKeyEvent { event ->
+                        val delta = when (event.key) {
+                            Key.DirectionLeft -> if (orientation == Orientation.Horizontal) -step else null
+                            Key.DirectionRight -> if (orientation == Orientation.Horizontal) step else null
+                            Key.DirectionUp -> if (orientation == Orientation.Vertical) -step else null
+                            Key.DirectionDown -> if (orientation == Orientation.Vertical) step else null
+                            else -> null
+                        }
+                        if (delta != null) {
+                            onDelta(delta)
+                            true
+                        } else false
                     }
-                    if (delta != null) { onDelta(delta); true } else false
-                }
-            }
-    } else {
-                    val delta = when {
-                        orientation == Orientation.Horizontal && it.key == Key.DirectionLeft -> -step
-                        orientation == Orientation.Horizontal && it.key == Key.DirectionRight -> step
-                        orientation == Orientation.Vertical && it.key == Key.DirectionUp -> -step
-                        orientation == Orientation.Vertical && it.key == Key.DirectionDown -> step
-                        else -> null
-                    }
-                    if (delta != null) {
-                        onDelta(delta)
-                        true
-                    } else {
-                        false
-                    }
-                }
-            }
-    } else {
-        Modifier
-    }
+            } else Modifier
+        )
+        .then(
+            if (orientation == Orientation.Horizontal) {
+                Modifier.width(10.dp).fillMaxHeight()
+            } else Modifier.height(10.dp).fillMaxWidth()
+        )
+        .draggable(
+            orientation = orientation,
+            enabled = enabled,
+            state = rememberDraggableState { onDelta(it) }
+        )
+        .background(if (enabled) Red.copy(alpha = .75f) else Color.White.copy(alpha = .08f))
+        .then(if (focused) Modifier.border(2.dp, White, RoundedCornerShape(3.dp)) else Modifier)
 
-    Box(
-        Modifier
-            .then(if (orientation == Orientation.Horizontal) Modifier.width(10.dp).fillMaxHeight() else Modifier.height(10.dp).fillMaxWidth())
-            .then(keyModifier)
-            .draggable(orientation = orientation, enabled = enabled, state = rememberDraggableState { onDelta(it) })
-            .background(if (enabled) Red.copy(alpha = .75f) else Color.White.copy(alpha = .08f))
-            .then(if (focused) Modifier.border(2.dp, White, RoundedCornerShape(3.dp)) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         if (enabled) {
-            Text(if (orientation == Orientation.Horizontal) "⋮" else "⋯", color = White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            Text(
+                if (orientation == Orientation.Horizontal) "⋮" else "⋯",
+                color = White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black
+            )
         }
     }
 }
