@@ -123,6 +123,14 @@ class PlayerPool(context: Context) {
             DefaultMediaSourceFactory(dataSource)
         }
 
+        if (stream.kind != app.f1multiview.model.StreamKind.WORLD) {
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setMaxVideoSize(1280, 720)
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+                .build()
+        }
+
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
@@ -230,13 +238,7 @@ class PlayerPool(context: Context) {
         val live = main.isCurrentWindowLive
 
         players.forEach { (id, player) ->
-            if (id == mainId) {
-                player.setPlaybackSpeed(1f)
-                if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
-                    player.play()
-                }
-                return@forEach
-            }
+            if (id == mainId) return@forEach
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
             // Never leave a selected secondary intentionally stopped after Sync All.
@@ -270,7 +272,9 @@ class PlayerPool(context: Context) {
                 // Only seek when a feed is materially out of alignment. Cooldown prevents
                 // the 5-second rewind loop that the previous implementation produced.
                 if (absDrift >= 4_000L && now - (lastLiveSeekMs[id] ?: 0L) >= 5_000L) {
-                    val target = (player.currentPosition - driftMs).coerceAtLeast(0L)
+                    // Positive drift means this follower is behind the main feed,
+                    // so move it FORWARD by the drift amount.
+                    val target = (player.currentPosition + driftMs).coerceAtLeast(0L)
                     val duration = player.duration
                     player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
                     player.setPlaybackSpeed(1f)
@@ -279,7 +283,7 @@ class PlayerPool(context: Context) {
             } else {
                 player.setPlaybackSpeed(1f)
                 if (absDrift >= 750L) {
-                    val target = (player.currentPosition - driftMs).coerceAtLeast(0L)
+                    val target = (player.currentPosition + driftMs).coerceAtLeast(0L)
                     val duration = player.duration
                     player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
                 }
