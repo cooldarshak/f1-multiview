@@ -123,6 +123,18 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                             InfoRow(e.time,e.message,e.severity,"")
                         }
                     }
+                    if(ui.teamRadio.isNotEmpty()){
+                        item { Text("TEAM RADIO",color=InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(top=8.dp)) }
+                        items(ui.teamRadio){r->
+                            Surface(onClick={radioPlayer.play(r.url,ui.radioDelayMs)},color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth().focusable()){
+                                Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+                                    Text("RADIO",color=InfoRed,fontWeight=FontWeight.Black,modifier=Modifier.width(52.dp))
+                                    Column(Modifier.weight(1f)){Text(r.driver.ifBlank{"Driver"},color=InfoWhite,fontWeight=FontWeight.Bold);Text(r.time,color=InfoMuted,fontSize=10.sp)}
+                                    Text("PLAY",color=InfoWhite,fontSize=9.sp,fontWeight=FontWeight.Black)
+                                }
+                            }
+                        }
+                    }
                 }
                 "calendar" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     items(ui.calendar){r-> InfoRow(r.round.toString(),r.name,listOf(r.circuit,r.location).filter{it.isNotBlank()}.joinToString(" · "),r.date)}
