@@ -45,7 +45,11 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusGroup
+import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
@@ -728,6 +732,7 @@ private fun PitWall(
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
     var feedPanelOpen by rememberSaveable { mutableStateOf(false) }
+    var tvResizeMode by rememberSaveable { mutableStateOf(false) }
     Spacer(Modifier.height(18.dp))
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(5.dp).height(28.dp).background(Red, RoundedCornerShape(3.dp)))
@@ -775,13 +780,35 @@ private fun PitWall(
         }
         return
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isTv) {
+            Control(tvResizeMode, if (tvResizeMode) "DONE RESIZE" else "RESIZE") {
+                tvResizeMode = !tvResizeMode
+            }
+            Control(false, "SYNC ALL") {
+                pool.playAll()
+                val mainId = ui.mainStreamId ?: selected.firstOrNull()?.id
+                if (mainId != null) pool.syncToMain(mainId)
+            }
+        }
+        Spacer(Modifier.weight(1f))
         Surface(Modifier.clip(RoundedCornerShape(9.dp)).clickable { onFullscreenAll() }, shape = RoundedCornerShape(9.dp), color = Red) {
             Text("OPEN MULTIVIEW FULLSCREEN", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
         }
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
-        CanonicalMultiviewLayout(selected, pool, errors, false, {}, Modifier.fillMaxWidth().height(if (compactPhone) 340.dp else if (isTv) 500.dp else 430.dp))
+        CanonicalMultiviewLayout(
+            selected,
+            pool,
+            errors,
+            if (isTv) tvResizeMode else false,
+            {},
+            Modifier.fillMaxWidth().height(if (compactPhone) 340.dp else if (isTv) 500.dp else 430.dp)
+        )
     }
 }
 @Composable
@@ -849,14 +876,55 @@ private fun ResizableDesktopWall(selected:List<StreamSource>,pool:PlayerPool,err
     }
 }
 @Composable
-private fun ResizeHandle(orientation:Orientation,enabled:Boolean,onDelta:(Float)->Unit){
+private fun ResizeHandle(
+    orientation: Orientation,
+    enabled: Boolean,
+    focusRequester: FocusRequester? = null,
+    onDelta: (Float) -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val step = 28f
+    val keyModifier = if (enabled) {
+        Modifier
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusable()
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent {
+                if (it.type != KeyEventType.KeyDown) {
+                    false
+                } else {
+                    val delta = when {
+                        orientation == Orientation.Horizontal && it.key == Key.DirectionLeft -> -step
+                        orientation == Orientation.Horizontal && it.key == Key.DirectionRight -> step
+                        orientation == Orientation.Vertical && it.key == Key.DirectionUp -> -step
+                        orientation == Orientation.Vertical && it.key == Key.DirectionDown -> step
+                        else -> null
+                    }
+                    if (delta != null) {
+                        onDelta(delta)
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+    } else {
+        Modifier
+    }
+
     Box(
         Modifier
-            .then(if(orientation==Orientation.Horizontal) Modifier.width(10.dp).fillMaxHeight() else Modifier.height(10.dp).fillMaxWidth())
-            .draggable(orientation=orientation,enabled=enabled,state=rememberDraggableState{onDelta(it)})
-            .background(if(enabled) Red.copy(alpha=.75f) else Color.White.copy(alpha=.08f)),
-        contentAlignment=Alignment.Center
-    ){ if(enabled) Text(if(orientation==Orientation.Horizontal) "⋮" else "⋯",color=White,fontSize=10.sp,fontWeight=FontWeight.Black) }
+            .then(if (orientation == Orientation.Horizontal) Modifier.width(10.dp).fillMaxHeight() else Modifier.height(10.dp).fillMaxWidth())
+            .then(keyModifier)
+            .draggable(orientation = orientation, enabled = enabled, state = rememberDraggableState { onDelta(it) })
+            .background(if (enabled) Red.copy(alpha = .75f) else Color.White.copy(alpha = .08f))
+            .then(if (focused) Modifier.border(2.dp, White, RoundedCornerShape(3.dp)) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        if (enabled) {
+            Text(if (orientation == Orientation.Horizontal) "⋮" else "⋯", color = White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+        }
+    }
 }
 
 @OptIn(UnstableApi::class)
@@ -1099,6 +1167,14 @@ private fun CanonicalMultiviewLayout(
     var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
     var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
     var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
+    val firstResizeFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(editSize, selected.size) {
+        if (editSize && selected.size > 1) {
+            delay(60L)
+            firstResizeFocusRequester.requestFocus()
+        }
+    }
 
     Box(modifier) {
         when {
@@ -1111,13 +1187,13 @@ private fun CanonicalMultiviewLayout(
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, surfaceType)
-                    ResizeHandle(Orientation.Horizontal, editSize) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
+                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
                     PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, surfaceType)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, surfaceType)
-                    ResizeHandle(Orientation.Horizontal, editSize) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
+                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
                         PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
@@ -1128,7 +1204,7 @@ private fun CanonicalMultiviewLayout(
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize) { topX = (topX + it / 1400f).coerceIn(.25f, .75f) }
+                        ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.25f, .75f) }
                         PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - topX).fillMaxHeight(), {}, onFocus, surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
@@ -1142,7 +1218,7 @@ private fun CanonicalMultiviewLayout(
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
+                        ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
                         PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
                         PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, surfaceType)
