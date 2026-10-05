@@ -154,7 +154,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(ui, pool, errors, { pool.stopAll(); fullscreenMultiview = false }, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
+        FullscreenMultiview(ui, pool, errors, { pool.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
         return
     }
 
@@ -1075,6 +1075,7 @@ private fun FullscreenMultiview(
     pool: PlayerPool,
     errors: Map<String, String>,
     onClose: () -> Unit,
+    onReplayPosition: (Long) -> Unit,
     onToggleStream: (String) -> Unit,
     onSetMainStream: (String) -> Unit,
     onLayout: (LayoutPreset) -> Unit,
@@ -1285,7 +1286,7 @@ private fun FullscreenMultiview(
         if (active != null && controlsVisible) {
             Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
                     stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
-                    speed = speed, quality = quality, fit = fit, menu = menu,
+                    speed = speed, quality = quality, fit = fit, menu = menu, onReplayPosition = onReplayPosition,
                     onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
                     onMute = { pool.setMuted(active.id, !pool.isMuted(active.id)) },
                     onPlayAll = ::playAll, onPauseAll = ::pauseAll, onSeekAll = ::seekAll
@@ -1394,6 +1395,7 @@ private fun FullscreenFeedControls(
     quality: Quality,
     fit: Boolean,
     menu: String?,
+    onReplayPosition: (Long) -> Unit,
     onSpeed: (Float) -> Unit,
     onQuality: (Quality) -> Unit,
     onFit: (Boolean) -> Unit,
@@ -1422,6 +1424,7 @@ private fun FullscreenFeedControls(
     LaunchedEffect(player) {
         while (true) {
             position = player.currentPosition.coerceAtLeast(0L)
+            onReplayPosition(position)
             duration = player.duration.takeIf { it > 0 } ?: 0L
             delay(250L)
         }
