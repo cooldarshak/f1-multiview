@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +34,7 @@ private val InfoSurface = Color(0xFF14151B)
 @Composable
 fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
     val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","updates","saved") } ?: "calendar"
+    BackHandler(enabled = true) { vm.panel(null) }
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
     val updateManager=remember(context){AppUpdateManager(context)}
@@ -42,7 +46,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 Spacer(Modifier.weight(1f))
                 TextButton({vm.panel(null)}) { Text("CLOSE",color=InfoWhite,fontWeight=FontWeight.Bold) }
             }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 InfoButton(section=="timing","LIVE TIMING"){vm.panel("timing")}
                 InfoButton(section=="calendar","CALENDAR"){vm.panel("calendar");vm.loadCalendar()}
                 InfoButton(section=="standings","STANDINGS"){vm.panel("standings");vm.loadStandings()}
@@ -143,7 +147,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
 
 @Composable private fun InfoButton(selected:Boolean,label:String,onClick:()->Unit){
     var focused by remember{mutableStateOf(false)}
-    Surface(onClick=onClick,modifier=Modifier.onFocusChanged{focused=it.isFocused},shape=RoundedCornerShape(8.dp),color=if(selected)InfoRed else InfoSurface,border=if(focused)BorderStroke(2.dp,InfoWhite) else null){
+    Surface(onClick=onClick,modifier=Modifier.focusable().onFocusChanged{focused=it.isFocused},shape=RoundedCornerShape(8.dp),color=if(selected)InfoRed else InfoSurface,border=if(focused)BorderStroke(2.dp,InfoWhite) else null){
         Text(label,color=InfoWhite,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=14.dp,vertical=9.dp))
     }
 }
