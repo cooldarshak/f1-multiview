@@ -167,7 +167,13 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = runCatching {
         val tv=(context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)==Configuration.UI_MODE_TYPE_TELEVISION
-        val platforms=listOf("WEB_DASH","BIG_SCREEN_DASH","WEB_HLS","BIG_SCREEN_HLS","MOBILE_HLS","MOBILE_DASH")
+        // Prefer the native big-screen DASH profile on TV, then fall back through
+        // the same authorized F1 TV profiles used by the reference implementation.
+        val platforms = if (tv) {
+            listOf("BIG_SCREEN_DASH","WEB_DASH","BIG_SCREEN_HLS","WEB_HLS","MOBILE_DASH","MOBILE_HLS")
+        } else {
+            listOf("WEB_DASH","BIG_SCREEN_DASH","WEB_HLS","BIG_SCREEN_HLS","MOBILE_DASH","MOBILE_HLS")
+        }
         var last:Throwable?=null
         for((index,platform) in platforms.withIndex()){try{
             val result=api.contentPlay(request.contentId,request.channelId,platform);var playToken=result.playToken;var manifestLicense:String?=null
