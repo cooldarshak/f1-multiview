@@ -1,24 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape>
-            <gradient
-                android:angle="0"
-                android:startColor="#08090C"
-                android:centerColor="#17181F"
-                android:endColor="#08090C" />
-        </shape>
-    </item>
-    <item android:left="18dp" android:top="18dp" android:right="270dp" android:bottom="18dp">
-        <shape>
-            <solid android:color="#E10600" />
-            <corners android:radius="4dp" />
-        </shape>
-    </item>
-    <item android:left="292dp" android:top="28dp" android:right="18dp" android:bottom="28dp">
-        <shape>
-            <solid android:color="#E10600" />
-            <corners android:radius="50dp" />
-        </shape>
-    </item>
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#08090C" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#E10600" android:pathData="M20,35h180l-22,32h-158z" />
+    <path android:fillColor="#F5F5F7" android:pathData="M45,76h135l-18,20h-135z" />
+    <path android:fillColor="#E10600" android:pathData="M30,111h220l-25,34h-220z" />
+    <path android:fillColor="#F5F5F7" android:pathData="M267,45h12v90h-12zM288,45h12v90h-12z" />
+</vector>
