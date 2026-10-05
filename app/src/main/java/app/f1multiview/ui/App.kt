@@ -47,8 +47,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
@@ -979,11 +977,11 @@ private fun ResizeHandle(
                     .focusTarget()
                     .onFocusChanged { focused = it.isFocused }
                     .onKeyEvent { event ->
-                        val delta = when (event.key) {
-                            Key.DirectionLeft -> if (orientation == Orientation.Horizontal) -step else null
-                            Key.DirectionRight -> if (orientation == Orientation.Horizontal) step else null
-                            Key.DirectionUp -> if (orientation == Orientation.Vertical) -step else null
-                            Key.DirectionDown -> if (orientation == Orientation.Vertical) step else null
+                        val delta = when (event.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (orientation == Orientation.Horizontal) -step else null
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> if (orientation == Orientation.Horizontal) step else null
+                            android.view.KeyEvent.KEYCODE_DPAD_UP -> if (orientation == Orientation.Vertical) -step else null
+                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> if (orientation == Orientation.Vertical) step else null
                             else -> null
                         }
                         if (delta != null) {
