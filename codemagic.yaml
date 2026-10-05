@@ -1,6 +1,6 @@
 workflows:
   android-debug:
-    name: F1 MultiView Debug APK
+    name: F1 MultiView Signed APK
     max_build_duration: 60
     triggering:
       events:
@@ -8,14 +8,17 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+    environment:
+      android_signing:
+        - f1-multiview-release
     scripts:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
-      - name: Assemble debug
-        script: export CM_VERSION_CODE=$(date +%s) && chmod +x ./gradlew && set -o pipefail && ./gradlew assembleDebug --stacktrace 2>&1 | tee build-debug.log; rc=${PIPESTATUS[0]}; if [ "$rc" -ne 0 ]; then echo "===== GRADLE FAILURE ====="; tail -n 250 build-debug.log; fi; exit "$rc"
+      - name: Assemble signed APK
+        script: export CM_VERSION_CODE=$(date +%s) && chmod +x ./gradlew && set -o pipefail && ./gradlew assembleRelease --stacktrace 2>&1 | tee build-release.log; rc=${PIPESTATUS[0]}; if [ "$rc" -ne 0 ]; then echo "===== GRADLE FAILURE ====="; tail -n 250 build-release.log; fi; exit "$rc"
     artifacts:
-      - app/build/outputs/apk/debug/*.apk
-      - build-debug.log
+      - app/build/outputs/apk/release/*.apk
+      - build-release.log
   android-release:
     name: F1 MultiView Signed APK
     max_build_duration: 60
