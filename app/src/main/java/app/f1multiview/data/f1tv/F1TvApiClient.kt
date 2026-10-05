@@ -13,7 +13,7 @@ class F1TvApiClient {
     companion object {
         const val BASE="https://f1tv.formula1.com"
         const val AUTH="https://api.formula1.com/v2/account/subscriber/authenticate/by-password"
-        const val BROWSER_UA="Mozilla/5.0 (Linux; Android 13; Android TV) AppleWebKit/537.36 Chrome/131.0 Safari/537.36"
+        const val BROWSER_UA="Mozilla/5.0 (Linux; Android "+android.os.Build.VERSION.RELEASE+"; "+android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL+") AppleWebKit/537.36 Chrome/140.0 Safari/537.36"
         private const val LANG="ENG"
         private const val DEFAULT_ENTITLEMENT="F1_TV_Pro_Annual"
         private const val DEFAULT_GROUP="2"
@@ -24,7 +24,7 @@ class F1TvApiClient {
     @Volatile private var entitlementToken:String?=null
     @Volatile private var entitlement=DEFAULT_ENTITLEMENT
     @Volatile private var groupId=DEFAULT_GROUP
-    fun isAuthenticated()=!subscriptionToken.isNullOrBlank()&&!entitlementToken.isNullOrBlank()
+    fun isAuthenticated()=!subscriptionToken.isNullOrBlank()&&!entitlementToken.isNullOrBlank()\n    fun deviceInfo(): String = "device=android_tv;screen=bigscreen;os=android;model="+android.os.Build.MODEL.replace(";","_")+";osVersion="+android.os.Build.VERSION.SDK_INT+";manufacturer="+android.os.Build.MANUFACTURER.replace(";","_")+";appVersion=1.0;playerVersion=Media3;tms=1;"
     suspend fun login(email:String,password:String){
         val response=execute(AUTH,"POST",JSONObject().put("Login",email).put("Password",password).toString(),emptyMap())
         if(response.code==403)throw F1TvException("F1 TV rejected direct login (HTTP 403). Use browser sign-in.")
@@ -54,13 +54,29 @@ class F1TvApiClient {
     }
     suspend fun contentPlay(contentId:String,channelId:String?,platform:String):PlaybackResponse{
         val query="?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
-        val response=execute(BASE+"/2.0/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,authHeaders());ensureSuccess(response,"content playback")
+        val apiVersions=listOf("3.0","2.0")
+        var last:Throwable?=null
+        for(apiVersion in apiVersions){
+            try{
+                val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
+                ensureSuccess(response,"content playback")
+                return parsePlaybackResponse(response,contentId,channelId,platform)
+            }catch(t:Throwable){last=t}
+        }
+        throw last?:F1TvException("F1 TV playback failed")
+    }
+    private fun playHeaders(): Map<String,String> = buildMap {
+        putAll(authHeaders());put("Origin",BASE);put("Referer",BASE+"/");put("x-f1-device-info",deviceInfo())
+    }
+    private fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
         val result=JSONObject(response.body).optJSONObject("resultObj")?:JSONObject(response.body)
         val manifest=firstString(result,"url","manifestUrl","manifestURL","playUrl")?:throw F1TvException("CONTENT/PLAY did not return a manifest URL")
         val license=firstString(result,"laURL","laUrl","licenseUrl","licenseURL")
-        val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken");val streamType=firstString(result,"streamType")
-        val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0};val playToken=extractPlayToken(manifest)
-        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion)
+        val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken")
+        val streamType=firstString(result,"streamType");val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0}
+        val playToken=extractPlayToken(manifest);val playApiVersion=firstString(result,"playApiVersion","playAPIVersion")
+        val platform=firstString(result,"platform")?:requestedPlatform;val drmType=firstString(result,"drmType")
+        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
         val response=execute(BASE+"/2.0/R/"+LANG+"/WEB_DASH/ALL/PAGE/"+pageId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"archive page "+pageId)
@@ -119,6 +135,6 @@ class F1TvApiClient {
     }
     private fun firstString(obj:JSONObject,vararg keys:String):String?=keys.firstNotNullOfOrNull{key->obj.optString(key).takeIf{it.isNotBlank()}}
 }
-data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null)
+data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null)
 data class HttpResponse(val code:Int,val isSuccessful:Boolean,val body:String)
 class F1TvException(message:String):Exception(message)
