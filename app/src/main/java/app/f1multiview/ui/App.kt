@@ -1075,7 +1075,9 @@ private fun FullscreenMultiview(
     var menu by rememberSaveable { mutableStateOf<String?>(null) }
     var trackVersion by remember { mutableIntStateOf(0) }
     var speed by rememberSaveable(activeFeedId) { mutableFloatStateOf(1f) }
-    var quality by rememberSaveable(activeFeedId) { mutableStateOf(Quality.AUTO) }
+    var quality by remember(activeFeedId, pool) {
+        mutableStateOf(activeFeedId?.let(pool::getQuality) ?: Quality.AUTO)
+    }
     var fit by rememberSaveable(activeFeedId) { mutableStateOf(false) }
     val fullscreenBackFocusRequester = remember { FocusRequester() }
     val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
@@ -1468,7 +1470,9 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
     var controlsVisible by rememberSaveable(stream.id) { mutableStateOf(true) }
     var speed by rememberSaveable(stream.id) { mutableFloatStateOf(1f) }
-    var quality by rememberSaveable(stream.id) { mutableStateOf(Quality.AUTO) }
+    var quality by remember(stream.id, pool) {
+        mutableStateOf(pool.getQuality(stream.id))
+    }
     var fit by rememberSaveable(stream.id) { mutableStateOf(false) }
     var muted by rememberSaveable(stream.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf<String?>(null) }
@@ -1641,9 +1645,30 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                                         }
                                     }
                                     "quality"->{
+                                        val resolutions = pool.availableVideoResolutionsForQualityMenu(stream.id)
+                                        val diagnostics = pool.currentVideoDiagnostics(stream.id)
                                         Text("VIDEO QUALITY",color=Muted,fontSize=8.sp,fontWeight=FontWeight.Black)
+                                        Text(
+                                            if (diagnostics != null) {
+                                                "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
+                                                    if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
+                                            } else if (resolutions.isNotEmpty()) {
+                                                "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
+                                            } else "TRACKS NOT READY",
+                                            color=White.copy(alpha=.72f), fontSize=7.sp, fontWeight=FontWeight.Bold,
+                                            modifier=Modifier.padding(top=5.dp)
+                                        )
                                         Row(Modifier.horizontalScroll(rememberScrollState()).padding(top=7.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-                                            listOf(Quality.AUTO to "Auto",Quality.UHD to "4K",Quality.FHD to "1080p",Quality.HD to "720p",Quality.SD to "480p").forEach{(q,l)->Control(quality==q,l){quality=q;pool.setQuality(stream.id,q);menu=null}}
+                                            listOf(Quality.AUTO to "Auto",Quality.UHD to "4K",Quality.FHD to "1080p",Quality.HD to "720p",Quality.SD to "480p").forEach{(q,l)->
+                                                val available = pool.qualityAvailable(stream.id,q)
+                                                Control(quality==q, if (available || q==Quality.AUTO) l else "$l — N/A") {
+                                                    if (available || q==Quality.AUTO) {
+                                                        quality=q
+                                                        pool.setQuality(stream.id,q)
+                                                        menu=null
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     "audio"->{                                        Text("AUDIO TRACKS",color=Muted,fontSize=8.sp,fontWeight=FontWeight.Black)
