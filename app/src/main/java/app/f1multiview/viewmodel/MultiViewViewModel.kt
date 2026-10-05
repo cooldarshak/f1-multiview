@@ -35,7 +35,8 @@ data class UiState(
     val savedSetups: List<SavedSetup> = emptyList(),
     val calendar: List<CalendarRace> = emptyList(),
     val standings: List<StandingRow> = emptyList(),
-    val results: List<ResultRow> = emptyList()
+    val results: List<ResultRow> = emptyList(),
+    val showsDocs: List<EditorialItem> = emptyList()
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -164,6 +165,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
         persist()
         if(source.url==null) resolveSource(source)
     }
+    fun loadShowsDocs()=viewModelScope.launch{provider.showsAndDocs().onSuccess{_ui.value=_ui.value.copy(showsDocs=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun loadCalendar()=viewModelScope.launch{featureClient.calendar().onSuccess{_ui.value=_ui.value.copy(calendar=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun loadStandings()=viewModelScope.launch{featureClient.standings().onSuccess{_ui.value=_ui.value.copy(standings=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun loadResults()=viewModelScope.launch{featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
