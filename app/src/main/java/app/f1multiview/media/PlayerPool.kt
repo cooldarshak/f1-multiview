@@ -64,7 +64,7 @@ class PlayerPool(context: Context) {
         .build()
 
     fun get(id: String): ExoPlayer = players.getOrPut(id) {
-        ExoPlayer.Builder(appContext, DefaultRenderersFactory(appContext).setEnableDecoderFallback(true))
+        ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
             .setLoadControl(ProductionLoadControl.create())
             .build()
             .also { player ->
