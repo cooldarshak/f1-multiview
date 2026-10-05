@@ -678,7 +678,7 @@ private fun EventCard(selected: Boolean, title: String, artworkUrl: String?, sea
     val width = if (isTv) 280.dp else 220.dp
     val imageHeight = if (isTv) 158.dp else 124.dp
     Surface(
-        Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).onFocusChanged { focused = it.isFocused },
+        Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).focusable().onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(12.dp),
         color = if (selected) Color(0xFF2A0D0F) else Surface1,
         border = BorderStroke(2.dp, if (selected) Red else if (focused) White else Color.White.copy(alpha = .07f))
@@ -1049,7 +1049,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                         Spacer(Modifier.height(8.dp))
                         run { var retryFocused by remember { mutableStateOf(false) }
                         Surface(
-                            Modifier.clickable { pool.clear(stream.id); pool.load(stream); pool.play(stream.id) }
+                            Modifier.clickable { pool.clear(stream.id); pool.load(stream); pool.play(stream.id) }.focusable()
                                 .onFocusChanged { retryFocused = it.isFocused },
                             color = Red,
                             shape = RoundedCornerShape(50),
@@ -1263,7 +1263,7 @@ private fun FullscreenMultiview(
                                     Spacer(Modifier.height(4.dp))
                                     var mainActionFocused by remember(stream.id) { mutableStateOf(false) }
                                     Surface(
-                                        Modifier.fillMaxWidth().clickable { onSetMainStream(stream.id) }
+                                        Modifier.fillMaxWidth().clickable { onSetMainStream(stream.id) }.focusable()
                                             .onFocusChanged { mainActionFocused = it.isFocused },
                                         shape = RoundedCornerShape(6.dp),
                                         color = if (isMain) Color.Black.copy(alpha = .28f) else Red.copy(alpha = .18f),
@@ -1717,7 +1717,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
                             Spacer(Modifier.weight(1f))
                             run { var goLiveFocused by remember { mutableStateOf(false) }
                             Surface(
-                                Modifier.clickable { player.seekToDefaultPosition(); player.play() }
+                                Modifier.clickable { player.seekToDefaultPosition(); player.play() }.focusable()
                                     .onFocusChanged { goLiveFocused = it.isFocused },
                                 color = Red,
                                 shape = RoundedCornerShape(50),
@@ -1837,7 +1837,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
 @Composable private fun MenuButton(label:String,onClick:()->Unit){
     var focused by remember { mutableStateOf(false) }
     Surface(
-        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).onFocusChanged { focused = it.isFocused },
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).focusable().onFocusChanged { focused = it.isFocused },
         color=Color.White.copy(alpha=.08f),
         shape=RoundedCornerShape(8.dp),
         border=if (focused) BorderStroke(2.dp, White) else null
@@ -1931,7 +1931,7 @@ private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
 @Composable
 private fun Action(label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .07f),
+    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable().onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .07f),
         border = if (focused) BorderStroke(3.dp, White) else null) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
     }
