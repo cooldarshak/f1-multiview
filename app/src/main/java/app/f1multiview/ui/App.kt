@@ -1029,6 +1029,12 @@ private fun FullscreenMultiview(
     var speed by rememberSaveable(activeFeedId) { mutableFloatStateOf(1f) }
     var quality by rememberSaveable(activeFeedId) { mutableStateOf(Quality.AUTO) }
     var fit by rememberSaveable(activeFeedId) { mutableStateOf(false) }
+    val fullscreenBackFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(80L)
+        fullscreenBackFocusRequester.requestFocus()
+    }
 
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (activeFeedId !in ui.selectedStreamIds) activeFeedId = ui.mainStreamId ?: ui.selectedStreamIds.firstOrNull()
@@ -1107,7 +1113,15 @@ private fun FullscreenMultiview(
         if (controlsVisible) {
             Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(Modifier.clickable(onClick = onClose), color = Surface2, shape = RoundedCornerShape(8.dp)) { Text("‹ BACK", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) }
+                    Surface(
+                        Modifier
+                            .focusRequester(fullscreenBackFocusRequester)
+                            .clickable(onClick = onClose)
+                            .onFocusChanged { }
+                            .border(0.dp, Color.Transparent),
+                        color = Surface2,
+                        shape = RoundedCornerShape(8.dp)
+                    ) { Text("‹ BACK", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) }
                     Spacer(Modifier.width(7.dp))
                     Text("MULTIVIEW", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.width(6.dp))
@@ -1393,6 +1407,12 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     var muted by rememberSaveable(stream.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf<String?>(null) }
     var trackVersion by remember { mutableIntStateOf(0) }
+    val fullscreenBackFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(80L)
+        fullscreenBackFocusRequester.requestFocus()
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -1467,7 +1487,14 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f))))) {
                 Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
-                    Surface(Modifier.clickable { onClose() }, color=Color.Black.copy(alpha=.65f), shape=RoundedCornerShape(9.dp)) {
+                    Surface(
+                        Modifier
+                            .focusRequester(fullscreenBackFocusRequester)
+                            .clickable { onClose() }
+                            .onFocusChanged { },
+                        color=Color.Black.copy(alpha=.65f),
+                        shape=RoundedCornerShape(9.dp)
+                    ) {
                         Text("‹  BACK", color=White, fontSize=10.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
                     }
                     Spacer(Modifier.width(12.dp))
