@@ -706,7 +706,7 @@ private fun SessionCard(selected: Boolean, title: String, type: String, artworkU
     Surface(
         Modifier.width(width)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+             .clickable(onClick = onClick).focusable()
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(12.dp),
         color = if (selected) Color(0xFF2A0D0F) else Surface2,
@@ -1189,7 +1189,7 @@ private fun FullscreenMultiview(
                     .align(Alignment.TopEnd)
                     .padding(12.dp)
                     .focusRequester(fullscreenShowControlsFocusRequester)
-                    .clickable { controlsVisible = true }
+                    .clickable { controlsVisible = true }.focusable()
                     .onFocusChanged { fullscreenShowControlsFocused = it.isFocused }
                     .border(2.dp, if (fullscreenShowControlsFocused) White else Color.Transparent, RoundedCornerShape(9.dp))
                     .zIndex(21f),
@@ -1210,7 +1210,7 @@ private fun FullscreenMultiview(
                     Surface(
                         Modifier
                             .focusRequester(fullscreenBackFocusRequester)
-                            .clickable(onClick = onClose)
+                            .clickable(onClick = onClose).focusable()
                             .onFocusChanged { fullscreenBackFocused = it.isFocused }
                             .border(2.dp, if (fullscreenBackFocused) White else Color.Transparent, RoundedCornerShape(8.dp)),
                         color = Surface2,
