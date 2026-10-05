@@ -1046,6 +1046,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                         ) {
                             Text("RETRY", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                         }
+                        }
                     }
                 }
             }
@@ -1613,6 +1614,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                             ){
                                 Text("GO LIVE",color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=11.dp,vertical=7.dp))
                             }
+                            }
                         }
                     }
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){
@@ -1745,6 +1747,7 @@ private fun LayoutOption(preset: LayoutPreset, selected: Boolean, onClick: () ->
         border = if (focused && !selected) BorderStroke(2.dp, White) else if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
     ) {
         Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) { LayoutGlyph(preset, selected) }
+    }
     }
 }
 
