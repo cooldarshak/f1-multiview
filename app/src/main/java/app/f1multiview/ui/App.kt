@@ -343,7 +343,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
         }
 
         SectionHeader(
-            "GRAND PRIX",
+            if (selectedSeries == "F1") "GRAND PRIX" else "EVENTS",
             ui.selectedSeason?.year?.toString() ?: "",
             side
         )
@@ -693,7 +693,7 @@ private fun SessionCard(selected: Boolean, title: String, type: String, artworkU
             }
             Column(Modifier.padding(12.dp)) {
                 Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("F1 · " + type, color = White.copy(alpha = .58f), fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 5.dp))
+                Text("SESSION · " + type, color = White.copy(alpha = .58f), fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 5.dp))
             }
         }
     }
