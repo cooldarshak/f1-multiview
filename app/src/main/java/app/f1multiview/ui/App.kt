@@ -50,6 +50,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
@@ -954,7 +955,7 @@ private fun ResizeHandle(
                 Modifier
                     .focusable()
                     .onFocusChanged { focused = it.isFocused }
-                    .onKeyEvent { event ->
+                    .onKeyEvent { event: KeyEvent ->
                         val delta = when (event.nativeKeyEvent.keyCode) {
                             android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (orientation == Orientation.Horizontal) -step else null
                             android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> if (orientation == Orientation.Horizontal) step else null
@@ -1161,7 +1162,7 @@ private fun FullscreenMultiview(
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
-            .onKeyEvent { event ->
+            .onKeyEvent { event: KeyEvent ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionCenter && !controlsVisible) {
                     controlsVisible = true
                     true
@@ -1628,7 +1629,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
-            .onKeyEvent { event ->
+            .onKeyEvent { event: KeyEvent ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionCenter && !controlsVisible) {
                     controlsVisible = true
                     true
