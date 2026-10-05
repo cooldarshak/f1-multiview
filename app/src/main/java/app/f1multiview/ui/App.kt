@@ -198,15 +198,39 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         return
     }
 
-    Column(Modifier.fillMaxSize().background(Bg)) {
-        Header(ui, vm, compactPhone)
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = if (compactPhone) 10.dp else 16.dp)) {
-            item { Hero(ui, isTv, isPortrait) }
+    val backgroundArtwork = ui.session?.artworkUrl
+        ?: ui.vodSessions.firstOrNull()?.artworkUrl
+        ?: ui.selectedEvent?.artworkUrl
+
+    Box(Modifier.fillMaxSize().background(Bg)) {
+        if (!backgroundArtwork.isNullOrBlank()) {
+            F1Artwork(
+                backgroundArtwork,
+                ui.session?.name ?: ui.vodSessions.firstOrNull()?.title ?: "F1 TV",
+                Modifier.fillMaxSize(),
+                ContentScale.Crop
+            )
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = .62f),
+                            Color.Black.copy(alpha = .72f),
+                            Bg.copy(alpha = .96f)
+                        )
+                    )
+                )
+            )
+        }
+        Column(Modifier.fillMaxSize()) {
+            Header(ui, vm, compactPhone)
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = if (compactPhone) 10.dp else 16.dp)) {
             item { Archive(ui, vm, isTv, compactPhone) }
             item { ui.providerError?.let { ErrorBanner(it) } }
             item {
                 PitWall(ui, pool, errors, isTv, compactPhone, { fullscreenMultiview = true }, vm::toggleStream, vm::setMainStream)
             }
+        }
         }
     }
 }
@@ -276,8 +300,19 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
         if (ui.vodSessions.isNotEmpty()) {
             val featured = ui.vodSessions.first()
             SectionHeader("FEATURED REPLAY", featured.series.uppercase(), side)
-            FeaturedReplayCard(featured, ui.session?.id == featured.contentId, compactPhone) { vm.selectVodSession(featured) }
-            Spacer(Modifier.height(if (compactPhone) 14.dp else 20.dp))
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = side),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(ui.vodSessions.take(5)) { session ->
+                    FeaturedReplayCard(
+                        session,
+                        ui.session?.id == session.contentId,
+                        compactPhone
+                    ) { vm.selectVodSession(session) }
+                }
+            }
+            Spacer(Modifier.height(if (compactPhone) 18.dp else 24.dp))
         }
         SectionHeader("F1 TV ARCHIVE", "SEASON", side)
         LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -311,7 +346,7 @@ private fun SectionHeader(title: String, meta: String, side: androidx.compose.ui
     Row(Modifier.fillMaxWidth().padding(horizontal = side, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(4.dp).height(17.dp).background(Red, RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(8.dp))
-        Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+        Text(title, color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.weight(1f))
         Text(meta, color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
     }
@@ -326,16 +361,52 @@ private fun Pill(selected: Boolean, title: String, onClick: () -> Unit) {
 
 @Composable
 private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPhone: Boolean, onClick: () -> Unit) {
-    val height = if (compactPhone) 150.dp else 205.dp
-    Surface(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(14.dp), color = Surface1, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .08f))) {
-        Box(Modifier.fillMaxWidth().height(height)) {
-            F1Artwork(session.artworkUrl, session.title, Modifier.fillMaxSize(), ContentScale.Crop, session.contentId)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .84f)))))
-            Column(Modifier.align(Alignment.BottomStart).padding(if (compactPhone) 13.dp else 18.dp)) {
-                Surface(color = Red, shape = RoundedCornerShape(4.dp)) { Text("FEATURED", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)) }
-                Spacer(Modifier.height(7.dp))
-                Text(session.title, color = White, fontSize = if (compactPhone) 17.sp else 23.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("F1 · " + session.type.uppercase(), color = White.copy(alpha = .72f), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+    val width = if (compactPhone) 360.dp else 470.dp
+    val imageHeight = if (compactPhone) 205.dp else 265.dp
+    Surface(
+        Modifier
+            .width(width)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .focusable(),
+        shape = RoundedCornerShape(10.dp),
+        color = Surface2,
+        border = BorderStroke(2.dp, if (selected) Red else Color.White.copy(alpha = .08f))
+    ) {
+        Column {
+            Box(Modifier.fillMaxWidth().height(imageHeight)) {
+                F1Artwork(session.artworkUrl, session.title, Modifier.fillMaxSize(), ContentScale.Crop, session.contentId)
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .18f)))))
+                Surface(
+                    Modifier.align(Alignment.TopStart).padding(12.dp),
+                    color = Color.Black.copy(alpha = .86f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        "FEATURED",
+                        color = White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                    )
+                }
+            }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
+                Text(
+                    session.title,
+                    color = White,
+                    fontSize = if (compactPhone) 16.sp else 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "F1 · " + session.type.uppercase(),
+                    color = White.copy(alpha = .68f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
         }
     }
