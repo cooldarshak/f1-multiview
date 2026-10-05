@@ -137,6 +137,24 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             val date = F1CatalogParser.eventDate(node, meta)
             if (date > now) continue
 
+            // The season landing page can contain historical meetings from other years.
+            // Only keep meetings that belong to the season currently selected in the UI.
+            val titleYear = Regex("\\b(19\\d{2}|20\\d{2})\\b")
+                .find(title)
+                ?.value
+                ?.toIntOrNull()
+            val dateYear = if (date > 0L) {
+                runCatching {
+                    java.time.Instant.ofEpochMilli(date)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .year
+                }.getOrNull()
+            } else {
+                null
+            }
+            val eventYear = dateYear ?: titleYear
+            if (eventYear != null && eventYear != season.year) continue
+
             val props = node.optJSONArray("properties")?.optJSONObject(0) ?: org.json.JSONObject()
             val number = props.optInt("meeting_Number", emf.optInt("Meeting_Number", 0))
             val test = upper.contains("TEST") || upper.contains("PRE-SEASON") || upper.contains("PRESEASON")
