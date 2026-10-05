@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
@@ -30,6 +31,7 @@ class PlayerPool(context: Context) {
     private val players = linkedMapOf<String, ExoPlayer>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val lastLiveSeekMs = mutableMapOf<String, Long>()
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
     val errors: StateFlow<Map<String, String>> = _errors.asStateFlow()
 
@@ -45,7 +47,7 @@ class PlayerPool(context: Context) {
             .also { player ->
                 player.setAudioAttributes(audioAttributes, true)
                 player.volume = 0f
-                player.videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                player.videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 player.setHandleAudioBecomingNoisy(true)
 
                 // AUTO is intentionally conservative on phones. The user can raise
@@ -210,39 +212,78 @@ class PlayerPool(context: Context) {
      * When both manifests expose Unix-epoch window start times, align the
      * secondary feeds to the main feed's presentation timestamp.
      */
+    /**
+     * Synchronize the selected live feeds against the main feed.
+     *
+     * Live F1 feeds do not necessarily expose identical media-window positions, so
+     * currentLiveOffset is the primary clock. Small drift is corrected with a tiny
+     * playback-rate nudge (the same approach used by F1OpenViewer); large drift gets
+     * one seek with a cooldown so we never create a rewind/seek loop.
+     */
     fun syncToMain(mainId: String) {
         val main = players[mainId] ?: return
-        if (main.playbackState != Player.STATE_READY && main.playbackState != Player.STATE_BUFFERING) return
+        if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
 
+        val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
         val mainEpoch = absolutePresentationTime(main)
-        val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET }
+        val now = android.os.SystemClock.elapsedRealtime()
+        val live = main.isCurrentWindowLive
 
         players.forEach { (id, player) ->
-            if (id == mainId || player.currentTimeline.isEmpty) return@forEach
-            if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) {
-                player.playWhenReady = true
+            if (id == mainId) {
+                player.setPlaybackSpeed(1f)
+                if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
+                    player.play()
+                }
                 return@forEach
             }
+            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
-            val secondaryEpoch = absolutePresentationTime(player)
-            val diff = when {
-                mainEpoch != null && secondaryEpoch != null -> mainEpoch - secondaryEpoch
-                mainLiveOffset != null -> {
-                    val secondaryOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET }
-                    secondaryOffset?.let { it - mainLiveOffset }
-                }
-                else -> null
-            } ?: return@forEach
-
-            // Positive diff means the secondary feed is behind the main feed.
-            // Make a single correction only when the drift is material; this
-            // avoids the old seek-loop/rewind behaviour.
-            if (kotlin.math.abs(diff) >= 750L) {
-                val target = (player.currentPosition + diff).coerceAtLeast(0L)
-                val duration = player.duration
-                player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-            }
+            // Never leave a selected secondary intentionally stopped after Sync All.
             player.playWhenReady = true
+            if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
+                player.play()
+            }
+
+            val secondaryLiveOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
+            val secondaryEpoch = absolutePresentationTime(player)
+
+            val driftMs: Long? = when {
+                live && mainLiveOffset != null && secondaryLiveOffset != null -> secondaryLiveOffset - mainLiveOffset
+                mainEpoch != null && secondaryEpoch != null -> secondaryEpoch - mainEpoch
+                mainLiveOffset != null && secondaryLiveOffset != null -> secondaryLiveOffset - mainLiveOffset
+                else -> null
+            }
+            if (driftMs == null) return@forEach
+
+            val absDrift = kotlin.math.abs(driftMs)
+            if (live) {
+                // Secondary behind main => positive drift => speed it up.
+                // Secondary ahead => negative drift => slow it down while main catches up.
+                val rate = when {
+                    absDrift < 250L -> 1f
+                    driftMs > 0L -> 1.06f
+                    else -> 0.94f
+                }
+                player.setPlaybackSpeed(rate)
+
+                // Only seek when a feed is materially out of alignment. Cooldown prevents
+                // the 5-second rewind loop that the previous implementation produced.
+                if (absDrift >= 4_000L && now - (lastLiveSeekMs[id] ?: 0L) >= 5_000L) {
+                    val target = (player.currentPosition - driftMs).coerceAtLeast(0L)
+                    val duration = player.duration
+                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+                    player.setPlaybackSpeed(1f)
+                    lastLiveSeekMs[id] = now
+                }
+            } else {
+                player.setPlaybackSpeed(1f)
+                if (absDrift >= 750L) {
+                    val target = (player.currentPosition - driftMs).coerceAtLeast(0L)
+                    val duration = player.duration
+                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+                }
+            }
         }
     }
 
@@ -269,11 +310,11 @@ class PlayerPool(context: Context) {
 
     fun playAll() {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        // All selected feeds must enter playWhenReady together. Delaying each
-        // player by hundreds of milliseconds caused secondary feeds to remain
-        // paused while the main feed consumed the available decoder/buffer time.
         players.values.forEach { player ->
             player.playWhenReady = true
+            if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
+                player.play()
+            }
         }
     }
 
@@ -288,6 +329,7 @@ class PlayerPool(context: Context) {
 
     fun clear(id: String) {
         players.remove(id)?.release()
+        lastLiveSeekMs.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -296,6 +338,7 @@ class PlayerPool(context: Context) {
         players.values.forEach { it.release() }
         players.clear()
         audioPlayerId = null
+        lastLiveSeekMs.clear()
     }
 
     fun all(): Collection<ExoPlayer> = players.values
