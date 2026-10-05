@@ -13,6 +13,9 @@
         android:label="F1 MultiView"
         android:supportsRtl="true"
         android:theme="@style/Theme.F1MultiView">
+        <meta-data
+            android:name="android.software.leanback.supports_touch"
+            android:value="true" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
