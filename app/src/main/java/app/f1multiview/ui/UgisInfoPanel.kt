@@ -53,6 +53,8 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
                 InfoButton(section=="shows","SHOWS & DOCS"){vm.panel("shows");vm.loadShowsDocs()}
                 InfoButton(section=="radio","RADIO"){vm.panel("radio")}
+                InfoButton(false,"TRACKER"){vm.activateTracker()}
+                InfoButton(false,"RACE MAP"){vm.activateRaceMap()}
                 InfoButton(section=="saved","SAVED VIEWS"){vm.panel("saved")}
                 InfoButton(section=="updates","CHECK UPDATES"){vm.panel("updates");scope.launch{updateManager.check().onSuccess{info->if(info==null)updateMessage="You are up to date." else {updateMessage="Update ${info.versionName} available.";updateManager.downloadAndInstall(info)}}.onFailure{updateMessage=it.message.orEmpty()}}}
             }
