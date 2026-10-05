@@ -1,6 +1,6 @@
 workflows:
   android-debug:
-    name: F1 MultiView Signed APK
+    name: F1 MultiView Debug APK
     max_build_duration: 60
     triggering:
       events:
@@ -8,45 +8,12 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
-    environment:
-      android_signing:
-        - f1-multiview-release
     scripts:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
-      - name: Assemble signed APK
-        script: export CM_VERSION_CODE=$(date +%s) && chmod +x ./gradlew && set -o pipefail && ./gradlew assembleRelease --stacktrace 2>&1 | tee build-release.log; rc=${PIPESTATUS[0]}; if [ "$rc" -ne 0 ]; then echo "===== GRADLE FAILURE ====="; tail -n 250 build-release.log; fi; exit "$rc"
-      - name: Verify APK package, version and signing certificate
+      - name: Assemble debug APK
         script: |
-          set -e
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" -print -quit)
-          test -n "$APK" || { echo "No release APK found"; exit 1; }
-          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
-          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
-          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
-          "$AAPT" dump badging "$APK" | head -n 1
-          "$APKSIGNER" verify --print-certs "$APK"
-          KEY_SHA=$(keytool -list -v -keystore "$CM_KEYSTORE_PATH" -alias "$CM_KEY_ALIAS" -storepass "$CM_KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/SHA256:/{print $2; exit}')
-          APK_SHA=$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}')
-          test -n "$KEY_SHA" || { echo "Could not read keystore certificate fingerprint"; exit 1; }
-          test -n "$APK_SHA" || { echo "Could not read APK certificate fingerprint"; exit 1; }
-          test "$KEY_SHA" = "$APK_SHA" || { echo "APK is NOT signed by the configured persistent keystore"; exit 1; }
-          echo "Signing certificate verified: $APK_SHA"
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
     artifacts:
-      - app/build/outputs/apk/release/*.apk
-      - build-release.log
-  android-release:
-    name: F1 MultiView Signed APK
-    max_build_duration: 60
-    environment:
-      android_signing:
-        - f1-multiview-release
-    scripts:
-      - name: Configure Android SDK
-        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
-      - name: Assemble release APK
-        script: export CM_VERSION_CODE=$(date +%s) && chmod +x ./gradlew && ./gradlew assembleRelease
-    artifacts:
-      - app/build/outputs/apk/release/*.apk
-
-# Build trigger: 2026-10-04
+      - app/build/outputs/apk/debug/*.apk
