@@ -31,6 +31,7 @@ internal object F1CatalogParser {
         val actions = node.optJSONArray("actions") ?: return null
         for (i in 0 until actions.length()) {
             val action = actions.optJSONObject(i) ?: continue
+            if (!action.optString("key").equals("onClick", true)) continue
             val match = Regex("/PAGE/(\\d+)/", RegexOption.IGNORE_CASE).find(action.optString("uri"))
             if (match != null) return match.groupValues[1].toIntOrNull()
         }
@@ -62,11 +63,12 @@ internal object F1CatalogParser {
             value.contains("PORSCHE", true) -> "Porsche Supercup"
             else -> value
         }
+        val text = fallbackText.lowercase()
         return when {
-            Regex("""\\bF1\\s*Academy\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F1 Academy"
-            Regex("""\\bFormula\\s*2\\\b|\\\bF2\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F2"
-            Regex("""\\bFormula\\s*3\\\b|\\\bF3\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F3"
-            Regex("Porsche\\s+Supercup", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "Porsche Supercup"
+            text.contains("f1 academy") -> "F1 Academy"
+            text.contains("formula 2") || text.contains(" f2 ") -> "F2"
+            text.contains("formula 3") || text.contains(" f3 ") -> "F3"
+            text.contains("porsche supercup") -> "Porsche Supercup"
             else -> "F1"
         }
     }
@@ -86,17 +88,17 @@ internal object F1CatalogParser {
         val combined = text.lowercase() + " " + emf.optString("VideoType").lowercase() + " " + meta.optString("contentSubtype").lowercase()
 
         val stage = when {
-            Regex("""\\bpre[- ]?show\\\b|\\\bpreview\\\b""").containsMatchIn(combined) -> "pre-show"
-            Regex("""\\bpost[- ]?show\\\b|\\\bpostrace\\\b|\\\bpost race\\\b""").containsMatchIn(combined) -> "post-show"
-            Regex("""\\bf1 kids\\\b|\\\bkids\\\b""").containsMatchIn(combined) -> "f1-kids"
-            Regex("""\\bsprint qualifying\\\b|\\\bsprint shootout\\\b""").containsMatchIn(combined) -> "sprint-qualifying"
-            Regex("""\\bsprint\\\b""").containsMatchIn(combined) -> "sprint"
-            Regex("""\\bqualifying\\\b|\\\bquali\\\b""").containsMatchIn(combined) -> "qualifying"
-            Regex("""\\bpractice 1\\\b|\\\bfp1\\\b""").containsMatchIn(combined) -> "practice-1"
-            Regex("""\\bpractice 2\\\b|\\\bfp2\\\b""").containsMatchIn(combined) -> "practice-2"
-            Regex("""\\bpractice 3\\\b|\\\bfp3\\\b""").containsMatchIn(combined) -> "practice-3"
-            Regex("""\\bpractice\\\b|\\\bfree practice\\\b""").containsMatchIn(combined) -> "practice"
-            Regex("""\\brace\\\b|\\\bgrand prix\\\b""").containsMatchIn(combined) -> "race"
+            combined.contains("pre-show") || combined.contains("preshow") || combined.contains("preview") -> "pre-show"
+            combined.contains("post-show") || combined.contains("postrace") || combined.contains("post race") -> "post-show"
+            combined.contains("f1 kids") || combined.contains("f1kids") -> "f1-kids"
+            combined.contains("sprint qualifying") || combined.contains("sprint shootout") -> "sprint-qualifying"
+            combined.contains("sprint") -> "sprint"
+            combined.contains("qualifying") || combined.contains("quali") -> "qualifying"
+            combined.contains("practice 1") || combined.contains("fp1") -> "practice-1"
+            combined.contains("practice 2") || combined.contains("fp2") -> "practice-2"
+            combined.contains("practice 3") || combined.contains("fp3") -> "practice-3"
+            combined.contains("practice") || combined.contains("free practice") -> "practice"
+            combined.contains("race") || combined.contains("grand prix") -> "race"
             else -> return null
         }
 
@@ -104,8 +106,8 @@ internal object F1CatalogParser {
             stage == "pre-show" -> "pre-show"
             stage == "post-show" -> "post-show"
             stage == "f1-kids" -> "f1-kids"
-            Regex("""\\bf1 kids\\\b|\\\bkids\\\b""").containsMatchIn(combined) -> "f1-kids"
-            Regex("""\\bfull race\\\b|\\\bfull session\\\b""").containsMatchIn(combined) -> "main"
+            combined.contains("f1 kids") || combined.contains("f1kids") -> "f1-kids"
+            combined.contains("full race") || combined.contains("full session") -> "main"
             else -> "main"
         }
 
