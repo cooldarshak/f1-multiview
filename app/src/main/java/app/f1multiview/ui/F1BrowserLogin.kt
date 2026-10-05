@@ -26,9 +26,16 @@ import org.json.JSONObject
 @Composable
 fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
     val handler = remember { Handler(Looper.getMainLooper()) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
     DisposableEffect(Unit) {
         onDispose {
             handler.removeCallbacksAndMessages(null)
+            webViewRef?.apply {
+                stopLoading()
+                webViewClient = null
+                destroy()
+            }
+            webViewRef = null
         }
     }
     AlertDialog(onDismissRequest = onClose, title = { Text("Sign in to F1 TV") }, text = {
