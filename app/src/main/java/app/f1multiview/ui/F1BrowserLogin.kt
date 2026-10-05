@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.os.Handler
+import android.os.Looper
+import app.f1multiview.data.f1tv.F1TvApiClient
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
@@ -26,15 +29,37 @@ fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
                 var captured = false
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.userAgentString = F1TvApiClient.BROWSER_UA
                 CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+                val handler = Handler(Looper.getMainLooper())
+                fun captureToken() {
+                    if (captured) return
+                    val cm = CookieManager.getInstance()
+                    val token = listOf(
+                        "https://account.formula1.com/",
+                        "https://formula1.com/",
+                        "https://f1tv.formula1.com/"
+                    ).asSequence()
+                        .mapNotNull { readSubscriptionToken(cm.getCookie(it)) }
+                        .firstOrNull()
+                    if (token != null) {
+                        captured = true
+                        cm.flush()
+                        vm.signInWithSessionToken(token)
+                    } else {
+                        handler.postDelayed({ captureToken() }, 700L)
+                    }
+                }
+
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
-                        if (captured) return
-                        val token = readSubscriptionToken(CookieManager.getInstance().getCookie("https://account.formula1.com"))
-                        if (token != null) { captured = true; vm.signInWithSessionToken(token) }
+                        captureToken()
                     }
                 }
                 loadUrl("https://account.formula1.com/")
+                handler.postDelayed({ captureToken() }, 1000L)
             }
         })
     }, confirmButton = { TextButton(onClick = onClose) { Text("CLOSE") } })
