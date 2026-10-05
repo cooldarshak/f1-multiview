@@ -1412,6 +1412,7 @@ private fun FullscreenFeedControls(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val displayHdr = displaySupportsHdr(context)
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var position by remember(stream.id) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0L)) }
     var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
