@@ -90,7 +90,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     }
     override suspend fun sessions():Result<List<Session>> = runCatching {
         val out=mutableListOf<Session>(); val items=api.liveNow().optJSONObject("resultObj")?.optJSONArray("items")?:org.json.JSONArray()
-        for(i in 0 until items.length()){val item=items.optJSONObject(i)?:continue;val meta=item.optJSONObject("metadata")?:continue;val id=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue;val title=meta.optString("title").ifBlank{meta.optJSONObject("emfAttributes")?.optString("Global_Title")?:"Live"};out+=Session(id,title,"LIVE","Live now",true,artworkUrl=pictureUrl(meta.optString("pictureUrl"), 640, 360), backgroundArtworkUrl=pictureUrl(meta.optString("pictureUrl"), 1920, 1080))}
+        for(i in 0 until items.length()){val item=items.optJSONObject(i)?:continue;val meta=item.optJSONObject("metadata")?:continue;val id=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue;val title=meta.optString("title").ifBlank{meta.optJSONObject("emfAttributes")?.optString("Global_Title")?:"Live"};out+=Session(id,title,"LIVE","Live now",true,artworkUrl=pictureUrl(firstArtworkValue(item, meta), 640, 360), backgroundArtworkUrl=pictureUrl(firstArtworkValue(item, meta), 1920, 1080))}
         out
     }
     override suspend fun vodSeasons():Result<List<VodSeason>> = runCatching {
@@ -136,7 +136,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             val startDate=rawDate?.toLongOrNull() ?: 0L
             if(startDate>now)continue
             val number=props.optInt("meeting_Number",emf.optInt("Meeting_Number",0))
-            map.putIfAbsent(pageId,VodEvent(pageId,title,number,season.year,upper.contains("TEST"),pictureUrl(meta.optString("pictureUrl"), 640, 360), pictureUrl(meta.optString("pictureUrl"), 1920, 1080)))
+            map.putIfAbsent(pageId,VodEvent(pageId,title,number,season.year,upper.contains("TEST"),pictureUrl(firstArtworkValue(s, meta), 640, 360), pictureUrl(firstArtworkValue(s, meta), 1920, 1080)))
         }
         map.values.sortedWith(compareBy<VodEvent>{it.meetingNumber==0}.thenBy{it.meetingNumber}.thenBy{it.meetingName})
     }
@@ -153,9 +153,20 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 title.contains("race",true)||title.contains("qualifying",true)||title.contains("practice",true)||
                 title.contains("sprint",true)
             if(!looksLikeSession)continue
-            out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId,pictureUrl(meta.optString("pictureUrl"), 640, 360)?:event.artworkUrl, pictureUrl(meta.optString("pictureUrl"), 1920, 1080)?:event.backgroundArtworkUrl)
+            out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId,pictureUrl(firstArtworkValue(s, meta), 640, 360)?:event.artworkUrl, pictureUrl(firstArtworkValue(s, meta), 1920, 1080)?:event.backgroundArtworkUrl)
         }
         out.distinctBy{it.contentId}
+    }
+
+    private fun firstArtworkValue(node: org.json.JSONObject, meta: org.json.JSONObject): String? {
+        val emf = meta.optJSONObject("emfAttributes")
+        return listOf(
+            meta.optString("pictureUrl"),
+            node.optString("pictureUrl"),
+            meta.optString("imageUrl"),
+            node.optString("imageUrl"),
+            emf?.optString("pictureUrl")
+        ).firstOrNull { !it.isNullOrBlank() }
     }
 
     private fun pictureUrl(raw:String?, width:Int, height:Int):String? {
