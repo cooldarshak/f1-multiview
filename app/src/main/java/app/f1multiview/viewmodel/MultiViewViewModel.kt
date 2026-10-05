@@ -27,7 +27,8 @@ data class UiState(
     val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
-    val mainStreamId:String? = null
+    val mainStreamId:String? = null,
+    val savedSetups: List<SavedSetup> = emptyList()
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -39,6 +40,9 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.rows.collect{rows->if(rows.isNotEmpty())_ui.value=_ui.value.copy(timing=rows)}}
         viewModelScope.launch{timingClient.status.collect{status->_ui.value=_ui.value.copy(timingStatus=status)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
+        viewModelScope.launch{
+            store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
+        }
         viewModelScope.launch{
             store.setup.collect{setup->
                 if(setup!=null&&setup.streamIds.isNotEmpty()&&_ui.value.streams.isNotEmpty()){
@@ -155,7 +159,10 @@ fun toggleStream(id:String)=viewModelScope.launch{
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
-    fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("default",name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
+    fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("setup-"+System.currentTimeMillis(),name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
+    fun saveNamedSetup(id:String, name:String){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup(id,name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
+    fun loadSavedSetup(setup:SavedSetup){val available=_ui.value.streams.map{it.id}.toSet();val ids=setup.streamIds.filter{it in available};val max=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6};val main=setup.mainStreamId?.takeIf{it in ids}?:ids.firstOrNull();_ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=listOfNotNull(main)+ids.filterNot{it==main}.take(max-1),mainStreamId=main);persist()}
+    fun deleteSavedSetup(id:String)=viewModelScope.launch{store.delete(id)}
     fun clearSavedSetup()=viewModelScope.launch{store.clear()}
     override fun onCleared(){timingClient.stop();super.onCleared()}
     private fun persist(){saveCurrentSetup()}
