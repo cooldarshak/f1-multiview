@@ -26,7 +26,7 @@ private val InfoSurface = Color(0xFF14151B)
 
 @Composable
 fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, isTv: Boolean) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("calendar","standings","results") } ?: "calendar"
+    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results") } ?: "calendar"
     Surface(Modifier.fillMaxSize(),color=Color.Black.copy(alpha=.96f)) {
         Column(Modifier.fillMaxSize().padding(if(isTv) 28.dp else 18.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
@@ -38,6 +38,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, isTv: Boolean) {
                 InfoButton(section=="calendar","CALENDAR"){vm.panel("calendar");vm.loadCalendar()}
                 InfoButton(section=="standings","STANDINGS"){vm.panel("standings");vm.loadStandings()}
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
+                InfoButton(section=="shows","SHOWS & DOCS"){vm.panel("shows");vm.loadShowsDocs()}
             }
             Spacer(Modifier.height(14.dp))
             when(section) {
@@ -46,6 +47,16 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, isTv: Boolean) {
                 }
                 "standings" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     items(ui.standings){r-> InfoRow(r.position,r.name,r.constructor,r.points+" pts")}
+                }
+                "shows" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    items(ui.showsDocs){r->
+                        Surface(color=InfoSurface,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth()){
+                            Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically){
+                                Text("F1",color=InfoRed,fontWeight=FontWeight.Black,modifier=Modifier.width(38.dp))
+                                Column(Modifier.weight(1f)){Text(r.title,color=InfoWhite,fontWeight=FontWeight.Bold);Text("F1 TV EDITORIAL",color=InfoMuted,fontSize=9.sp)}
+                            }
+                        }
+                    }
                 }
                 else -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     items(ui.results){r-> InfoRow(r.position,r.name,r.constructor+" · "+r.status,r.points+" pts")}
