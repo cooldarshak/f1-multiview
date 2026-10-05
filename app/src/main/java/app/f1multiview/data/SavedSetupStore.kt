@@ -14,6 +14,7 @@ private val Context.settingsDataStore by preferencesDataStore(name = "f1_multivi
 class SavedSetupStore(private val context: Context) {
     private val setupsKey = stringPreferencesKey("saved_setups")
     private val legacyKey = stringPreferencesKey("saved_setup")
+    private val currentKey = stringPreferencesKey("current_setup")
 
     val setups: Flow<List<SavedSetup>> = context.settingsDataStore.data.map { prefs ->
         val raw = prefs[setupsKey]
@@ -21,7 +22,7 @@ class SavedSetupStore(private val context: Context) {
         else listOfNotNull(prefs[legacyKey]?.let(::decode))
     }
 
-    val setup: Flow<SavedSetup?> = setups.map { it.firstOrNull() }
+    val setup: Flow<SavedSetup?> = context.settingsDataStore.data.map { prefs -> prefs[currentKey]?.let(::decode) ?: prefs[legacyKey]?.let(::decode) }
 
     suspend fun save(setup: SavedSetup) {
         context.settingsDataStore.edit { prefs ->
@@ -31,6 +32,10 @@ class SavedSetupStore(private val context: Context) {
             prefs[setupsKey] = existing.joinToString("\n", transform = ::encode)
             prefs.remove(legacyKey)
         }
+    }
+
+    suspend fun saveCurrent(setup: SavedSetup) {
+        context.settingsDataStore.edit { prefs -> prefs[currentKey] = encode(setup) }
     }
 
     suspend fun delete(id: String) {
@@ -43,6 +48,7 @@ class SavedSetupStore(private val context: Context) {
     suspend fun clear() = context.settingsDataStore.edit {
         it.remove(setupsKey)
         it.remove(legacyKey)
+        it.remove(currentKey)
     }
 
     private fun encode(setup: SavedSetup): String =
