@@ -82,6 +82,11 @@ class PlayerPool(context: Context) {
                         if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player)
                     }
 
+                    override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                        val selected = selectedQualities[id] ?: Quality.AUTO
+                        if (selected != Quality.AUTO) applyQuality(player, selected, id == audioPlayerId)
+                    }
+
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) {
                             _errors.value = _errors.value - id
@@ -200,7 +205,7 @@ class PlayerPool(context: Context) {
         preserveAudioSetting: Boolean
     ): androidx.media3.common.TrackSelectionParameters {
         val builder = player.trackSelectionParameters.buildUpon()
-            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+            
 
         if (!preserveAudioSetting) {
             builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
@@ -208,20 +213,20 @@ class PlayerPool(context: Context) {
 
         when (quality) {
             Quality.UHD -> builder
-                .setMinVideoSize(3840, 2160)
-                .setMaxVideoSize(3840, 2160)
+                .setMinVideoSize(targetResolution(player, quality, 3840, 2160).first, targetResolution(player, quality, 3840, 2160).second)
+                .setMaxVideoSize(targetResolution(player, quality, 3840, 2160).first, targetResolution(player, quality, 3840, 2160).second)
                 .setForceHighestSupportedBitrate(true)
             Quality.FHD -> builder
-                .setMinVideoSize(1920, 1080)
-                .setMaxVideoSize(1920, 1080)
+                .setMinVideoSize(targetResolution(player, quality, 1920, 1080).first, targetResolution(player, quality, 1920, 1080).second)
+                .setMaxVideoSize(targetResolution(player, quality, 1920, 1080).first, targetResolution(player, quality, 1920, 1080).second)
                 .setForceHighestSupportedBitrate(true)
             Quality.HD -> builder
-                .setMinVideoSize(1280, 720)
-                .setMaxVideoSize(1280, 720)
+                .setMinVideoSize(targetResolution(player, quality, 1280, 720).first, targetResolution(player, quality, 1280, 720).second)
+                .setMaxVideoSize(targetResolution(player, quality, 1280, 720).first, targetResolution(player, quality, 1280, 720).second)
                 .setForceHighestSupportedBitrate(true)
             Quality.SD -> builder
-                .setMinVideoSize(854, 480)
-                .setMaxVideoSize(854, 480)
+                .setMinVideoSize(targetResolution(player, quality, 854, 480).first, targetResolution(player, quality, 854, 480).second)
+                .setMaxVideoSize(targetResolution(player, quality, 854, 480).first, targetResolution(player, quality, 854, 480).second)
                 .setForceHighestSupportedBitrate(true)
             Quality.AUTO -> builder
                 .setMinVideoSize(0, 0)
@@ -229,6 +234,20 @@ class PlayerPool(context: Context) {
                 .setForceHighestSupportedBitrate(true)
         }
         return builder.build()
+    }
+
+    private fun targetResolution(player: ExoPlayer, quality: Quality, fallbackWidth: Int, fallbackHeight: Int): Pair<Int,Int> {
+        val formats = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group -> (0 until group.length).map { group.getTrackFormat(it) } }
+            .filter { it.width > 0 && it.height > 0 }
+            .distinctBy { it.width to it.height }
+        if (formats.isEmpty()) return fallbackWidth to fallbackHeight
+        val desiredHeight = fallbackHeight
+        val candidates = formats.filter { it.height >= desiredHeight - 32 && it.height <= desiredHeight + 256 }
+        val best = candidates.maxWithOrNull(compareBy<androidx.media3.common.Format> { it.height }.thenBy { it.width })
+            ?: formats.minByOrNull { kotlin.math.abs(it.height - desiredHeight) }
+        return if (best != null) best.width to best.height else fallbackWidth to fallbackHeight
     }
 
     private fun isDecoderFailure(error: PlaybackException): Boolean {
