@@ -143,13 +143,41 @@ class F1TvApiClient {
         return JSONObject(response.body).optJSONObject("resultObj")?.optJSONArray("containers")?:org.json.JSONArray()
     }
     suspend fun prepareManifest(manifestUrl:String):ManifestProbe=withContext(Dispatchers.IO){
-        val builder=Request.Builder().url(manifestUrl).get().header("User-Agent",BROWSER_UA).header("Origin",BASE).header("Referer",BASE+"/").header("Accept","application/dash+xml, application/xml, */*").apply{authHeaders().forEach{(k,v)->header(k,v)}}
-            extractPlayToken(manifestUrl)?.takeIf { it.length >= 4 }?.let { builder.header("Cookie","playToken=" + it) }
-            val request=builder.build()
+        // F1OpenViewer establishes the manifest playToken with a HEAD request before
+        // fetching the playlist. Some F1 CDN variants reject a direct GET until this
+        // cookie has been issued.
+        val initialToken=extractPlayToken(manifestUrl)?.takeIf { it.length >= 4 }
+        val baseHeaders=buildMap<String,String>{
+            put("User-Agent",BROWSER_UA)
+            put("Origin",BASE)
+            put("Referer",BASE+"/")
+            put("Accept","application/dash+xml, application/xml, */*")
+            authHeaders().forEach{(k,v)->put(k,v)}
+        }
+        var playToken=initialToken
+        var headOk=false
+        runCatching {
+            val headBuilder=Request.Builder().url(manifestUrl).head()
+            baseHeaders.forEach{(k,v)->headBuilder.header(k,v)}
+            playToken?.let{headBuilder.header("Cookie","playToken="+it)}
+            http.newCall(headBuilder.build()).execute().use{response->
+                headOk=response.isSuccessful
+                response.headers.values("Set-Cookie").firstNotNullOfOrNull{cookie->
+                    cookie.substringBefore(';').takeIf{it.startsWith("playToken=",true)}?.substringAfter('=')
+                }?.takeIf{it.length>=4}?.let{playToken=it}
+            }
+        }
+        val builder=Request.Builder().url(manifestUrl).get()
+        baseHeaders.forEach{(k,v)->builder.header(k,v)}
+        playToken?.let { builder.header("Cookie","playToken="+it) }
+        val request=builder.build()
         http.newCall(request).execute().use{response->
             val body=response.body?.string().orEmpty()
-            val cookie=response.headers.values("Set-Cookie").firstNotNullOfOrNull{c->c.substringBefore(';').takeIf{it.startsWith("playToken=",true)}?.substringAfter('=')}
-            ManifestProbe(response.isSuccessful,cookie,extractLicenseUrl(body))
+            response.headers.values("Set-Cookie").firstNotNullOfOrNull{cookie->
+                cookie.substringBefore(';').takeIf{it.startsWith("playToken=",true)}?.substringAfter('=')
+            }?.takeIf{it.length>=4}?.let{playToken=it}
+            val license=extractLicenseUrl(body)
+            ManifestProbe(response.isSuccessful && (headOk || response.isSuccessful),playToken,license)
         }
     }
     data class ManifestProbe(val successful:Boolean,val playToken:String?,val licenseUrl:String?)
