@@ -52,9 +52,12 @@ class PlayerPool(context: Context) {
                 // quality from the controls inside an opened player.
                 val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
                     Configuration.UI_MODE_TYPE_TELEVISION
+                // Multiview must be decoder-friendly. A 4K stream for every
+                // tile can exhaust hardware decoder/network capacity and leave
+                // secondary tiles black. Fullscreen can explicitly request 4K.
                 val initialBuilder = player.trackSelectionParameters.buildUpon()
+                    .setMaxVideoSize(1920, 1080)
                     .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                if (!isTv) initialBuilder.setMaxVideoSize(1920, 1080)
                 player.trackSelectionParameters = initialBuilder.build()
 
                 player.addListener(object : Player.Listener {
