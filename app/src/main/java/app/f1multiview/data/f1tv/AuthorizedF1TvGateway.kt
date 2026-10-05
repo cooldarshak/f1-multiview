@@ -242,6 +242,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     }
 
     private fun stageOrder(stage: String): Int = when (stage.lowercase()) {
+        "pre-show" -> 5
         "practice-1" -> 10
         "practice-2" -> 20
         "practice-3" -> 30
@@ -250,10 +251,13 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         "sprint" -> 50
         "qualifying" -> 60
         "race" -> 70
-        "pre-show" -> 5
+        "race-in-30" -> 75
         "post-show" -> 80
-        "f1-kids" -> 90
-        else -> 100
+        "highlights" -> 85
+        "press-conference" -> 90
+        "conference" -> 95
+        "f1-kids" -> 100
+        else -> 110
     }
 
     private fun variantOrder(variant: String): Int = when (variant.lowercase()) {
@@ -322,7 +326,24 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     override suspend fun streams(sessionId:String):Result<List<StreamSource>> = runCatching {
         val container=api.contentVideo(sessionId)
         val metadata=container.optJSONObject("metadata")?:return@runCatching emptyList()
-        val additional=metadata.optJSONArray("additionalStreams")?:return@runCatching emptyList()
+        val additional=metadata.optJSONArray("additionalStreams")
+
+        // Editorial VOD (press conferences, shows, highlights, Race in 30, etc.)
+        // often has no additionalStreams because it is a single playable asset.
+        // Treat the asset itself as the World/main source instead of returning
+        // an empty stream list and trying to resolve a multiview feed.
+        if (additional == null || additional.length() == 0) {
+            return@runCatching listOf(
+                StreamSource(
+                    id = "vod-" + sessionId,
+                    title = metadata.optString("title").ifBlank { "F1 TV" },
+                    kind = StreamKind.WORLD,
+                    contentId = sessionId,
+                    channelId = null,
+                    isLive = false
+                )
+            )
+        }
 
         val world=mutableListOf<StreamSource>()
         val data=mutableListOf<StreamSource>()
