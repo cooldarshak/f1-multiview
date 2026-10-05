@@ -1101,8 +1101,7 @@ private fun FullscreenMultiview(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .focusProperties { canFocus = false }
-                    .clickable { controlsVisible = true }
+                    .pointerInput(Unit) { detectTapGestures { controlsVisible = true } }
                     .zIndex(20f)
             )
             Surface(
@@ -1484,7 +1483,10 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black).clickable { controlsVisible = !controlsVisible },
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
         PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
