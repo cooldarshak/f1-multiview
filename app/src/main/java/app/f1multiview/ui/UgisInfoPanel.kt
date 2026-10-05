@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import app.f1multiview.model.*
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.core.update.AppUpdateManager
@@ -32,7 +33,8 @@ private val InfoSurface = Color(0xFF14151B)
 fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
     val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio","updates","saved") } ?: "calendar"
     val scope=rememberCoroutineScope()
-    val updateManager=remember{AppUpdateManager(LocalContext.current)}
+    val context=LocalContext.current
+    val updateManager=remember(context){AppUpdateManager(context)}
     var updateMessage by remember{mutableStateOf("")}
     Surface(Modifier.fillMaxSize(),color=Color.Black.copy(alpha=.96f)) {
         Column(Modifier.fillMaxSize().padding(if(isTv) 28.dp else 18.dp)) {
