@@ -68,6 +68,14 @@ class ReplayTimingClient {
     private fun loadCuratedOffset(meetingKey:String,sessionKey:String):Long?=runCatching{
         if(meetingKey.isBlank()||sessionKey.isBlank())return null
         val j=getJson("https://api.multiviewer.app/api/v1/meetings/$meetingKey/sessions/$sessionKey")
-        (j.optDouble("session_start",Double.NaN)*1000.0).takeIf{it.isFinite()}?.toLong()
+        val start=(j.optDouble("session_start",Double.NaN)*1000.0).takeIf{it.isFinite()}?.toLong() ?: return null
+        val offsets=j.optJSONObject("sync_offsets")?.optJSONArray("sync_offsets")
+        val diffs=mutableMapOf<String,Long>()
+        if(offsets!=null) for(i in 0 until offsets.length()){
+            val o=offsets.optJSONObject(i) ?: continue
+            val cid=o.optJSONObject("streamData")?.optString("channelId").orEmpty()
+            if(cid.isNotBlank()) diffs[cid]=(o.optDouble("diffV2",o.optDouble("diff",0.0))*1000.0).toLong()
+        }
+        Pair(start,diffs)
     }.getOrNull()
 }
