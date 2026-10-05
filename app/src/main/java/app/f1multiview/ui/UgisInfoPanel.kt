@@ -30,7 +30,7 @@ private val InfoSurface = Color(0xFF14151B)
 
 @Composable
 fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio","updates") } ?: "calendar"
+    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio","updates","saved") } ?: "calendar"
     val scope=rememberCoroutineScope()
     val updateManager=remember{AppUpdateManager(LocalContext.current)}
     var updateMessage by remember{mutableStateOf("")}
@@ -47,9 +47,28 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
                 InfoButton(section=="shows","SHOWS & DOCS"){vm.panel("shows");vm.loadShowsDocs()}
                 InfoButton(section=="radio","RADIO"){vm.panel("radio")}
+                InfoButton(section=="saved","SAVED VIEWS"){vm.panel("saved")}
                 InfoButton(section=="updates","CHECK UPDATES"){vm.panel("updates");scope.launch{updateManager.check().onSuccess{info->if(info==null)updateMessage="You are up to date." else {updateMessage="Update ${info.versionName} available.";updateManager.downloadAndInstall(info)}}.onFailure{updateMessage=it.message.orEmpty()}}}
             }
             Spacer(Modifier.height(14.dp))
+            if(section=="saved"){
+                var name by remember{mutableStateOf("Race View")}
+                Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+                    OutlinedTextField(value=name,onValueChange={name=it},label={Text("New view name")},singleLine=true)
+                    InfoButton(false,"SAVE CURRENT VIEW"){vm.saveCurrentSetup(name.ifBlank{"Race View"})}
+                    LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)){
+                        items(ui.savedSetups){setup->
+                            Surface(color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth()){
+                                Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically){
+                                    Column(Modifier.weight(1f)){Text(setup.name,color=InfoWhite,fontWeight=FontWeight.Bold);Text(setup.layout.name+" · "+setup.streamIds.size+" feeds",color=InfoMuted,fontSize=9.sp)}
+                                    InfoButton(false,"LOAD"){vm.loadSavedSetup(setup)}
+                                    InfoButton(false,"DELETE"){vm.deleteSavedSetup(setup.id)}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if(section=="updates"){
                 Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
                     Text(updateMessage.ifBlank{"Check the update manifest for a newer APK."},color=InfoWhite,fontSize=12.sp)
