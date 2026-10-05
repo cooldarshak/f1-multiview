@@ -93,7 +93,13 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                         url=playback.manifestUrl,
                         drmLicenseUrl=playback.licenseUrl,
                         requestHeaders=playback.streamHeaders,
-                        drmRequestHeaders=playback.licenseHeaders
+                        drmRequestHeaders=playback.licenseHeaders,
+                        playApiVersion=playback.playApiVersion,
+                        platform=playback.platform,
+                        streamType=playback.streamType,
+                        ascendonToken=playback.ascendonToken,
+                        entitlementToken=playback.entitlementToken,
+                        drmType=playback.drmType
                     ) else it
                 },
                 providerError=null
