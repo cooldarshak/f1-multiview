@@ -11,8 +11,9 @@ data class StreamSource(
     val ascendonToken: String? = null, val entitlementToken: String? = null, val drmType: String? = null
 )
 data class DriverTelemetry(val driver: String, val speed: Int, val rpm: Int, val gear: Int, val throttle: Int, val brake: Int, val drs: Boolean, val lap: Int, val lapTime: String)
-data class TimingRow(val position: Int, val driver: String, val gap: String, val lastLap: String, val tyre: String, val pitStops: Int)
+data class TimingRow(val position: Int, val driver: String, val gap: String, val lastLap: String, val tyre: String, val pitStops: Int, val sector1: String = "-", val sector2: String = "-", val sector3: String = "-", val speed: String = "-", val drs: Boolean = false)
 data class RaceControlEvent(val time: String, val message: String, val severity: String)
+data class TimingWeather(val air: String = "-", val track: String = "-", val humidity: String = "-", val wind: String = "-", val rainfall: String = "-")
 data class Session(
     val id: String, val name: String, val country: String, val dateLabel: String, val live: Boolean,
     val seasonYear: Int? = null, val eventPageId: Int? = null, val series: String = "F1",
