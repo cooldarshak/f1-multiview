@@ -435,12 +435,18 @@ class PlayerPool(context: Context) {
      * Live feeds use live-edge offset when Media3 exposes it. Small drift is corrected
      * gently; a large drift is corrected once with a cooldown.
      */
-    fun syncToMain(mainId: String) {
+    fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
+
+    /** Synchronize followers while applying curated replay channel offsets. */
+    fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
         syncMainId = mainId
+        activeChannelOffsetsMs = channelOffsetsMs
         mainHandler.removeCallbacks(syncRunnable)
         syncToMainOnce(mainId)
         mainHandler.postDelayed(syncRunnable, 1_000L)
     }
+
+    private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
 
     private fun syncToMainOnce(mainId: String) {
         val main = players[mainId] ?: return
@@ -483,7 +489,7 @@ class PlayerPool(context: Context) {
                 // For VOD/replay, the main player's media position is the authoritative
                 // clock. This is deliberately NOT based on each manifest's windowStartTimeMs:
                 // different feed manifests can expose different epoch/window metadata.
-                main.currentPosition - player.currentPosition
+                main.currentPosition + (activeChannelOffsetsMs[id] ?: 0L) - player.currentPosition
             }
 
             val correction = correctionMs ?: return@forEach
