@@ -1,10 +1,12 @@
 package app.f1multiview.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -26,7 +28,13 @@ private val Red = Color(0xFFE10600)
 private val Bg = Color(0xFF0B0B10)
 private val Surface1 = Color(0xFF14151B)
 private val White = Color(0xFFF5F5F7)
-private val Muted = Color(0xFF9698A2)
+
+private const val F1_LOGIN_URL = "https://account.formula1.com/#/en/login"
+private const val PREFS = "f1_browser_login"
+private const val KEY_LOGIN = "login"
+private const val KEY_PASSWORD = "password"
+private const val AUTO_FILL_RETRY_DELAY_MS = 2_000L
+private const val AUTO_FILL_RETRY_ATTEMPTS = 8
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -115,12 +123,13 @@ fun F1BrowserLogin(
                 factory = { context ->
                     WebView(context).apply {
                         webViewRef = this
-                        var captured = false
+                        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        var capturedToken = false
 
-                        settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.useWideViewPort = true
                         settings.loadWithOverviewMode = true
+                        settings.javaScriptEnabled = true
                         settings.allowContentAccess = true
                         settings.allowFileAccess = false
                         settings.mediaPlaybackRequiresUserGesture = true
@@ -128,8 +137,19 @@ fun F1BrowserLogin(
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
+                        addJavascriptInterface(object {
+                            @JavascriptInterface
+                            fun saveCredentials(username: String, password: String) {
+                                if (username.isBlank() || password.isBlank()) return
+                                prefs.edit()
+                                    .putString(KEY_LOGIN, username)
+                                    .putString(KEY_PASSWORD, password)
+                                    .apply()
+                            }
+                        }, "Android")
+
                         fun captureToken() {
-                            if (captured) return
+                            if (capturedToken) return
                             val cm = CookieManager.getInstance()
                             val token = listOf(
                                 "https://account.formula1.com/",
@@ -140,7 +160,7 @@ fun F1BrowserLogin(
                                 .firstOrNull()
 
                             if (token != null) {
-                                captured = true
+                                capturedToken = true
                                 cm.flush()
                                 vm.signInWithSessionToken(token)
                                 return
@@ -148,26 +168,219 @@ fun F1BrowserLogin(
                             handler.postDelayed({ captureToken() }, 700L)
                         }
 
-                        fun acceptCookieConsent() {
+                        fun installCookieConsentAutomation() {
                             evaluateJavascript(
                                 """
                                 (function() {
-                                  var labels = ['Accept all','Accept All','I agree','Allow all','Accept'];
-                                  var els = Array.prototype.slice.call(document.querySelectorAll('button,a,[role="button"]'));
-                                  for (var i=0;i<els.length;i++) {
-                                    var t=(els[i].innerText||els[i].textContent||'').trim().toLowerCase();
-                                    for (var j=0;j<labels.length;j++) {
-                                      if (t === labels[j].toLowerCase()) {
-                                        els[i].click();
-                                        return 'clicked';
-                                      }
+                                    function collectInteractiveElements(root, found) {
+                                        if (!root) return;
+                                        var selectors = ['button','[role="button"]','input[type="button"]','input[type="submit"]','a[role="button"]'];
+                                        selectors.forEach(function(selector) {
+                                            try {
+                                                root.querySelectorAll(selector).forEach(function(element) {
+                                                    if (found.indexOf(element) === -1) found.push(element);
+                                                });
+                                            } catch (e) {}
+                                        });
+                                        try {
+                                            root.querySelectorAll('*').forEach(function(element) {
+                                                if (element.shadowRoot) collectInteractiveElements(element.shadowRoot, found);
+                                            });
+                                        } catch (e) {}
+                                        try {
+                                            root.querySelectorAll('iframe').forEach(function(frame) {
+                                                try {
+                                                    if (frame.contentDocument) collectInteractiveElements(frame.contentDocument, found);
+                                                } catch (e) {}
+                                            });
+                                        } catch (e) {}
                                     }
-                                  }
-                                  return 'none';
+
+                                    function looksLikeAcceptAction(element) {
+                                        if (!element) return false;
+                                        var text = [
+                                            element.innerText, element.textContent, element.value,
+                                            element.getAttribute('aria-label'), element.getAttribute('data-testid'),
+                                            element.getAttribute('title'), element.id, element.className
+                                        ].filter(Boolean).join(' ').toLowerCase();
+
+                                        var includeTerms = ['accept','agree','allow all','accept all','accept cookies','allow cookies','consent','got it','ok'];
+                                        var excludeTerms = ['reject','decline','deny','manage','settings','preferences','learn more'];
+
+                                        return includeTerms.some(function(term) { return text.indexOf(term) !== -1; }) &&
+                                            !excludeTerms.some(function(term) { return text.indexOf(term) !== -1; });
+                                    }
+
+                                    function clickConsentButton() {
+                                        var elements = [];
+                                        collectInteractiveElements(document, elements);
+                                        var candidate = elements.find(looksLikeAcceptAction);
+                                        if (!candidate) return false;
+
+                                        ['pointerdown','mousedown','mouseup','click'].forEach(function(name) {
+                                            try {
+                                                candidate.dispatchEvent(new MouseEvent(name, {
+                                                    bubbles: true, cancelable: true, view: window
+                                                }));
+                                            } catch (e) {}
+                                        });
+                                        try { candidate.click(); } catch (e) {}
+                                        return true;
+                                    }
+
+                                    if (!window.__f1CookieConsentAutomationInstalled) {
+                                        window.__f1CookieConsentAutomationInstalled = true;
+                                        try {
+                                            var observer = new MutationObserver(function() { clickConsentButton(); });
+                                            observer.observe(document.documentElement || document.body, {
+                                                childList: true, subtree: true, attributes: true
+                                            });
+                                        } catch (e) {}
+
+                                        var attempts = 0;
+                                        var intervalId = setInterval(function() {
+                                            attempts++;
+                                            if (clickConsentButton() || attempts >= 20) clearInterval(intervalId);
+                                        }, 1000);
+                                    }
+
+                                    return clickConsentButton() ? 'clicked' : 'installed';
                                 })();
                                 """.trimIndent(),
                                 null
                             )
+                        }
+
+                        fun captureCredentials() {
+                            evaluateJavascript(
+                                """
+                                (function() {
+                                    var loginButton =
+                                        document.querySelector('button.btn.btn-primary[type="submit"]') ||
+                                        document.querySelector('button[type="submit"]');
+
+                                    if (loginButton && !loginButton.hasAttribute('data-f1-capture-installed')) {
+                                        loginButton.setAttribute('data-f1-capture-installed', 'true');
+                                        loginButton.addEventListener('click', function() {
+                                            var loginInput =
+                                                document.querySelector('.txtLogin') ||
+                                                document.querySelector('input[type="email"]') ||
+                                                document.querySelector('input[name="email"]');
+                                            var passwordInput =
+                                                document.querySelector('.txtPassword') ||
+                                                document.querySelector('input[type="password"]');
+
+                                            var login = loginInput ? loginInput.value : '';
+                                            var password = passwordInput ? passwordInput.value : '';
+                                            if (login && password && window.Android) {
+                                                window.Android.saveCredentials(login, password);
+                                            }
+                                        });
+                                    }
+                                    return loginButton ? 'capture-installed' : 'login-button-not-found';
+                                })();
+                                """.trimIndent(),
+                                null
+                            )
+                        }
+
+                        fun fillLoginForm(login: String, password: String, autoSubmit: Boolean) {
+                            val escapedLogin = login
+                                .replace("\\", "\\\\")
+                                .replace("'", "\\'")
+                                .replace("\n", "\\n")
+                            val escapedPassword = password
+                                .replace("\\", "\\\\")
+                                .replace("'", "\\'")
+                                .replace("\n", "\\n")
+                            val submit = if (autoSubmit) "true" else "false"
+
+                            evaluateJavascript(
+                                """
+                                (function() {
+                                    function setNativeValue(element, value) {
+                                        if (!element) return false;
+                                        var prototype = element.tagName === 'TEXTAREA'
+                                            ? window.HTMLTextAreaElement.prototype
+                                            : window.HTMLInputElement.prototype;
+                                        var descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+                                        if (descriptor && descriptor.set) descriptor.set.call(element, value);
+                                        else element.value = value;
+
+                                        ['input','change','blur'].forEach(function(eventName) {
+                                            element.dispatchEvent(new Event(eventName, { bubbles: true }));
+                                        });
+                                        return true;
+                                    }
+
+                                    function findLoginField() {
+                                        return document.querySelector('.txtLogin') ||
+                                            document.querySelector('input[type="email"]') ||
+                                            document.querySelector('input[name="email"]');
+                                    }
+
+                                    function findPasswordField() {
+                                        return document.querySelector('.txtPassword') ||
+                                            document.querySelector('input[type="password"]');
+                                    }
+
+                                    function findSubmitButton() {
+                                        return document.querySelector('button.btn.btn-primary[type="submit"]') ||
+                                            document.querySelector('button[type="submit"]');
+                                    }
+
+                                    function tryFill() {
+                                        var loginField = findLoginField();
+                                        var passwordField = findPasswordField();
+                                        var loginButton = findSubmitButton();
+
+                                        var loginFilled = setNativeValue(loginField, '\${escapedLogin}');
+                                        var passwordFilled = setNativeValue(passwordField, '\${escapedPassword}');
+
+                                        if (!loginFilled || !passwordFilled) return false;
+
+                                        if (\${submit} && loginButton) {
+                                            setTimeout(function() { loginButton.click(); }, 500);
+                                        }
+                                        return true;
+                                    }
+
+                                    if (tryFill()) return 'filled-now';
+
+                                    var attempts = 0;
+                                    var intervalId = setInterval(function() {
+                                        attempts++;
+                                        if (tryFill() || attempts >= 15) clearInterval(intervalId);
+                                    }, 1000);
+                                    return 'scheduled-retries';
+                                })();
+                                """.trimIndent(),
+                                null
+                            )
+                        }
+
+                        fun autoFillCredentials() {
+                            val login = prefs.getString(KEY_LOGIN, null)
+                            val password = prefs.getString(KEY_PASSWORD, null)
+
+                            if (login.isNullOrBlank() || password.isNullOrBlank()) {
+                                captureCredentials()
+                                return
+                            }
+
+                            captureCredentials()
+                            fillLoginForm(login, password, autoSubmit = true)
+
+                            handler.postDelayed(object : Runnable {
+                                var attempt = 0
+                                override fun run() {
+                                    if (capturedToken || !url.orEmpty().startsWith(F1_LOGIN_URL)) return
+                                    attempt++
+                                    if (attempt > AUTO_FILL_RETRY_ATTEMPTS) return
+                                    fillLoginForm(login, password, autoSubmit = true)
+                                    handler.postDelayed(this, AUTO_FILL_RETRY_DELAY_MS)
+                                }
+                            }, AUTO_FILL_RETRY_DELAY_MS)
                         }
 
                         webViewClient = object : WebViewClient() {
@@ -175,15 +388,20 @@ fun F1BrowserLogin(
                                 super.onPageStarted(view, url, favicon)
                                 loading = true
                                 loadError = null
-                                acceptCookieConsent()
+                                installCookieConsentAutomation()
                                 captureToken()
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 loading = false
-                                acceptCookieConsent()
+                                installCookieConsentAutomation()
                                 captureToken()
+
+                                if (url.orEmpty().startsWith(F1_LOGIN_URL)) {
+                                    captureCredentials()
+                                    autoFillCredentials()
+                                }
                             }
 
                             override fun onReceivedError(
@@ -199,9 +417,9 @@ fun F1BrowserLogin(
                             }
                         }
 
-                        loadUrl("https://account.formula1.com/#/en/login")
+                        loadUrl(F1_LOGIN_URL)
                         handler.postDelayed({ captureToken() }, 1000L)
-                        handler.postDelayed({ acceptCookieConsent() }, 1800L)
+                        handler.postDelayed({ installCookieConsentAutomation() }, 1800L)
                     }
                 },
                 update = { webViewRef = it }
