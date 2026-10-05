@@ -2,18 +2,92 @@ package app.f1multiview.data.f1tv
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Handler
+import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import app.f1multiview.core.auth.SessionStore
 import app.f1multiview.core.playback.*
 import app.f1multiview.model.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     private val api=F1TvApiClient()
     private val store=SessionStore(context)
     override suspend fun signIn(credentials: ProviderCredentials): Result<Unit> =runCatching{api.login(credentials.username,credentials.password);api.authHeaders()["ascendontoken"]?.let(store::put)}
     override suspend fun signInWithSessionToken(token: String): Result<Unit> =runCatching{api.initialize(token);api.authHeaders()["ascendontoken"]?.let(store::put)}
-    override suspend fun restoreSession(): Result<Boolean> =runCatching{val token=store.get()?:return@runCatching false;api.initialize(token);api.isAuthenticated()}
-    override suspend fun signOut(){api.clear();store.clear()}
+    override suspend fun restoreSession(): Result<Boolean> = runCatching {
+        val saved = store.get()
+        if (!saved.isNullOrBlank() && !api.isTokenExpired(saved)) {
+            val restored = runCatching { api.initialize(saved) }.isSuccess
+            if (restored && api.isAuthenticated()) return@runCatching true
+        }
+        val refreshed = refreshFromBrowserSession()
+        if (refreshed.isNullOrBlank()) return@runCatching false
+        api.initialize(refreshed)
+        store.put(refreshed)
+        api.isAuthenticated()
+    }
+
+    override suspend fun signOut() {
+        api.clear()
+        store.clear()
+        withContext(Dispatchers.Main.immediate) {
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+        }
+    }
+
+    private suspend fun refreshFromBrowserSession(): String? = withContext(Dispatchers.Main.immediate) {
+        suspendCancellableCoroutine { continuation ->
+            var finished = false
+            var webView: WebView? = null
+            val handler = Handler(Looper.getMainLooper())
+            val cookies = CookieManager.getInstance()
+            cookies.setAcceptCookie(true)
+
+            fun finish(token: String?) {
+                if (finished) return
+                finished = true
+                handler.removeCallbacksAndMessages(null)
+                webView?.stopLoading()
+                webView?.destroy()
+                continuation.resume(token)
+            }
+
+            fun poll() {
+                val token = api.subscriptionTokenFromWebViewCookies()
+                if (!token.isNullOrBlank()) {
+                    cookies.flush()
+                    finish(token)
+                } else {
+                    handler.postDelayed({ poll() }, 700L)
+                }
+            }
+
+            webView = WebView(context.applicationContext).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.userAgentString = F1TvApiClient.BROWSER_UA
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        poll()
+                    }
+                }
+                loadUrl("https://account.formula1.com/")
+            }
+
+            handler.postDelayed({ finish(null) }, 20_000L)
+            poll()
+            continuation.invokeOnCancellation { handler.post { finish(null) } }
+        }
+    }
     override suspend fun sessions():Result<List<Session>> = runCatching {
         val out=mutableListOf<Session>(); val items=api.liveNow().optJSONObject("resultObj")?.optJSONArray("items")?:org.json.JSONArray()
         for(i in 0 until items.length()){val item=items.optJSONObject(i)?:continue;val meta=item.optJSONObject("metadata")?:continue;val id=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue;val title=meta.optString("title").ifBlank{meta.optJSONObject("emfAttributes")?.optString("Global_Title")?:"Live"};out+=Session(id,title,"LIVE","Live now",true,artworkUrl=pictureUrl(meta.optString("pictureUrl"), 640, 360), backgroundArtworkUrl=pictureUrl(meta.optString("pictureUrl"), 1920, 1080))}
