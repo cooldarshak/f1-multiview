@@ -952,7 +952,6 @@ private fun ResizeHandle(
         .then(
             if (enabled) {
                 Modifier
-                    .focusTarget()
                     .focusable()
                     .onFocusChanged { focused = it.isFocused }
                     .onKeyEvent { event ->
