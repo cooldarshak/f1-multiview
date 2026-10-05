@@ -11,12 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.f1multiview.model.*
 import app.f1multiview.media.RadioPlayer
+import app.f1multiview.core.update.AppUpdateManager
+import kotlinx.coroutines.launch
 import app.f1multiview.viewmodel.MultiViewViewModel
 import app.f1multiview.viewmodel.UiState
 
@@ -27,7 +30,10 @@ private val InfoSurface = Color(0xFF14151B)
 
 @Composable
 fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio") } ?: "calendar"
+    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio","updates") } ?: "calendar"
+    val scope=rememberCoroutineScope()
+    val updateManager=remember{AppUpdateManager(LocalContext.current)}
+    var updateMessage by remember{mutableStateOf("")}
     Surface(Modifier.fillMaxSize(),color=Color.Black.copy(alpha=.96f)) {
         Column(Modifier.fillMaxSize().padding(if(isTv) 28.dp else 18.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
@@ -41,8 +47,15 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
                 InfoButton(section=="shows","SHOWS & DOCS"){vm.panel("shows");vm.loadShowsDocs()}
                 InfoButton(section=="radio","RADIO"){vm.panel("radio")}
+                InfoButton(section=="updates","CHECK UPDATES"){vm.panel("updates");scope.launch{updateManager.check().onSuccess{info->if(info==null)updateMessage="You are up to date." else {updateMessage="Update ${info.versionName} available.";updateManager.downloadAndInstall(info)}}.onFailure{updateMessage=it.message.orEmpty()}}}
             }
             Spacer(Modifier.height(14.dp))
+            if(section=="updates"){
+                Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+                    Text(updateMessage.ifBlank{"Check the update manifest for a newer APK."},color=InfoWhite,fontSize=12.sp)
+                    Text("Updates require the same application signing key as the installed build.",color=InfoMuted,fontSize=10.sp)
+                }
+            }
             if(section=="radio"){
                 val radioState by radioPlayer.state.collectAsState()
                 val fallback="https://playerservices.streamtheworld.com/api/livestream-redirect/GRAND_PRIX_RADIO.mp3"
