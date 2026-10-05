@@ -174,6 +174,8 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null) resolveSource(source)
 }
+    fun activateTracker(){ val id=_ui.value.streams.firstOrNull{it.kind==StreamKind.TRACK}?.id ?: return; setMainStream(id) }
+    fun activateRaceMap(){ val id=_ui.value.streams.firstOrNull{it.kind==StreamKind.DATA}?.id ?: _ui.value.streams.firstOrNull{it.kind==StreamKind.TRACK}?.id ?: return; setMainStream(id) }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
         val current=_ui.value.selectedStreamIds
@@ -199,7 +201,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     fun loadResults()=viewModelScope.launch{featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun updateReplayTiming(positionMs:Long){ val rows=replayTimingClient.rowsAt(positionMs); if(rows.isNotEmpty()) _ui.value=_ui.value.copy(timing=rows,timingStatus="REPLAY") }
-    fun loadReplayTiming(session:Session)=viewModelScope.launch{ val year=session.seasonYear ?: return@launch; val meeting=session.meetingNumber ?: return@launch; replayTimingClient.load(year,meeting,session.sessionType).onFailure{ if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found")) } }
+    fun loadReplayTiming(session:Session)=viewModelScope.launch{ val year=session.seasonYear ?: return@launch; val meeting=session.meetingNumber ?: return@launch; replayTimingClient.load(year,meeting,session.sessionType).onSuccess{ _ui.value=_ui.value.copy(replayChannelDiffs=replayTimingClient.sync().channelDiffs) }.onFailure{ if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found")) } }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
     fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("setup-"+System.currentTimeMillis(),name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
@@ -208,5 +210,5 @@ fun toggleStream(id:String)=viewModelScope.launch{
     fun deleteSavedSetup(id:String)=viewModelScope.launch{store.delete(id)}
     fun clearSavedSetup()=viewModelScope.launch{store.clear()}
     override fun onCleared(){timingClient.stop();super.onCleared()}
-    private fun persist(){saveCurrentSetup()}
+    private fun persist(){ val current=_ui.value; viewModelScope.launch { store.saveCurrent(SavedSetup("current","Current View",current.layout,current.selectedStreamIds,current.mainStreamId)) } }
 }
