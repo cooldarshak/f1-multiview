@@ -73,4 +73,4 @@ class UgisFeatureClient(context: Context? = null) {
             throw error
         }
     }
-
+}
