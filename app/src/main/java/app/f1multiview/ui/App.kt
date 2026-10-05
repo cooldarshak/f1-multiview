@@ -998,7 +998,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
         Modifier.fillMaxSize().background(Color.Black).clickable { controlsVisible = !controlsVisible },
         contentAlignment = Alignment.Center
     ) {
-        PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_TEXTURE_VIEW)
+        PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
 
         if (!controlsVisible) {
             Surface(
