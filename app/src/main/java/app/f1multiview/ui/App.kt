@@ -162,18 +162,17 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
         if (ordered.isNotEmpty()) {
+            // Start every prepared player once. Do not seek/speed-adjust immediately;
+            // let each live manifest reach READY first.
             pool.playAll()
-            delay(1800L)
-            if (mainId != null) pool.syncToMain(mainId)
         }
     }
 
-    // Keep all selected live feeds locked to the main feed. The sync engine itself
-    // uses playback-rate nudges for small live drift and a cooled-down seek only for
-    // large drift, so this loop never creates the old rewind loop.
+    // F1-style live sync: let all feeds buffer independently, then gently correct
+    // follower drift. The sync engine never touches the main player's transport.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         while (true) {
-            delay(1_000L)
+            delay(2_000L)
             val mainId = ui.mainStreamId ?: continue
             if (ui.selectedStreamIds.size > 1) pool.syncToMain(mainId)
         }
