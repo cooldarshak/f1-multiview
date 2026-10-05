@@ -115,7 +115,7 @@ class F1CmafHlsDrmFixingDataSource private constructor(
 
     private fun rewritePlaylist(text: String): String {
         if (!text.startsWith("#EXTM3U")) return text
-        if (!text.contains("KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"")) return text
+        if (!text.contains("KEYFORMAT=\\\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\\\"")) return text
         return text.replace("METHOD=SAMPLE-AES-CTR", "METHOD=SAMPLE-AES")
     }
 }
