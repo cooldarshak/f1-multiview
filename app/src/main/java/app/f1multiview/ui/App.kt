@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
+import app.f1multiview.core.playback.VodSession
 import app.f1multiview.media.PlayerPool
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
