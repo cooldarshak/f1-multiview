@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.f1multiview.model.*
+import app.f1multiview.media.RadioPlayer
 import app.f1multiview.viewmodel.MultiViewViewModel
 import app.f1multiview.viewmodel.UiState
 
@@ -25,8 +26,8 @@ private val InfoRed = Color(0xFFE10600)
 private val InfoSurface = Color(0xFF14151B)
 
 @Composable
-fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, isTv: Boolean) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results") } ?: "calendar"
+fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
+    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio") } ?: "calendar"
     Surface(Modifier.fillMaxSize(),color=Color.Black.copy(alpha=.96f)) {
         Column(Modifier.fillMaxSize().padding(if(isTv) 28.dp else 18.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
@@ -39,8 +40,28 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, isTv: Boolean) {
                 InfoButton(section=="standings","STANDINGS"){vm.panel("standings");vm.loadStandings()}
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
                 InfoButton(section=="shows","SHOWS & DOCS"){vm.panel("shows");vm.loadShowsDocs()}
+                InfoButton(section=="radio","RADIO"){vm.panel("radio")}
             }
             Spacer(Modifier.height(14.dp))
+            if(section=="radio"){
+                val radioState by radioPlayer.state.collectAsState()
+                val fallback="https://playerservices.streamtheworld.com/api/livestream-redirect/GRAND_PRIX_RADIO.mp3"
+                Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+                    OutlinedTextField(value=ui.customRadioUrl,onValueChange=vm::setCustomRadioUrl,label={Text("Custom Radio URL")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                    Text("Built-in fallback: Grand Prix Radio",color=InfoMuted,fontSize=10.sp)
+                    Row(horizontalArrangement=Arrangement.spacedBy(7.dp)){
+                        InfoButton(radioState.playing,"PLAY RADIO"){radioPlayer.play(ui.customRadioUrl.ifBlank{fallback},ui.radioDelayMs)}
+                        InfoButton(false,"STOP"){radioPlayer.stop()}
+                        InfoButton(false,"-5s"){vm.setRadioDelayMs(ui.radioDelayMs-5000)}
+                        InfoButton(false,"+5s"){vm.setRadioDelayMs(ui.radioDelayMs+5000)}
+                        Text("Delay "+(ui.radioDelayMs/1000)+"s",color=InfoWhite,modifier=Modifier.padding(9.dp))
+                    }
+                    Row(verticalAlignment=Alignment.CenterVertically){
+                        Checkbox(checked=ui.preferCustomRadio,onCheckedChange=vm::setPreferCustomRadio)
+                        Text("Prefer custom radio for live sessions",color=InfoWhite,fontSize=11.sp)
+                    }
+                }
+            }
             when(section) {
                 "calendar" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     items(ui.calendar){r-> InfoRow(r.round.toString(),r.name,listOf(r.circuit,r.location).filter{it.isNotBlank()}.joinToString(" · "),r.date)}
