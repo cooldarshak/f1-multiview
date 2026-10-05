@@ -10,8 +10,8 @@ android {
         applicationId="app.f1multiview"
         minSdk=26
         targetSdk=35
-        versionCode=(System.getenv("BUILD_NUMBER")?.toIntOrNull()?.plus(1000) ?: 1001)
-        versionName="1.1." + (System.getenv("CM_BUILD_NUMBER")?.toIntOrNull() ?: 1)
+        versionCode=(System.getenv("CM_VERSION_CODE")?.toIntOrNull() ?: 101)
+        versionName="1.1." + (System.getenv("CM_VERSION_CODE")?.takeLast(6) ?: "101")
     }
     buildFeatures { compose=true }
     compileOptions {
