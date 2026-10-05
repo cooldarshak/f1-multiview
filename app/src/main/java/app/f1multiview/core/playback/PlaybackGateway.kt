@@ -34,6 +34,7 @@ data class VodEvent(
     val series: String = "F1",
     val startTime: Long = 0L
 )
+data class EditorialItem(val contentId:String,val title:String,val artworkUrl:String?=null,val pageId:Int=0)
 data class VodSession(
     val contentId: String,
     val title: String,
@@ -57,4 +58,5 @@ interface PlaybackGateway {
     suspend fun vodSeasons(): Result<List<VodSeason>>
     suspend fun vodEvents(season: VodSeason): Result<List<VodEvent>>
     suspend fun vodSessions(event: VodEvent): Result<List<VodSession>>
+    suspend fun showsAndDocs(): Result<List<EditorialItem>>
 }
