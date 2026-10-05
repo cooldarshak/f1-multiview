@@ -217,7 +217,7 @@ class PlayerPool(context: Context) {
             codec = selected.codecs,
             hdr = androidx.media3.common.ColorInfo.isTransferHdr(color),
             colorTransfer = color?.colorTransfer ?: -1,
-            colorSpace = color?.colorSpace ?: C.NO_VALUE,
+            colorSpace = color?.colorSpace ?: -1,
             bitDepth = color?.lumaBitdepth ?: C.NO_VALUE
         )
     }
