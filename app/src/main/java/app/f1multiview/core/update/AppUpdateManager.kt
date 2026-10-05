@@ -3,6 +3,8 @@ package app.f1multiview.core.update
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import app.f1multiview.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,11 @@ class AppUpdateManager(private val context:Context){
                 if(!response.isSuccessful) error("APK download HTTP ${response.code}")
                 val file=File(context.cacheDir,"F1MultiView-${info.versionCode}.apk")
                 response.body?.byteStream()?.use { input->file.outputStream().use { output->input.copyTo(output)} }
+                if(Build.VERSION.SDK_INT>=26 && !context.packageManager.canRequestPackageInstalls()){
+                    val settings=Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(settings)
+                    error("Enable Install unknown apps for F1 MultiView, then check for updates again.")
+                }
                 val uri=FileProvider.getUriForFile(context,context.packageName+".fileprovider",file)
                 val intent=Intent(Intent.ACTION_VIEW).apply{
                     setDataAndType(uri,"application/vnd.android.package-archive")
