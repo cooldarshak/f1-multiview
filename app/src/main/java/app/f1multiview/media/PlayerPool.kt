@@ -136,13 +136,16 @@ class PlayerPool(context: Context) {
             DefaultMediaSourceFactory(dataSource)
         }
 
-        if (stream.kind != app.f1multiview.model.StreamKind.WORLD) {
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setMaxVideoSize(1280, 720)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                .build()
-        }
+        // The selected main feed, not the feed type, determines its quality budget.
+        // Data/Tracker can be the main reference too, so never silently force the main
+        // player back to 720p here.
+        val isMain = stream.id == audioPlayerId
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
+            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
+            .build()
 
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
