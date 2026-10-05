@@ -882,7 +882,7 @@ private fun PitWall(
             errors,
             if (isTv) tvResizeMode else false,
             {},
-            Modifier.fillMaxWidth().height(if (compactPhone) 340.dp else if (isTv) 500.dp else 430.dp)
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
         )
     }
 }
