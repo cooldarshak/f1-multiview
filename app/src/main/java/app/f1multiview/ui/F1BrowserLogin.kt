@@ -328,8 +328,8 @@ fun F1BrowserLogin(
                                         var passwordField = findPasswordField();
                                         var loginButton = findSubmitButton();
 
-                                        var loginFilled = setNativeValue(loginField, '\${escapedLogin}');
-                                        var passwordFilled = setNativeValue(passwordField, '\${escapedPassword}');
+                                        var loginFilled = setNativeValue(loginField, ${loginJs});
+                                        var passwordFilled = setNativeValue(passwordField, ${passwordJs});
 
                                         if (!loginFilled || !passwordFilled) return false;
 
