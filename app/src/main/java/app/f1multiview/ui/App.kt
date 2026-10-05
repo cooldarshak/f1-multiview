@@ -198,7 +198,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(ui, pool, errors, { fullscreenMultiview = false }, vm::toggleStream, vm::setMainStream, vm::setLayout)
+        FullscreenMultiview(ui, pool, errors, { fullscreenMultiview = false }, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
         return
     }
 
@@ -1084,7 +1084,8 @@ private fun FullscreenMultiview(
     onClose: () -> Unit,
     onToggleStream: (String) -> Unit,
     onSetMainStream: (String) -> Unit,
-    onLayout: (LayoutPreset) -> Unit
+    onLayout: (LayoutPreset) -> Unit,
+    onPreset: (String) -> Unit
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
     val context = LocalContext.current
@@ -1233,6 +1234,10 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.width(6.dp))
                     Text("${selected.size} FEEDS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
                     Spacer(Modifier.weight(1f))
+                    Control(false, "SIDE OBC") { onPreset("side") }
+                    Spacer(Modifier.width(5.dp))
+                    Control(false, "QUAD") { onPreset("quad") }
+                    Spacer(Modifier.width(5.dp))
                     listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4", LayoutPreset.GRID_6 to "6").forEach { (preset, label) ->
                         Control(layout == preset, "LAYOUT " + label) { layout = preset; onLayout(preset) }
                         Spacer(Modifier.width(5.dp))
