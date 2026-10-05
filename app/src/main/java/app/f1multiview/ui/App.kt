@@ -44,9 +44,13 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
+import androidx.compose.ui.focus.focusable
+import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
@@ -148,13 +152,13 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(ui, pool, errors, { fullscreenMultiview = false }, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
+        FullscreenMultiview(ui, pool, errors, { pool.stopAll(); fullscreenMultiview = false }, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
         return
     }
 
     val fullscreenStream = ui.streams.firstOrNull { it.id == fullscreenStreamId }
     if (fullscreenStream != null) {
-        FullscreenPlayer(fullscreenStream, ui, pool, errors[fullscreenStream.id], { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { fullscreenStreamId = null }
+        FullscreenPlayer(fullscreenStream, ui, pool, errors[fullscreenStream.id], { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { pool.stopAll(); fullscreenStreamId = null }
         return
     }
 
@@ -474,6 +478,7 @@ private fun ArchivePill(selected: Boolean, title: String, onClick: () -> Unit) {
         Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
+            .focusable()
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) Red else Surface2,
@@ -1087,6 +1092,16 @@ private fun FullscreenMultiview(
     var fullscreenBackFocused by remember { mutableStateOf(false) }
     var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
 
+    BackHandler(enabled = true) {
+        when {
+            menu != null -> menu = null
+            feedPickerOpen -> feedPickerOpen = false
+            editSize -> editSize = false
+            controlsVisible -> controlsVisible = false
+            else -> onClose()
+        }
+    }
+
     LaunchedEffect(controlsVisible) {
         delay(80L)
         if (controlsVisible) fullscreenBackFocusRequester.requestFocus()
@@ -1136,6 +1151,13 @@ private fun FullscreenMultiview(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusable()
+            .onKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionCenter && !controlsVisible) {
+                    controlsVisible = true
+                    true
+                } else false
+            }
             .pointerInput(controlsVisible, feedPickerOpen, editSize, menu) {
                 detectTapGestures {
                     if (!feedPickerOpen && !editSize && menu == null) {
@@ -1177,7 +1199,7 @@ private fun FullscreenMultiview(
 
 
         if (controlsVisible) {
-            Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
+            Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).focusGroup().background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         Modifier
@@ -1253,7 +1275,7 @@ private fun FullscreenMultiview(
 
 
         if (active != null && controlsVisible) {
-            Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {                FullscreenFeedControls(
+            Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
                     stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
                     speed = speed, quality = quality, fit = fit, menu = menu,
                     onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
@@ -1523,6 +1545,16 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
     var fullscreenBackFocused by remember { mutableStateOf(false) }
     var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
 
+    BackHandler(enabled = true) {
+        when {
+            menu != null -> menu = null
+            feedPickerOpen -> feedPickerOpen = false
+            editSize -> editSize = false
+            controlsVisible -> controlsVisible = false
+            else -> onClose()
+        }
+    }
+
     LaunchedEffect(controlsVisible) {
         delay(80L)
         if (controlsVisible) fullscreenBackFocusRequester.requestFocus()
@@ -1585,6 +1617,13 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusable()
+            .onKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionCenter && !controlsVisible) {
+                    controlsVisible = true
+                    true
+                } else false
+            }
             .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
@@ -1629,7 +1668,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
 
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f))))) {
-                Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
+                LazyRow(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp).focusGroup(), horizontalArrangement=Arrangement.spacedBy(7.dp), verticalAlignment=Alignment.CenterVertically) {
                     Surface(
                         Modifier
                             .focusRequester(fullscreenBackFocusRequester)
@@ -1657,7 +1696,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
                     SmallPlayerButton("HIDE"){ controlsVisible = false }
                 }
 
-                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal=14.dp,vertical=12.dp)) {
+                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal=14.dp,vertical=12.dp).focusGroup()) {
                     if(duration>0L){
                         Slider(
                             value=position.toFloat().coerceIn(0f,duration.toFloat()),
@@ -1683,17 +1722,16 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){
-                        PlayerControlButton("↶ 10"){player.seekTo(max(0L,player.currentPosition-10_000L))}
-                        PlayerControlButton(if(playing)"PAUSE" else "PLAY"){if(playing)player.pause()else player.play()}
-                        PlayerControlButton("10 ↷"){player.seekTo(player.currentPosition+10_000L)}
-                        Spacer(Modifier.weight(1f))
-                        PlayerControlButton(if(muted)"MUTE" else "SOUND"){muted=!muted;player.volume=if(muted)0f else 1f}
-                        MenuButton("SPEED  " + "%.2f".format(speed)){menu=if(menu=="speed")null else "speed"}
-                        MenuButton("QUALITY  " + quality.label()){menu=if(menu=="quality")null else "quality"}
-                        MenuButton("AUDIO"){menu=if(menu=="audio")null else "audio"}
-                        MenuButton("SUBS"){menu=if(menu=="text")null else "text"}
-                        MenuButton("MORE"){menu=if(menu=="more")null else "more"}
+                    LazyRow(Modifier.fillMaxWidth().focusGroup(), horizontalArrangement=Arrangement.spacedBy(7.dp), verticalAlignment=Alignment.CenterVertically){
+                        item { PlayerControlButton("↶ 10"){player.seekTo(max(0L,player.currentPosition-10_000L))} }
+                        item { PlayerControlButton(if(playing)"PAUSE" else "PLAY"){if(playing)player.pause()else player.play()} }
+                        item { PlayerControlButton("10 ↷"){player.seekTo(player.currentPosition+10_000L)} }
+                        item { PlayerControlButton(if(muted)"MUTE" else "SOUND"){muted=!muted;player.volume=if(muted)0f else 1f} }
+                        item { MenuButton("SPEED  " + "%.2f".format(speed)){menu=if(menu=="speed")null else "speed"} }
+                        item { MenuButton("QUALITY  " + quality.label()){menu=if(menu=="quality")null else "quality"} }
+                        item { MenuButton("AUDIO"){menu=if(menu=="audio")null else "audio"} }
+                        item { MenuButton("SUBS"){menu=if(menu=="text")null else "text"} }
+                        item { MenuButton("MORE"){menu=if(menu=="more")null else "more"} }
                     }
 
                     if(menu!=null){
@@ -1771,10 +1809,10 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
 @Composable private fun SmallPlayerButton(label:String,onClick:()->Unit){
     var focused by remember { mutableStateOf(false) }
     Surface(
-        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).onFocusChanged { focused = it.isFocused },
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).focusable().onFocusChanged { focused = it.isFocused },
         color=Color.Black.copy(alpha=.65f),
         shape=RoundedCornerShape(8.dp),
-        border=if (focused) BorderStroke(2.dp, White) else null
+        border=if (focused) BorderStroke(3.dp, White) else null
     ){
         Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=7.dp))
     }
@@ -1782,7 +1820,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
 @Composable private fun PlayerControlButton(label:String,onClick:()->Unit){
     var focused by remember { mutableStateOf(false) }
     Surface(
-        Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick).onFocusChanged { focused = it.isFocused },
+        Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick).focusable().onFocusChanged { focused = it.isFocused },
         color=if(label=="PAUSE"||label=="PLAY")Red else Color.White.copy(alpha=.12f),
         shape=RoundedCornerShape(50),
         border=if (focused) BorderStroke(2.dp, White) else null
@@ -1878,7 +1916,7 @@ private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) Red else Surface2,
-        border = if (focused && !selected) BorderStroke(2.dp, White) else null
+        border = if (focused) BorderStroke(3.dp, White) else if (selected) BorderStroke(1.dp, White.copy(alpha = .55f)) else null
     ) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
     }
@@ -1888,7 +1926,7 @@ private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
 private fun Action(label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .07f),
-        border = if (focused) BorderStroke(2.dp, White) else null) {
+        border = if (focused) BorderStroke(3.dp, White) else null) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
     }
 }
