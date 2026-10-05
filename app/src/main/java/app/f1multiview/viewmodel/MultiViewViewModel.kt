@@ -5,6 +5,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.f1multiview.core.playback.*
 import app.f1multiview.data.DemoRepository
+import app.f1multiview.data.UgisFeatureClient
+import app.f1multiview.data.CalendarRace
+import app.f1multiview.data.StandingRow
+import app.f1multiview.data.ResultRow
 import app.f1multiview.data.SavedSetupStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
 import app.f1multiview.data.timing.LiveTimingClient
@@ -28,12 +32,16 @@ data class UiState(
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
     val mainStreamId:String? = null,
-    val savedSetups: List<SavedSetup> = emptyList()
+    val savedSetups: List<SavedSetup> = emptyList(),
+    val calendar: List<CalendarRace> = emptyList(),
+    val standings: List<StandingRow> = emptyList(),
+    val results: List<ResultRow> = emptyList()
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
     private val timingClient=LiveTimingClient(viewModelScope)
+    private val featureClient=UgisFeatureClient()
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
     init{
         timingClient.start()
@@ -156,6 +164,9 @@ fun toggleStream(id:String)=viewModelScope.launch{
         persist()
         if(source.url==null) resolveSource(source)
     }
+    fun loadCalendar()=viewModelScope.launch{featureClient.calendar().onSuccess{_ui.value=_ui.value.copy(calendar=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    fun loadStandings()=viewModelScope.launch{featureClient.standings().onSuccess{_ui.value=_ui.value.copy(standings=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    fun loadResults()=viewModelScope.launch{featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
