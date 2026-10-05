@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
-import app.f1multiview.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -27,10 +26,12 @@ class AppUpdateManager(private val context:Context){
                 if(!response.isSuccessful) error("Update check HTTP ${response.code}")
                 val j=JSONObject(response.body?.string().orEmpty())
                 val info=AppUpdateInfo(j.optInt("versionCode"),j.optString("versionName"),j.optString("apkUrl"),j.optString("notes"))
-                if(info.versionCode>BuildConfig.VERSION_CODE && info.apkUrl.isNotBlank()) info else null
+                if(info.versionCode>currentVersionCode() && info.apkUrl.isNotBlank()) info else null
             }
         }
     }
+
+    private fun currentVersionCode():Long = context.packageManager.getPackageInfo(context.packageName,0).longVersionCode
 
     suspend fun downloadAndInstall(info:AppUpdateInfo):Result<Unit> = withContext(Dispatchers.IO){
         runCatching{
