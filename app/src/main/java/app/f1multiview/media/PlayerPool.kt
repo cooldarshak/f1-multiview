@@ -60,7 +60,7 @@ class PlayerPool(context: Context) {
                 // tile can exhaust hardware decoder/network capacity and leave
                 // secondary tiles black. Fullscreen can explicitly request 4K.
                 val initialBuilder = player.trackSelectionParameters.buildUpon()
-                    .setMaxVideoSize(1920, 1080)
+                    .setMaxVideoSize(1280, 720)
                     .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
                 player.trackSelectionParameters = initialBuilder.build()
 
@@ -230,68 +230,74 @@ class PlayerPool(context: Context) {
      * playback-rate nudge (the same approach used by F1OpenViewer); large drift gets
      * one seek with a cooldown so we never create a rewind/seek loop.
      */
+    /**
+     * Align all selected feeds to the main feed.
+     *
+     * Replays/VOD use the main player's media position as the authoritative clock.
+     * This is intentionally a seek-only operation: continuously rate-correcting a VOD
+     * replay makes the reference stream stutter and can repeatedly flush follower buffers.
+     *
+     * Live feeds use live-edge offset when Media3 exposes it. Small drift is corrected
+     * gently; a large drift is corrected once with a cooldown.
+     */
     fun syncToMain(mainId: String) {
         val main = players[mainId] ?: return
         if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
 
+        val isLive = main.isCurrentWindowLive || main.currentLiveOffset != C.TIME_UNSET
+        val mainPosition = main.currentPosition.coerceAtLeast(0L)
         val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-        val mainEpoch = absolutePresentationTime(main)
-        // F1 live manifests may not always flag the window as live even though Media3
-        // exposes a valid live offset. Treat a valid live offset as the authoritative live signal.
-        val live = main.isCurrentWindowLive || mainLiveOffset != null
-
-        // The reference feed controls the wall. If it buffers or is stopped, hold the
-        // followers instead of letting them run ahead and forcing a later seek.
-        if (!main.isPlaying) {
-            players.forEach { (id, player) ->
-                if (id != mainId) {
-                    player.setPlaybackSpeed(1f)
-                    if (player.isPlaying) player.pause()
-                    player.playWhenReady = true
-                }
-            }
-            return
-        }
+        val now = android.os.SystemClock.elapsedRealtime()
 
         players.forEach { (id, player) ->
-            if (id == mainId) return@forEach
+            if (id == mainId) {
+                player.setPlaybackSpeed(1f)
+                player.playWhenReady = true
+                if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
+                    player.play()
+                }
+                return@forEach
+            }
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
-            // Never leave a selected secondary intentionally stopped after Sync All.
             player.playWhenReady = true
             if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
                 player.play()
             }
 
-            val secondaryLiveOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-            val secondaryEpoch = absolutePresentationTime(player)
-
-            val driftMs: Long? = when {
-                live && mainLiveOffset != null && secondaryLiveOffset != null -> secondaryLiveOffset - mainLiveOffset
-                mainEpoch != null && secondaryEpoch != null -> secondaryEpoch - mainEpoch
-                mainLiveOffset != null && secondaryLiveOffset != null -> secondaryLiveOffset - mainLiveOffset
-                else -> null
+            if (!isLive) {
+                // F1OpenViewer's stable VOD strategy: main is the reference and
+                // followers seek once to exactly the same media position.
+                val target = mainPosition
+                if (kotlin.math.abs(player.currentPosition - target) >= 500L) {
+                    player.seekTo(target)
+                }
+                player.setPlaybackSpeed(1f)
+                return@forEach
             }
-            if (driftMs == null) return@forEach
+
+            val secondaryLiveOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
+            val driftMs = if (mainLiveOffset != null && secondaryLiveOffset != null) {
+                // Positive means follower is further behind live edge and must move forward.
+                secondaryLiveOffset - mainLiveOffset
+            } else {
+                null
+            } ?: return@forEach
 
             val absDrift = kotlin.math.abs(driftMs)
-            if (live) {
-                // For live F1 feeds, converge with rate nudges only. Do not seek the live
-                // follower repeatedly: the feeds can have different segment/window latency,
-                // and seeks can flush the buffer and create the rewind/rebuffer loop we saw.
-                val rate = when {
-                    absDrift < 120L -> 1f
-                    driftMs > 0L -> 1.05f
-                    else -> 0.95f
-                }
-                player.setPlaybackSpeed(rate)
-            } else {
+            val rate = when {
+                absDrift < 350L -> 1f
+                driftMs > 0L -> 1.02f
+                else -> 0.98f
+            }
+            player.setPlaybackSpeed(rate)
+
+            if (absDrift >= 3_000L && now - (lastLiveSeekMs[id] ?: 0L) >= 8_000L) {
+                val target = (player.currentPosition + driftMs).coerceAtLeast(0L)
+                val duration = player.duration
+                player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
                 player.setPlaybackSpeed(1f)
-                if (absDrift >= 750L) {
-                    val target = (player.currentPosition + driftMs).coerceAtLeast(0L)
-                    val duration = player.duration
-                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                }
+                lastLiveSeekMs[id] = now
             }
         }
     }
@@ -355,7 +361,7 @@ class PlayerPool(context: Context) {
 private object ProductionLoadControl {
     fun create(): androidx.media3.exoplayer.LoadControl =
         androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(1_500, 8_000, 500, 1_000)
+            .setBufferDurationsMs(5_000, 20_000, 1_500, 3_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 }
