@@ -1018,6 +1018,8 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                     SmallPlayerButton("PIP"){enterPip()}
                     Spacer(Modifier.width(6.dp))
                     SmallPlayerButton(if (fit) "FIT" else "FILL"){ fit=!fit; player.videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING }
+                    Spacer(Modifier.width(6.dp))
+                    SmallPlayerButton("HIDE"){ controlsVisible = false }
                 }
 
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal=14.dp,vertical=12.dp)) {
