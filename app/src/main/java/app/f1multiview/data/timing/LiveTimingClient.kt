@@ -1,6 +1,8 @@
 package app.f1multiview.data.timing
 
 import app.f1multiview.model.TimingRow
+import app.f1multiview.model.RaceControlEvent
+import app.f1multiview.model.TimingWeather
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import okhttp3.*
@@ -21,6 +23,8 @@ class LiveTimingClient(private val scope:CoroutineScope){
     private val http=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(0,TimeUnit.MILLISECONDS).build()
     private val _rows=MutableStateFlow<List<TimingRow>>(emptyList());val rows: StateFlow<List<TimingRow>> = _rows.asStateFlow()
     private val _status=MutableStateFlow("OFFLINE");val status:StateFlow<String> = _status.asStateFlow()
+    private val _raceControl=MutableStateFlow<List<RaceControlEvent>>(emptyList());val raceControl:StateFlow<List<RaceControlEvent>> = _raceControl.asStateFlow()
+    private val _weather=MutableStateFlow(TimingWeather());val weather:StateFlow<TimingWeather> = _weather.asStateFlow()
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
@@ -49,6 +53,22 @@ class LiveTimingClient(private val scope:CoroutineScope){
         }}
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;_status.value="RETRYING";scheduleReconnect()}
         override fun onClosed(ws:WebSocket,code:Int,reason:String){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"}
+    }
+    private fun parseRaceControl(data:JSONObject?) {
+        val messages=data?.optJSONObject("Messages")?:data?.optJSONObject("messages")?:return
+        val out=mutableListOf<RaceControlEvent>()
+        val keys=messages.keys()
+        while(keys.hasNext()){
+            val m=messages.optJSONObject(keys.next())?:continue
+            val message=m.optString("Message").ifBlank{m.optString("Category")}
+            if(message.isNotBlank()) out+=RaceControlEvent(m.optString("Utc").ifBlank{m.optString("Time")}.ifBlank{"-"},message,m.optString("Flag").ifBlank{"INFO"})
+        }
+        if(out.isNotEmpty()) _raceControl.value=out.takeLast(30)
+    }
+    private fun parseWeather(data:JSONObject?) {
+        if(data==null)return
+        fun v(vararg n:String)=n.firstNotNullOfOrNull{data.optString(it).takeIf{v->v.isNotBlank()}}?:"-"
+        _weather.value=TimingWeather(v("AirTemp","AirTemperature"),v("TrackTemp","TrackTemperature"),v("Humidity"),v("WindSpeed","Wind"),v("Rainfall","RainfallIntensity"))
     }
     private fun parseTiming(data:JSONObject?){if(data==null)return;val lines=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
         while(keys.hasNext()){val line=lines.optJSONObject(keys.next())?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("RacingNumber").ifBlank{line.optString("FullName")}.ifBlank{line.optString("Tla")}.ifBlank{"P"+pos};val gap=line.optString("GapToLeader").ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val last=line.optJSONObject("LastLapTime")?.optString("Value")?:line.optString("LastLapTime");val tyre=line.optJSONObject("BestLapTime")?.optString("Compound")?:line.optString("Compound");rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0))}
