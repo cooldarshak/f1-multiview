@@ -1,5 +1,6 @@
 package app.f1multiview.data
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -11,12 +12,13 @@ data class CalendarRace(val round:Int,val name:String,val circuit:String,val loc
 data class StandingRow(val position:String,val name:String,val constructor:String,val points:String,val wins:String)
 data class ResultRow(val position:String,val name:String,val constructor:String,val points:String,val status:String)
 
-class UgisFeatureClient {
+class UgisFeatureClient(context: Context? = null) {
     private val http = OkHttpClient.Builder().callTimeout(15, TimeUnit.SECONDS).build()
     private val base = "https://api.jolpi.ca/ergast/f1"
     private val userAgent = "F1MultiView/1.2"
     private val cache = LinkedHashMap<String, Pair<Long, JSONObject>>(16, 0.75f, true)
     private val cacheTtlMs = 5 * 60 * 1000L
+    private val diskCache = context?.getSharedPreferences("f1_feature_cache", Context.MODE_PRIVATE)
 
     suspend fun calendar(season:String="current"):Result<List<CalendarRace>> = getCached("$base/$season/races/").map { root ->
         val races = root.optJSONObject("MRData")?.optJSONObject("RaceTable")?.optJSONArray("Races") ?: org.json.JSONArray()
@@ -62,10 +64,12 @@ class UgisFeatureClient {
                 if(!response.isSuccessful) error("F1 data service HTTP ${response.code}")
                 val json=JSONObject(response.body?.string().orEmpty())
                 synchronized(cache) { cache[url]=System.currentTimeMillis() to JSONObject(json.toString()) }
+                diskCache?.edit()?.putString(url,json.toString())?.putLong(url+"@ts",System.currentTimeMillis())?.apply()
                 json
             }
         }.recoverCatching { error ->
             synchronized(cache) { cache[url]?.second?.let { return@recoverCatching JSONObject(it.toString()) } }
+            diskCache?.getString(url,null)?.let { return@recoverCatching JSONObject(it) }
             throw error
         }
     }
