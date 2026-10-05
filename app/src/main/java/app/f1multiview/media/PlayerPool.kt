@@ -7,7 +7,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
@@ -45,7 +44,10 @@ class PlayerPool(context: Context) {
             .setLoadControl(ProductionLoadControl.create())
             .build()
             .also { player ->
-                player.setAudioAttributes(audioAttributes, true)
+                // Multiview owns several ExoPlayers. They must not compete for Android audio focus.
+                // Only the selected main player's volume is audible; audio focus is therefore
+                // handled outside individual players.
+                player.setAudioAttributes(audioAttributes, false)
                 player.volume = 0f
                 player.videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 player.setHandleAudioBecomingNoisy(true)
@@ -234,7 +236,6 @@ class PlayerPool(context: Context) {
 
         val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
         val mainEpoch = absolutePresentationTime(main)
-        val now = android.os.SystemClock.elapsedRealtime()
         val live = main.isCurrentWindowLive
 
         players.forEach { (id, player) ->
@@ -260,26 +261,15 @@ class PlayerPool(context: Context) {
 
             val absDrift = kotlin.math.abs(driftMs)
             if (live) {
-                // Secondary behind main => positive drift => speed it up.
-                // Secondary ahead => negative drift => slow it down while main catches up.
+                // For live F1 feeds, converge with rate nudges only. Do not seek the live
+                // follower repeatedly: the feeds can have different segment/window latency,
+                // and seeks can flush the buffer and create the rewind/rebuffer loop we saw.
                 val rate = when {
-                    absDrift < 250L -> 1f
-                    driftMs > 0L -> 1.06f
-                    else -> 0.94f
+                    absDrift < 120L -> 1f
+                    driftMs > 0L -> 1.05f
+                    else -> 0.95f
                 }
                 player.setPlaybackSpeed(rate)
-
-                // Only seek when a feed is materially out of alignment. Cooldown prevents
-                // the 5-second rewind loop that the previous implementation produced.
-                if (absDrift >= 4_000L && now - (lastLiveSeekMs[id] ?: 0L) >= 5_000L) {
-                    // Positive drift means this follower is behind the main feed,
-                    // so move it FORWARD by the drift amount.
-                    val target = (player.currentPosition + driftMs).coerceAtLeast(0L)
-                    val duration = player.duration
-                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                    player.setPlaybackSpeed(1f)
-                    lastLiveSeekMs[id] = now
-                }
             } else {
                 player.setPlaybackSpeed(1f)
                 if (absDrift >= 750L) {
@@ -333,7 +323,6 @@ class PlayerPool(context: Context) {
 
     fun clear(id: String) {
         players.remove(id)?.release()
-        lastLiveSeekMs.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -342,7 +331,6 @@ class PlayerPool(context: Context) {
         players.values.forEach { it.release() }
         players.clear()
         audioPlayerId = null
-        lastLiveSeekMs.clear()
     }
 
     fun all(): Collection<ExoPlayer> = players.values
