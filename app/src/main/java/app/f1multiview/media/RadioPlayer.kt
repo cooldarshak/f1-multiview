@@ -1,6 +1,8 @@
 package app.f1multiview.media
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -12,18 +14,20 @@ data class RadioState(val playing:Boolean=false,val source:String?=null,val dela
 
 class RadioPlayer(context:Context){
     private val player=ExoPlayer.Builder(context.applicationContext).build()
+    private val handler=Handler(Looper.getMainLooper())
     private val _state=MutableStateFlow(RadioState())
     val state:StateFlow<RadioState> = _state.asStateFlow()
 
     fun play(url:String,delayMs:Long){
         if(url.isBlank()) return
-        _state.value=RadioState(true,url,delayMs,null)
+        handler.removeCallbacksAndMessages(null)
+        _state.value=RadioState(false,url,delayMs,null)
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
-        player.play()
+        handler.postDelayed({ player.play(); _state.value=_state.value.copy(playing=true) }, delayMs.coerceAtLeast(0L))
     }
     fun pause(){player.pause();_state.value=_state.value.copy(playing=false)}
     fun resume(){player.play();_state.value=_state.value.copy(playing=true)}
     fun stop(){player.stop();_state.value=RadioState(delayMs=_state.value.delayMs)}
-    fun release(){player.release()}
+    fun release(){handler.removeCallbacksAndMessages(null);player.release()}
 }
