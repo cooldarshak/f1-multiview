@@ -1025,6 +1025,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
     val player = remember(stream.id) { pool.get(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
+    val displayHdr = displaySupportsHdr(context)
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
 
