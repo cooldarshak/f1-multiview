@@ -303,7 +303,7 @@ class PlayerPool(context: Context) {
             Quality.AUTO -> builder
                 .setMinVideoSize(0, 0)
                 .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 1280, if (isMain) Int.MAX_VALUE else 720)
-                .setForceHighestSupportedBitrate(true)
+                .setForceHighestSupportedBitrate(false)
         }
         return builder.build()
     }
