@@ -88,8 +88,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         val value = raw?.trim().orEmpty()
         if (value.isBlank()) return null
         if (value.startsWith("http://", true) || value.startsWith("https://", true)) return value
-        val encoded = java.net.URLEncoder.encode(value, "UTF-8")
-        return F1TvApiClient.BASE + "/image-resizer/image/" + encoded +
+        return F1TvApiClient.BASE + "/image-resizer/image/" + value +
             "?w=" + width + "&h=" + height + "&o=L&q=HI"
     }
 
