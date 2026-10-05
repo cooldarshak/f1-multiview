@@ -172,11 +172,11 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
-    // Let every selected feed buffer independently, then perform one stable
-    // alignment pass. VOD sync is seek-only; live sync uses a gentle live-edge correction.
+    // Start the follower-only sync watcher. It never changes the main feed speed.
+    // This also means a manual replay seek on the main feed is propagated to followers.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
-            delay(4_000L)
+            delay(1_500L)
             val mainId = ui.mainStreamId
             if (mainId != null) pool.syncToMain(mainId)
         }
@@ -644,7 +644,7 @@ private fun FullscreenMultiview(
                 }
             }
     ) {
-        CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize(), SURFACE_TYPE_TEXTURE_VIEW)
+        CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize(), SURFACE_TYPE_SURFACE_VIEW)
 
         if (!controlsVisible) {
             // SurfaceView/TextureView can consume touch events underneath Compose.
