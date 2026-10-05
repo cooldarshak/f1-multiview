@@ -45,7 +45,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
     private val timingClient=LiveTimingClient(viewModelScope)
     private val replayTimingClient=ReplayTimingClient()
-    private val featureClient=UgisFeatureClient()
+    private val featureClient=UgisFeatureClient(application)
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
     init{
