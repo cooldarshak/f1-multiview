@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +50,9 @@ import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.content.Context
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
 import kotlinx.coroutines.delay
@@ -140,22 +144,24 @@ private fun LoginScreen(auth: AuthState, vm: MultiViewViewModel) {
 @Composable
 private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isTv = remember(context) { isTelevision(context) }
+    val isPortrait = configuration.screenHeightDp > configuration.screenWidthDp
+    val compactPhone = !isTv && configuration.screenWidthDp < 600
+
     val pool = remember(context) { PlayerPool(context) }
     val errors by pool.errors.collectAsState()
     var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
     var fullscreenMultiview by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(pool) { onDispose { pool.release() } }
-
     val startedFeeds = remember(pool) { mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         pool.retain(selectedIds)
-        val ordered = ui.selectedStreamIds.mapNotNull { id ->
-            ui.streams.firstOrNull { it.id == id && it.url != null }
-        }
+        val ordered = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
         ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
                 pool.load(stream)
@@ -165,20 +171,13 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
         val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
-        if (ordered.isNotEmpty()) {
-            // Start every prepared player once. Do not seek/speed-adjust immediately;
-            // let each live manifest reach READY first.
-            pool.playAll()
-        }
+        if (ordered.isNotEmpty()) pool.playAll()
     }
 
-    // Start the follower-only sync watcher. It never changes the main feed speed.
-    // This also means a manual replay seek on the main feed is propagated to followers.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
             delay(1_500L)
-            val mainId = ui.mainStreamId
-            if (mainId != null) pool.syncToMain(mainId)
+            ui.mainStreamId?.let { pool.syncToMain(it) }
         }
     }
 
@@ -188,15 +187,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(
-            ui = ui,
-            pool = pool,
-            errors = errors,
-            onClose = { fullscreenMultiview = false },
-            onToggleStream = vm::toggleStream,
-            onSetMainStream = vm::setMainStream,
-            onLayout = vm::setLayout
-        )
+        FullscreenMultiview(ui, pool, errors, { fullscreenMultiview = false }, vm::toggleStream, vm::setMainStream, vm::setLayout)
         return
     }
 
@@ -207,107 +198,107 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
-        Header(ui, vm)
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = 16.dp)) {
-            item { Hero(ui) }
-            item { Archive(ui, vm) }
+        Header(ui, vm, compactPhone)
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = if (compactPhone) 10.dp else 16.dp)) {
+            item { Hero(ui, isTv, isPortrait) }
+            item { Archive(ui, vm, isTv, compactPhone) }
             item { ui.providerError?.let { ErrorBanner(it) } }
             item {
-                PitWall(                    ui = ui,
-                    pool = pool,
-                    errors = errors,
-                    onFullscreenAll = { fullscreenMultiview = true },
-                    onToggleStream = vm::toggleStream,
-                    onSetMainStream = vm::setMainStream
-                )
+                PitWall(ui, pool, errors, isTv, compactPhone, { fullscreenMultiview = true }, vm::toggleStream, vm::setMainStream)
             }
         }
     }
 }
 
+private fun isTelevision(context: Context): Boolean {
+    val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+    return uiMode == Configuration.UI_MODE_TYPE_TELEVISION || context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+}
+
 @Composable
-private fun Header(ui: UiState, vm: MultiViewViewModel) {
+private fun Header(ui: UiState, vm: MultiViewViewModel, compactPhone: Boolean) {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFF101116)).padding(horizontal = 18.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().background(Color(0xFF101116)).padding(horizontal = if (compactPhone) 11.dp else 18.dp, vertical = if (compactPhone) 8.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        F1TvLogo()
-        Spacer(Modifier.width(22.dp))
-        Box(Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = .1f)))
-        Spacer(Modifier.width(16.dp))
+        if (compactPhone) {
+            Text("F1", color = Red, fontSize = 27.sp, fontWeight = FontWeight.Black, letterSpacing = (-2).sp)
+            Spacer(Modifier.width(7.dp))
+            Text("TV", color = White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+        } else F1TvLogo()
+        Spacer(Modifier.width(if (compactPhone) 12.dp else 22.dp))
+        Box(Modifier.width(1.dp).height(if (compactPhone) 24.dp else 28.dp).background(Color.White.copy(alpha = .1f)))
+        Spacer(Modifier.width(if (compactPhone) 10.dp else 16.dp))
         Column(Modifier.weight(1f)) {
-            Text(ui.session?.name ?: "F1 MULTIVIEW", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (ui.session?.live == true) "LIVE NOW" else "F1 TV", color = if (ui.session?.live == true) Red else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(ui.session?.name ?: "F1 MULTIVIEW", color = White, fontSize = if (compactPhone) 11.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (ui.session?.live == true) "LIVE NOW" else "F1 TV", color = if (ui.session?.live == true) Red else Muted, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
         }
-        Surface(color = Color.White.copy(alpha = .06f), shape = RoundedCornerShape(50)) {
-            Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(if (ui.timingStatus == "OFFLINE") Muted else Color(0xFF59D56D)))
-                Spacer(Modifier.width(6.dp))
-                Text(ui.timingStatus, color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        if (!compactPhone) {
+            Surface(color = Color.White.copy(alpha = .06f), shape = RoundedCornerShape(50)) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(if (ui.timingStatus == "OFFLINE") Muted else Color(0xFF59D56D)))
+                    Spacer(Modifier.width(6.dp))
+                    Text(ui.timingStatus, color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
-        TextButton({ vm.signOut() }) { Text("SIGN OUT", color = White, fontWeight = FontWeight.Bold) }
+        TextButton({ vm.signOut() }, contentPadding = PaddingValues(horizontal = if (compactPhone) 4.dp else 8.dp)) {
+            Text("SIGN OUT", color = White, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
-private fun Hero(ui: UiState) {
-    Box(
-        Modifier.fillMaxWidth().height(170.dp).background(
-            Brush.horizontalGradient(listOf(Color(0xFF292A32), Color(0xFF121318), Color(0xFF24090B)))
-        ).padding(horizontal = 22.dp, vertical = 20.dp)
-    ) {
-        Column(Modifier.align(Alignment.CenterStart)) {
+private fun Hero(ui: UiState, isTv: Boolean, isPortrait: Boolean) {
+    val height = when { isTv -> 230.dp; isPortrait -> 175.dp; else -> 205.dp }
+    Box(Modifier.fillMaxWidth().height(height).background(Color(0xFF171820))) {
+        ui.session?.artworkUrl?.let { url -> F1Artwork(url, ui.session.name, Modifier.fillMaxSize(), ContentScale.Crop) }
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = .82f), Color.Black.copy(alpha = .36f), Red.copy(alpha = .16f)))))
+        Column(Modifier.align(Alignment.CenterStart).padding(horizontal = if (isTv) 34.dp else 20.dp, vertical = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = Red, shape = RoundedCornerShape(4.dp)) {
-                    Text(if (ui.session?.live == true) "LIVE" else "REPLAY", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp))
-                }
+                Surface(color = Red, shape = RoundedCornerShape(4.dp)) { Text(if (ui.session?.live == true) "LIVE" else "REPLAY", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)) }
                 Spacer(Modifier.width(8.dp))
-                Text(ui.session?.series ?: "F1", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(ui.session?.series ?: "F1", color = White.copy(alpha = .78f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(9.dp))
-            Text(
-                ui.session?.name ?: "Choose a Grand Prix",
-                color = White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(ui.session?.dateLabel ?: "Select a session below", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
+            Spacer(Modifier.height(10.dp))
+            Text(ui.session?.name ?: "Choose a Grand Prix", color = White, fontSize = if (isTv) 30.sp else if (isPortrait) 23.sp else 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(ui.session?.dateLabel ?: "Select a session below", color = White.copy(alpha = .72f), fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
         }
-        Text("MULTIVIEW", color = Color.White.copy(alpha = .045f), fontSize = 43.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.CenterEnd))
+        Text(ui.session?.seasonYear?.toString() ?: "F1", color = Color.White.copy(alpha = .12f), fontSize = if (isTv) 76.sp else 54.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.TopEnd).padding(end = if (isTv) 34.dp else 18.dp, top = 16.dp))
     }
 }
 
 @Composable
-private fun Archive(ui: UiState, vm: MultiViewViewModel) {
-    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
-        SectionHeader("F1 TV ARCHIVE", "SEASON")
-        LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            items(ui.vodSeasons) { season ->
-                Pill(ui.selectedSeason == season, season.year.toString()) { vm.selectVodSeason(season) }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        SectionHeader("GRAND PRIX", ui.selectedSeason?.year?.toString() ?: "")
-        if (ui.vodEvents.isEmpty() && ui.selectedSeason != null) {
-            Text("No Grand Prix events found for ${ui.selectedSeason.year}", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
-        } else {
-            LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                items(ui.vodEvents) { event ->
-                    EventCard(ui.selectedEvent == event, prettyEvent(event.meetingName)) { vm.selectVodEvent(event) }
-                }
-            }
-        }
-
+private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean) {
+    val side = if (compactPhone) 12.dp else 18.dp
+    Column(Modifier.fillMaxWidth().padding(top = if (compactPhone) 12.dp else 18.dp)) {
         if (ui.vodSessions.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            SectionHeader("SESSION", "SELECT")
-            LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val featured = ui.vodSessions.first()
+            SectionHeader("FEATURED REPLAY", featured.series.uppercase(), side)
+            FeaturedReplayCard(featured, ui.session?.id == featured.contentId, compactPhone) { vm.selectVodSession(featured) }
+            Spacer(Modifier.height(if (compactPhone) 14.dp else 20.dp))
+        }
+        SectionHeader("F1 TV ARCHIVE", "SEASON", side)
+        LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            items(ui.vodSeasons) { season -> Pill(ui.selectedSeason == season, season.year.toString()) { vm.selectVodSeason(season) } }
+        }
+        Spacer(Modifier.height(14.dp))
+        SectionHeader("GRAND PRIX", ui.selectedSeason?.year?.toString() ?: "", side)
+        if (ui.vodEvents.isEmpty() && ui.selectedSeason != null) {
+            Text("No Grand Prix events found for " + ui.selectedSeason.year, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = side, vertical = 8.dp))
+        } else {
+            LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(ui.vodEvents) { event ->
+                    EventCard(ui.selectedEvent == event, prettyEvent(event.meetingName), event.artworkUrl, event.seasonYear, isTv) { vm.selectVodEvent(event) }
+                }
+            }
+        }
+        if (ui.vodSessions.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            SectionHeader("SESSION", "SELECT", side)
+            LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(ui.vodSessions) { session ->
-                    SessionCard(ui.session?.id == session.contentId, session.title, session.type.uppercase()) { vm.selectVodSession(session) }
+                    SessionCard(ui.session?.id == session.contentId, session.title, session.type.uppercase(), session.artworkUrl ?: ui.selectedEvent?.artworkUrl, isTv) { vm.selectVodSession(session) }
                 }
             }
         }
@@ -315,8 +306,8 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel) {
 }
 
 @Composable
-private fun SectionHeader(title: String, meta: String) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun SectionHeader(title: String, meta: String, side: androidx.compose.ui.unit.Dp = 18.dp) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = side, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(4.dp).height(17.dp).background(Red, RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(8.dp))
         Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
@@ -327,51 +318,74 @@ private fun SectionHeader(title: String, meta: String) {
 
 @Composable
 private fun Pill(selected: Boolean, title: String, onClick: () -> Unit) {
-    Surface(
-        Modifier.clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).focusable(),
-        shape = RoundedCornerShape(9.dp),
-        color = if (selected) Red else Surface2,
-        border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .07f))
-    ) {
+    Surface(Modifier.clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .07f))) {
         Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp))
     }
 }
 
 @Composable
-private fun EventCard(selected: Boolean, title: String, onClick: () -> Unit) {
-    Surface(
-        Modifier.widthIn(min = 150.dp, max = 260.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).focusable(),
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) Color(0xFF2A0D0F) else Surface1,
-        border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))
-    ) {
-        Column(Modifier.padding(13.dp)) {
-            Text(title, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(5.dp))
-            Text(if (selected) "SELECTED" else "GRAND PRIX", color = if (selected) Red else Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
+private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPhone: Boolean, onClick: () -> Unit) {
+    val height = if (compactPhone) 150.dp else 205.dp
+    Surface(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(14.dp), color = Surface1, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .08f))) {
+        Box(Modifier.fillMaxWidth().height(height)) {
+            F1Artwork(session.artworkUrl, session.title, Modifier.fillMaxSize(), ContentScale.Crop, session.contentId)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .84f)))))
+            Column(Modifier.align(Alignment.BottomStart).padding(if (compactPhone) 13.dp else 18.dp)) {
+                Surface(color = Red, shape = RoundedCornerShape(4.dp)) { Text("FEATURED", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)) }
+                Spacer(Modifier.height(7.dp))
+                Text(session.title, color = White, fontSize = if (compactPhone) 17.sp else 23.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("F1 · " + session.type.uppercase(), color = White.copy(alpha = .72f), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun SessionCard(selected: Boolean, title: String, type: String, onClick: () -> Unit) {
-    Surface(
-        Modifier.clip(RoundedCornerShape(11.dp)).clickable(onClick = onClick).focusable(),
-        shape = RoundedCornerShape(11.dp),
-        color = if (selected) Red else Surface2
-    ) {
-        Column(Modifier.padding(horizontal = 13.dp, vertical = 9.dp)) {
-            Text(title, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(type, color = Color.White.copy(alpha = .62f), fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 3.dp))
+private fun EventCard(selected: Boolean, title: String, artworkUrl: String?, seasonYear: Int, isTv: Boolean, onClick: () -> Unit) {
+    val width = if (isTv) 280.dp else 220.dp
+    val imageHeight = if (isTv) 158.dp else 124.dp
+    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface1, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
+        Column {
+            Box(Modifier.fillMaxWidth().height(imageHeight)) {
+                F1Artwork(artworkUrl, title, Modifier.fillMaxSize(), ContentScale.Crop, title + seasonYear)
+                Surface(Modifier.align(Alignment.TopStart).padding(9.dp), color = Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(4.dp)) {
+                    Text(seasonYear.toString(), color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+                }
+            }
+            Column(Modifier.padding(12.dp)) {
+                Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(if (selected) "SELECTED" else "GRAND PRIX", color = if (selected) Red else Muted, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 5.dp))
+            }
         }
     }
 }
 
+@Composable
+private fun SessionCard(selected: Boolean, title: String, type: String, artworkUrl: String?, isTv: Boolean, onClick: () -> Unit) {
+    val width = if (isTv) 280.dp else 220.dp
+    val imageHeight = if (isTv) 158.dp else 124.dp
+    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).focusable(), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface2, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
+        Column {
+            Box(Modifier.fillMaxWidth().height(imageHeight)) {
+                F1Artwork(artworkUrl, title, Modifier.fillMaxSize(), ContentScale.Crop, title + type)
+                Surface(Modifier.align(Alignment.TopEnd).padding(9.dp), color = if (selected) Red else Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(4.dp)) {
+                    Text(type, color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+                }
+            }
+            Column(Modifier.padding(12.dp)) {
+                Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("F1 · " + type, color = White.copy(alpha = .58f), fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 5.dp))
+            }
+        }
+    }
+}
 @Composable
 private fun PitWall(
     ui: UiState,
     pool: PlayerPool,
     errors: Map<String, String>,
+    isTv: Boolean,
+    compactPhone: Boolean,
     onFullscreenAll: () -> Unit,
     onToggleStream: (String) -> Unit,
     onSetMainStream: (String) -> Unit
@@ -430,8 +444,8 @@ private fun PitWall(
             Text("OPEN MULTIVIEW FULLSCREEN", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
         }
     }
-    Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-        CanonicalMultiviewLayout(selected, pool, errors, false, {}, Modifier.fillMaxWidth().height(430.dp))
+    Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
+        CanonicalMultiviewLayout(selected, pool, errors, false, {}, Modifier.fillMaxWidth().height(if (compactPhone) 340.dp else if (isTv) 500.dp else 430.dp))
     }
 }
 @Composable
