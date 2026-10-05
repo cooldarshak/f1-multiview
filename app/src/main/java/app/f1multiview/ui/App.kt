@@ -144,7 +144,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
             delay(1_500L)
-            ui.mainStreamId?.let { pool.syncToMain(it) }
+            ui.mainStreamId?.let { mainId -> pool.syncToMain(mainId, ui.streams.associate { it.id to (it.channelId?.let { cid -> ui.replayChannelDiffs[cid] } ?: 0L) }) }
         }
     }
 
