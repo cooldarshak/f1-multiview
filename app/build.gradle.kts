@@ -58,6 +58,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-ui-compose:1.11.1")
     implementation("androidx.media3:media3-common:1.11.1")
+    implementation("androidx.media3:media3-effect:1.11.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
