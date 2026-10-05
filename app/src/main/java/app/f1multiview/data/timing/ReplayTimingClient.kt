@@ -9,10 +9,12 @@ import java.io.BufferedReader
 import java.io.StringReader
 
 data class ReplayTimingSnapshot(val offsetMs:Long,val rows:List<TimingRow>)
+data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Long>)
 class ReplayTimingClient {
     private val http=OkHttpClient()
     private var snapshots:List<ReplayTimingSnapshot> = emptyList()
     private var syncOffsetMs:Long = 0L
+    private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val index=getJson("https://livetiming.formula1.com/static/$year/Index.json")
@@ -32,7 +34,8 @@ class ReplayTimingClient {
             val session=(0 until sessions.length()).map{sessions.getJSONObject(it)}.firstOrNull{it.optString("Name").contains(wanted,true) || it.optString("Type").equals(wanted,true)} ?: error("Timing archive session not found")
             val path=session.optString("Path").trim('/').ifBlank{error("Timing archive session has no path")}
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
-            syncOffsetMs=loadCuratedOffset(meeting.optString("Key"),session.optString("Key")) ?: 0L
+            syncData=loadCuratedSync(meeting.optString("Key"),session.optString("Key")) ?: ReplaySyncData(0L, emptyMap())
+            syncOffsetMs=syncData.sessionStartMs
         }
     }
     fun rowsAt(videoPositionMs:Long):List<TimingRow> {
@@ -40,6 +43,7 @@ class ReplayTimingClient {
         return snapshots.lastOrNull{it.offsetMs<=target}?.rows.orEmpty()
     }
     fun isLoaded()=snapshots.isNotEmpty()
+    fun sync():ReplaySyncData=syncData
     private fun parse(text:String):List<ReplayTimingSnapshot> {
         val out=ArrayList<ReplayTimingSnapshot>()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
@@ -65,7 +69,7 @@ class ReplayTimingClient {
     private fun parseOffset(ts:String):Long?=runCatching{val p=ts.split(":",".");if(p.size!=4)null else ((p[0].toLong()*3600+p[1].toLong()*60+p[2].toLong())*1000+p[3].toLong())}.getOrNull()
     private fun getText(url:String):String { val r=http.newCall(Request.Builder().url(url).header("User-Agent","BestHTTP").build()).execute(); r.use{if(!it.isSuccessful)error("Timing archive HTTP "+it.code);return it.body?.string().orEmpty()} }
     private fun getJson(url:String)=JSONObject(getText(url))
-    private fun loadCuratedOffset(meetingKey:String,sessionKey:String):Long?=runCatching{
+    private fun loadCuratedSync(meetingKey:String,sessionKey:String):ReplaySyncData?=runCatching{
         if(meetingKey.isBlank()||sessionKey.isBlank())return null
         val j=getJson("https://api.multiviewer.app/api/v1/meetings/$meetingKey/sessions/$sessionKey")
         val start=(j.optDouble("session_start",Double.NaN)*1000.0).takeIf{it.isFinite()}?.toLong() ?: return null
@@ -76,6 +80,6 @@ class ReplayTimingClient {
             val cid=o.optJSONObject("streamData")?.optString("channelId").orEmpty()
             if(cid.isNotBlank()) diffs[cid]=(o.optDouble("diffV2",o.optDouble("diff",0.0))*1000.0).toLong()
         }
-        Pair(start,diffs)
+        ReplaySyncData(start,diffs)
     }.getOrNull()
 }
