@@ -13,7 +13,7 @@ android {
         versionCode=(System.getenv("CM_VERSION_CODE")?.toIntOrNull() ?: 102)
         versionName="1.1." + (System.getenv("CM_VERSION_CODE")?.takeLast(6) ?: "102")
     }
-    buildFeatures { compose=true }
+    buildFeatures { compose=true; buildConfig=true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
