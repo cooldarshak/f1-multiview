@@ -31,6 +31,17 @@ class PlayerPool(context: Context) {
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
+    private val syncPausedByReference = mutableSetOf<String>()
+    private var syncMainId: String? = null
+    private val syncRunnable = object : Runnable {
+        override fun run() {
+            val mainId = syncMainId
+            if (mainId != null && players.containsKey(mainId)) {
+                syncToMainOnce(mainId)
+                mainHandler.postDelayed(this, 1_000L)
+            }
+        }
+    }
     private val desiredPlaying = mutableSetOf<String>()
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
     val errors: StateFlow<Map<String, String>> = _errors.asStateFlow()
@@ -53,16 +64,14 @@ class PlayerPool(context: Context) {
                 player.videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 player.setHandleAudioBecomingNoisy(true)
 
-                // AUTO is intentionally conservative on phones. The user can raise
-                // quality from the controls inside an opened player.
-                val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-                    Configuration.UI_MODE_TYPE_TELEVISION
-                // Multiview must be decoder-friendly. A 4K stream for every
-                // tile can exhaust hardware decoder/network capacity and leave
-                // secondary tiles black. Fullscreen can explicitly request 4K.
+                // Keep the reference feed at up to 1080p and constrain secondary feeds to 720p.
+                // This reduces simultaneous decoder/network pressure without forcing the
+                // main feed down to 720p on a flagship phone.
+                val isMain = id == audioPlayerId
                 val initialBuilder = player.trackSelectionParameters.buildUpon()
-                    .setMaxVideoSize(1280, 720)
+                    .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
                     .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
                 player.trackSelectionParameters = initialBuilder.build()
 
                 player.addListener(object : Player.Listener {
@@ -206,9 +215,15 @@ class PlayerPool(context: Context) {
     }
 
     fun setAudioPlayer(id: String?) {
-        audioPlayerId = id?.takeIf { players.containsKey(it) }
+        audioPlayerId = id
         players.forEach { (pid, player) ->
-            player.volume = if (pid == audioPlayerId) 1f else 0f
+            val isMain = pid == audioPlayerId
+            player.volume = if (isMain) 1f else 0f
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
+                .build()
         }
     }
 
@@ -243,44 +258,77 @@ class PlayerPool(context: Context) {
      * gently; a large drift is corrected once with a cooldown.
      */
     fun syncToMain(mainId: String) {
+        syncMainId = mainId
+        mainHandler.removeCallbacks(syncRunnable)
+        syncToMainOnce(mainId)
+        mainHandler.postDelayed(syncRunnable, 1_000L)
+    }
+
+    private fun syncToMainOnce(mainId: String) {
         val main = players[mainId] ?: return
         if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
 
-        val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-        val mainEpoch = absolutePresentationTime(main)
         val now = android.os.SystemClock.elapsedRealtime()
+        val live = main.isCurrentWindowLive
+
+        // The main feed is the reference. If it is buffering while the user still
+        // expects it to play, hold followers instead of repeatedly seeking them.
+        val mainBuffering = desiredPlaying.contains(mainId) &&
+            main.playbackState == Player.STATE_BUFFERING
 
         players.forEach { (id, player) ->
             if (id == mainId) return@forEach
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
-            desiredPlaying.add(id)
-            player.playWhenReady = true
-            if (player.playbackState == Player.STATE_READY && !player.isPlaying) player.play()
-
-            val secondaryLiveOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-            val secondaryEpoch = absolutePresentationTime(player)
-
-            // correctionMs is always expressed as: positive = follower must move forward.
-            val correctionMs: Long = when {
-                mainLiveOffset != null && secondaryLiveOffset != null ->
-                    secondaryLiveOffset - mainLiveOffset
-                mainEpoch != null && secondaryEpoch != null ->
-                    mainEpoch - secondaryEpoch
-                else -> return@forEach
+            if (mainBuffering) {
+                player.setPlaybackSpeed(1f)
+                if (player.isPlaying) {
+                    player.pause()
+                    syncPausedByReference.add(id)
+                }
+                return@forEach
             }
 
-            val absCorrection = kotlin.math.abs(correctionMs)
+            if (syncPausedByReference.remove(id) && desiredPlaying.contains(id) && !player.isPlaying) {
+                player.play()
+            }
 
-            // Do NOT continuously change playback speed. That was the source of the
-            // choppy cadence on the phone. Use seek-only convergence with hysteresis.
+            if (desiredPlaying.contains(id) && !player.isPlaying && player.playbackState == Player.STATE_READY) {
+                player.play()
+            }
+
+            val correctionMs: Long? = if (live) {
+                val mainOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
+                val followerOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
+                if (mainOffset != null && followerOffset != null) followerOffset - mainOffset else null
+            } else {
+                // For VOD/replay, the main player's media position is the authoritative
+                // clock. This is deliberately NOT based on each manifest's windowStartTimeMs:
+                // different feed manifests can expose different epoch/window metadata.
+                main.currentPosition - player.currentPosition
+            }
+
+            val correction = correctionMs ?: return@forEach
+            val absCorrection = kotlin.math.abs(correction)
+
             if (absCorrection >= 1_500L &&
-                now - (lastLiveSeekMs[id] ?: 0L) >= 8_000L
+                now - (lastLiveSeekMs[id] ?: 0L) >= 5_000L
             ) {
-                val target = (player.currentPosition + correctionMs).coerceAtLeast(0L)
+                player.setPlaybackSpeed(1f)
+                val target = if (live) {
+                    (player.currentPosition + correction).coerceAtLeast(0L)
+                } else {
+                    main.currentPosition.coerceAtLeast(0L)
+                }
                 val duration = player.duration
                 player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
                 lastLiveSeekMs[id] = now
+            } else if (absCorrection >= 250L) {
+                // Correct only followers. The reference feed is never rate-adjusted.
+                val rate = if (correction > 0L) 1.05f else 0.95f
+                player.setPlaybackSpeed(rate)
+            } else {
+                player.setPlaybackSpeed(1f)
             }
         }
     }
@@ -330,6 +378,11 @@ class PlayerPool(context: Context) {
     }
 
     fun clear(id: String) {
+        if (id == syncMainId) {
+            syncMainId = null
+            mainHandler.removeCallbacks(syncRunnable)
+        }
+        syncPausedByReference.remove(id)
         desiredPlaying.remove(id)
         players.remove(id)?.release()
         if (audioPlayerId == id) setAudioPlayer(null)
@@ -337,6 +390,8 @@ class PlayerPool(context: Context) {
 
     fun release() {
         mainHandler.removeCallbacksAndMessages(null)
+        syncMainId = null
+        syncPausedByReference.clear()
         players.values.forEach { it.release() }
         players.clear()
         desiredPlaying.clear()
@@ -350,7 +405,7 @@ class PlayerPool(context: Context) {
 private object ProductionLoadControl {
     fun create(): androidx.media3.exoplayer.LoadControl =
         androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5_000, 20_000, 1_500, 3_000)
+            .setBufferDurationsMs(3_000, 10_000, 1_000, 2_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 }
