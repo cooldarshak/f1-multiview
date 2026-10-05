@@ -135,10 +135,15 @@ class PlayerPool(context: Context) {
             }
             .build()
 
-        val dataSource = DefaultHttpDataSource.Factory()
+        val baseDataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
             .setDefaultRequestProperties(stream.requestHeaders)
+        val dataSource = if (url.contains(".m3u8", true)) {
+            F1CmafHlsDrmFixingDataSource.Factory(baseDataSource)
+        } else {
+            baseDataSource
+        }
         val drmHeaders = stream.drmRequestHeaders.ifEmpty { stream.requestHeaders }
         val drmDataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
