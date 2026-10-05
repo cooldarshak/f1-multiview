@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -307,7 +308,19 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
 
         for(i in 0 until additional.length()){
             val s=additional.optJSONObject(i)?:continue
-            val channel=s.optString("channelId").takeIf{it.isNotBlank()}?:continue
+            // F1 TV returns the real per-feed contentId/channelId in playbackUrl.
+            // Using the parent session id for every feed can make VOD channels
+            // appear in the UI but fail to resolve/play.
+            val playbackUrl=s.optString("playbackUrl").trim()
+            val playbackUri=runCatching { Uri.parse(
+                if (playbackUrl.startsWith("http", true)) playbackUrl else F1TvApiClient.BASE + playbackUrl
+            ) }.getOrNull()
+            val channel=s.optString("channelId").takeIf{it.isNotBlank()}
+                ?: playbackUri?.getQueryParameter("channelId")
+                ?: continue
+            val feedContentId=playbackUri?.getQueryParameter("contentId")
+                ?.takeIf{it.isNotBlank()}
+                ?: sessionId
             val identifier=s.optString("identifier").uppercase()
             val type=s.optString("type").lowercase()
             val title=s.optString("title").ifBlank{s.optString("reportingName")}
@@ -341,7 +354,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 },
                 kind=kind,
                 driver=driver,
-                contentId=sessionId,
+                contentId=feedContentId,
                 channelId=channel
             )
 
