@@ -106,56 +106,131 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         legacy.forEach{(page,year)->if(year in 2018..java.time.Year.now().value)map.putIfAbsent(year,page)}
         map.entries.sortedByDescending{it.key}.map{VodSeason(it.key,it.value)}
     }
-    override suspend fun vodEvents(season:VodSeason):Result<List<VodEvent>> = runCatching {
-        val root=api.fetchPage(season.pageId); val map=linkedMapOf<Int,VodEvent>(); val now=System.currentTimeMillis()
-        val nodes=flattenObjects(root)
-        for(s in nodes){
-            val actions=s.optJSONArray("actions")?:continue
-            var pageId:Int?=null
-            for(k in 0 until actions.length()){
-                val a=actions.optJSONObject(k)?:continue
-                val uri=a.optString("uri")
-                val m=Regex("/PAGE/(\\d+)/",RegexOption.IGNORE_CASE).find(uri)
-                if(m!=null){pageId=m.groupValues[1].toIntOrNull();if(a.optString("key").equals("onClick",true))break}
+    override suspend fun vodEvents(season: VodSeason): Result<List<VodEvent>> = runCatching {
+        val root = api.fetchPage(season.pageId)
+        val now = System.currentTimeMillis()
+        val byPage = linkedMapOf<Int, VodEvent>()
+
+        for (node in F1CatalogParser.flatten(root)) {
+            val pageId = F1CatalogParser.pageId(node) ?: continue
+            val meta = node.optJSONObject("metadata") ?: org.json.JSONObject()
+            val title = F1CatalogParser.title(node, meta)
+            if (title.isBlank()) continue
+
+            val upper = title.uppercase()
+            val emf = meta.optJSONObject("emfAttributes") ?: org.json.JSONObject()
+            val series = F1CatalogParser.series(node, meta)
+            val looksLikeMeeting =
+                upper.contains("GRAND PRIX") ||
+                upper.contains("FORMULA 1") ||
+                emf.optString("VideoType").equals("meetings", true) ||
+                meta.optString("contentSubtype").equals("MEETING", true) ||
+                meta.optString("contentType").contains("meeting", true)
+
+            if (!looksLikeMeeting) continue
+
+            val date = F1CatalogParser.eventDate(node, meta)
+            if (date > now) continue
+
+            val props = node.optJSONArray("properties")?.optJSONObject(0) ?: org.json.JSONObject()
+            val number = props.optInt("meeting_Number", emf.optInt("Meeting_Number", 0))
+            val test = upper.contains("TEST") || upper.contains("PRE-SEASON") || upper.contains("PRESEASON")
+
+            val event = VodEvent(
+                pageId = pageId,
+                meetingName = title,
+                meetingNumber = number,
+                seasonYear = season.year,
+                isTest = test,
+                artworkUrl = pictureUrl(firstArtworkValue(node, meta), 640, 360),
+                backgroundArtworkUrl = pictureUrl(firstArtworkValue(node, meta), 1920, 1080),
+                series = series,
+                startTime = date
+            )
+
+            val existing = byPage[pageId]
+            if (existing == null || (existing.artworkUrl == null && event.artworkUrl != null)) {
+                byPage[pageId] = event
             }
-            if(pageId==null)continue
-            val meta=s.optJSONObject("metadata")?:org.json.JSONObject()
-            val emf=meta.optJSONObject("emfAttributes")?:org.json.JSONObject()
-            val props=s.optJSONArray("properties")?.optJSONObject(0)?:org.json.JSONObject()
-            val title=listOf(s.optString("title"),meta.optString("title"),meta.optString("plainText"),emf.optString("Meeting_Name"))
-                .firstOrNull{it.isNotBlank()}?.trim().orEmpty()
-            val upper=title.uppercase()
-            val looksLikeMeeting=upper.contains("GRAND PRIX")||upper.contains("FORMULA 1")||
-                emf.optString("VideoType").equals("meetings",true)||meta.optString("contentSubtype").equals("MEETING",true)||
-                meta.optString("contentType").contains("meeting",true)
-            if(!looksLikeMeeting||upper.contains(" F2 ")||upper.contains(" F3 "))continue
-            val rawDate=listOf(
-                props.optString("meeting_Start_Date"), props.optString("meetingStartDate"),
-                meta.optString("meeting_Start_Date"), meta.optString("meetingStartDate")
-            ).firstOrNull{it.isNotBlank()}
-            val startDate=rawDate?.toLongOrNull() ?: 0L
-            if(startDate>now)continue
-            val number=props.optInt("meeting_Number",emf.optInt("Meeting_Number",0))
-            map.putIfAbsent(pageId,VodEvent(pageId,title,number,season.year,upper.contains("TEST"),pictureUrl(firstArtworkValue(s, meta), 640, 360), pictureUrl(firstArtworkValue(s, meta), 1920, 1080)))
         }
-        map.values.sortedWith(compareBy<VodEvent>{it.meetingNumber==0}.thenBy{it.meetingNumber}.thenBy{it.meetingName})
+
+        byPage.values.sortedWith(
+            compareBy<VodEvent> { it.meetingNumber == 0 }
+                .thenBy { it.meetingNumber }
+                .thenBy { it.startTime }
+                .thenBy { it.meetingName }
+        )
     }
-    override suspend fun vodSessions(event:VodEvent):Result<List<VodSession>> = runCatching {
-        val root=api.fetchPage(event.pageId); val out=mutableListOf<VodSession>()
-        for(s in flattenObjects(root)){
-            val meta=s.optJSONObject("metadata")?:continue
-            val emf=meta.optJSONObject("emfAttributes")?:org.json.JSONObject()
-            val contentId=meta.optString("contentId").takeIf{it.isNotBlank()}?:continue
-            val subtype=meta.optString("contentSubtype")
-            val videoType=emf.optString("VideoType")
-            val title=s.optString("title").ifBlank{meta.optString("title")}.trim()
-            val looksLikeSession=videoType.equals("meetingSession",true)||
-                title.contains("race",true)||title.contains("qualifying",true)||title.contains("practice",true)||
-                title.contains("sprint",true)
-            if(!looksLikeSession)continue
-            out+=VodSession(contentId,title,mapSessionType(subtype,videoType,title),normalizeSeries(emf.optString("Series")),event.pageId,pictureUrl(firstArtworkValue(s, meta), 640, 360)?:event.artworkUrl, pictureUrl(firstArtworkValue(s, meta), 1920, 1080)?:event.backgroundArtworkUrl)
+
+    override suspend fun vodSessions(event: VodEvent): Result<List<VodSession>> = runCatching {
+        val root = api.fetchPage(event.pageId)
+        val byContent = linkedMapOf<String, VodSession>()
+
+        for (node in F1CatalogParser.flatten(root)) {
+            val meta = node.optJSONObject("metadata") ?: continue
+            val emf = meta.optJSONObject("emfAttributes") ?: org.json.JSONObject()
+            val contentId = meta.optString("contentId").takeIf { it.isNotBlank() } ?: continue
+            val title = F1CatalogParser.title(node, meta)
+            if (title.isBlank()) continue
+
+            val info = F1CatalogParser.sessionInfo(node) ?: continue
+            val series = if (info.series == "F1") event.series else info.series
+            val videoType = emf.optString("VideoType")
+            val isMeetingSession = videoType.equals("meetingSession", true) ||
+                videoType.equals("session", true) ||
+                meta.optString("contentType").contains("session", true)
+
+            if (!isMeetingSession && info.stage == "other") continue
+
+            val session = VodSession(
+                contentId = contentId,
+                title = title,
+                type = info.stage,
+                series = series,
+                eventPageId = event.pageId,
+                artworkUrl = pictureUrl(firstArtworkValue(node, meta), 640, 360) ?: event.artworkUrl,
+                backgroundArtworkUrl = pictureUrl(firstArtworkValue(node, meta), 1920, 1080) ?: event.backgroundArtworkUrl,
+                stage = info.stage,
+                broadcastVariant = info.broadcastVariant,
+                startTime = info.startTime
+            )
+
+            val existing = byContent[contentId]
+            if (existing == null || (existing.stage == "other" && session.stage != "other")) {
+                byContent[contentId] = session
+            }
         }
-        out.distinctBy{it.contentId}
+
+        byContent.values.sortedWith(
+            compareBy<VodSession> { stageOrder(it.stage) }
+                .thenBy { variantOrder(it.broadcastVariant) }
+                .thenBy { it.startTime == 0L }
+                .thenBy { it.startTime }
+                .thenBy { it.title }
+        )
+    }
+
+    private fun stageOrder(stage: String): Int = when (stage.lowercase()) {
+        "practice-1" -> 10
+        "practice-2" -> 20
+        "practice-3" -> 30
+        "practice" -> 35
+        "sprint-qualifying" -> 40
+        "sprint" -> 50
+        "qualifying" -> 60
+        "race" -> 70
+        "pre-show" -> 5
+        "post-show" -> 80
+        "f1-kids" -> 90
+        else -> 100
+    }
+
+    private fun variantOrder(variant: String): Int = when (variant.lowercase()) {
+        "pre-show" -> 0
+        "main" -> 10
+        "post-show" -> 20
+        "f1-kids" -> 30
+        else -> 40
     }
 
     private fun firstArtworkValue(node: org.json.JSONObject, meta: org.json.JSONObject): String? {
