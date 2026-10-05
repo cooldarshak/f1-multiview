@@ -30,7 +30,9 @@ data class VodEvent(
     val seasonYear: Int,
     val isTest: Boolean = false,
     val artworkUrl: String? = null,
-    val backgroundArtworkUrl: String? = null
+    val backgroundArtworkUrl: String? = null,
+    val series: String = "F1",
+    val startTime: Long = 0L
 )
 data class VodSession(
     val contentId: String,
@@ -39,7 +41,10 @@ data class VodSession(
     val series: String = "F1",
     val eventPageId: Int,
     val artworkUrl: String? = null,
-    val backgroundArtworkUrl: String? = null
+    val backgroundArtworkUrl: String? = null,
+    val stage: String = "other",
+    val broadcastVariant: String = "main",
+    val startTime: Long = 0L
 )
 interface PlaybackGateway {
     suspend fun signIn(credentials: ProviderCredentials): Result<Unit>
