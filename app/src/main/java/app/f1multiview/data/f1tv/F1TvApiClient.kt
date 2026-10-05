@@ -13,7 +13,7 @@ class F1TvApiClient {
     companion object {
         const val BASE="https://f1tv.formula1.com"
         const val AUTH="https://api.formula1.com/v2/account/subscriber/authenticate/by-password"
-        const val BROWSER_UA="Mozilla/5.0 (Linux; Android "+android.os.Build.VERSION.RELEASE+"; "+android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL+") AppleWebKit/537.36 Chrome/140.0 Safari/537.36"
+        private val BROWSER_UA:String get()="Mozilla/5.0 (Linux; Android "+android.os.Build.VERSION.RELEASE+"; "+android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL+") AppleWebKit/537.36 Chrome/140.0 Safari/537.36"
         private const val LANG="ENG"
         private const val DEFAULT_ENTITLEMENT="F1_TV_Pro_Annual"
         private const val DEFAULT_GROUP="2"
