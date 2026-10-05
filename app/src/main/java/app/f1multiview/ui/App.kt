@@ -977,10 +977,20 @@ private fun ResizeHandle(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable()
             .onFocusChanged { focused = it.isFocused }
-            .onKeyEvent {
-                if (it.type != KeyEventType.KeyDown) {
-                    false
-                } else {
+            .onKeyEvent { event ->
+                if (event.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) false
+                else {
+                    val delta = when {
+                        orientation == Orientation.Horizontal && event.key == Key.DirectionLeft -> -step
+                        orientation == Orientation.Horizontal && event.key == Key.DirectionRight -> step
+                        orientation == Orientation.Vertical && event.key == Key.DirectionUp -> -step
+                        orientation == Orientation.Vertical && event.key == Key.DirectionDown -> step
+                        else -> null
+                    }
+                    if (delta != null) { onDelta(delta); true } else false
+                }
+            }
+    } else {
                     val delta = when {
                         orientation == Orientation.Horizontal && it.key == Key.DirectionLeft -> -step
                         orientation == Orientation.Horizontal && it.key == Key.DirectionRight -> step
