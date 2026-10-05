@@ -55,6 +55,7 @@ import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
 import app.f1multiview.media.PlayerPool
+import app.f1multiview.media.RadioPlayer
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
 import android.app.Activity
@@ -159,11 +160,12 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val compactPhone = !isTv && configuration.screenWidthDp < 600
 
     val pool = remember(context) { PlayerPool(context) }
+    val radioPlayer = remember(context) { RadioPlayer(context) }
     val errors by pool.errors.collectAsState()
     var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
     var fullscreenMultiview by rememberSaveable { mutableStateOf(false) }
 
-    DisposableEffect(pool) { onDispose { pool.release() } }
+    DisposableEffect(pool, radioPlayer) { onDispose { pool.release(); radioPlayer.release() } }
     val startedFeeds = remember(pool) { mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
@@ -240,7 +242,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             }
         }
         }
-        if (ui.selectedPanel != null) UgisInfoPanel(ui, vm, isTv)
+        if (ui.selectedPanel != null) UgisInfoPanel(ui, vm, radioPlayer, isTv)
     }
 }
 
