@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,58 +94,11 @@ private fun F1TvLogo() {
 
 @Composable
 private fun LoginScreen(auth: AuthState, vm: MultiViewViewModel) {
-    var email by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var browser by remember { mutableStateOf(true) }
-
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF1C1D23), Bg, Color.Black))
-        )
-    ) {
-        Box(Modifier.fillMaxWidth().height(6.dp).background(Red))
-        Column(
-            Modifier.fillMaxSize().padding(28.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            F1TvLogo()
-            Spacer(Modifier.height(10.dp))
-            Text("YOUR PERSONAL PIT WALL", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(26.dp))
-            Card(
-                Modifier.widthIn(max = 470.dp).fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface1)
-            ) {
-                Column(Modifier.padding(24.dp)) {
-                    Text("Sign in", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Use your F1 TV subscription", color = Muted, modifier = Modifier.padding(top = 4.dp))
-                    Spacer(Modifier.height(20.dp))
-                    OutlinedTextField(email, { email = it }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(17.dp))
-                    Button(
-                        { vm.signIn(email, password) },
-                        enabled = auth !is AuthState.SigningIn,
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Red),
-                        shape = RoundedCornerShape(13.dp)
-                    ) {
-                        Text(if (auth is AuthState.SigningIn) "SIGNING IN…" else "SIGN IN", fontWeight = FontWeight.Bold)
-                    }
-                    TextButton({ browser = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("USE F1 TV BROWSER LOGIN", color = White, fontWeight = FontWeight.Bold)
-                    }
-                    if (auth is AuthState.Error) {
-                        Text(auth.message, color = Color(0xFFFF8A8A), maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-    }
-    if (browser) F1BrowserLogin({ browser = false }, vm)
+    val errorMessage = (auth as? AuthState.Error)?.message
+    F1BrowserLogin(
+        vm = vm,
+        errorMessage = errorMessage
+    )
 }
 
 @Composable
