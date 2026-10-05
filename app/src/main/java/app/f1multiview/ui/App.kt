@@ -46,6 +46,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.focus.focusable
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -1030,10 +1031,14 @@ private fun FullscreenMultiview(
     var quality by rememberSaveable(activeFeedId) { mutableStateOf(Quality.AUTO) }
     var fit by rememberSaveable(activeFeedId) { mutableStateOf(false) }
     val fullscreenBackFocusRequester = remember { FocusRequester() }
+    val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
+    var fullscreenBackFocused by remember { mutableStateOf(false) }
+    var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(controlsVisible) {
         delay(80L)
-        fullscreenBackFocusRequester.requestFocus()
+        if (controlsVisible) fullscreenBackFocusRequester.requestFocus()
+        else fullscreenShowControlsFocusRequester.requestFocus()
     }
 
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
@@ -1096,11 +1101,19 @@ private fun FullscreenMultiview(
             Box(
                 Modifier
                     .fillMaxSize()
+                    .focusProperties { canFocus = false }
                     .clickable { controlsVisible = true }
                     .zIndex(20f)
             )
             Surface(
-                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.zIndex(21f),
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .focusRequester(fullscreenShowControlsFocusRequester)
+                    .clickable { controlsVisible = true }
+                    .onFocusChanged { fullscreenShowControlsFocused = it.isFocused }
+                    .border(2.dp, if (fullscreenShowControlsFocused) White else Color.Transparent, RoundedCornerShape(9.dp))
+                    .zIndex(21f),
                 color = Color.Black.copy(alpha = .78f),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
@@ -1117,8 +1130,8 @@ private fun FullscreenMultiview(
                         Modifier
                             .focusRequester(fullscreenBackFocusRequester)
                             .clickable(onClick = onClose)
-                            .onFocusChanged { }
-                            .border(0.dp, Color.Transparent),
+                            .onFocusChanged { fullscreenBackFocused = it.isFocused }
+                            .border(2.dp, if (fullscreenBackFocused) White else Color.Transparent, RoundedCornerShape(8.dp)),
                         color = Surface2,
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("‹ BACK", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) }
@@ -1408,10 +1421,14 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     var menu by remember { mutableStateOf<String?>(null) }
     var trackVersion by remember { mutableIntStateOf(0) }
     val fullscreenBackFocusRequester = remember { FocusRequester() }
+    val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
+    var fullscreenBackFocused by remember { mutableStateOf(false) }
+    var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(controlsVisible) {
         delay(80L)
-        fullscreenBackFocusRequester.requestFocus()
+        if (controlsVisible) fullscreenBackFocusRequester.requestFocus()
+        else fullscreenShowControlsFocusRequester.requestFocus()
     }
 
     DisposableEffect(player) {
@@ -1474,7 +1491,13 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
 
         if (!controlsVisible) {
             Surface(
-                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true },
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .focusRequester(fullscreenShowControlsFocusRequester)
+                    .clickable { controlsVisible = true }
+                    .onFocusChanged { fullscreenShowControlsFocused = it.isFocused }
+                    .border(2.dp, if (fullscreenShowControlsFocused) White else Color.Transparent, RoundedCornerShape(9.dp)),
                 color = Color.Black.copy(alpha = .78f),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
@@ -1491,7 +1514,8 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                         Modifier
                             .focusRequester(fullscreenBackFocusRequester)
                             .clickable { onClose() }
-                            .onFocusChanged { },
+                            .onFocusChanged { fullscreenBackFocused = it.isFocused }
+                            .border(2.dp, if (fullscreenBackFocused) White else Color.Transparent, RoundedCornerShape(9.dp)),
                         color=Color.Black.copy(alpha=.65f),
                         shape=RoundedCornerShape(9.dp)
                     ) {
