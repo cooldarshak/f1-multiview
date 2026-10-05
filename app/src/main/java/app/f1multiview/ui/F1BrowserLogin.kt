@@ -14,6 +14,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import app.f1multiview.viewmodel.MultiViewViewModel
@@ -23,6 +25,12 @@ import org.json.JSONObject
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
+    val handler = remember { Handler(Looper.getMainLooper()) }
+    DisposableEffect(Unit) {
+        onDispose {
+            handler.removeCallbacksAndMessages(null)
+        }
+    }
     AlertDialog(onDismissRequest = onClose, title = { Text("Sign in to F1 TV") }, text = {
         AndroidView(modifier = Modifier.fillMaxWidth().height(520.dp), factory = { context ->
             WebView(context).apply {
@@ -33,7 +41,6 @@ fun F1BrowserLogin(onClose: () -> Unit, vm: MultiViewViewModel) {
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-                val handler = Handler(Looper.getMainLooper())
                 fun captureToken() {
                     if (captured) return
                     val cm = CookieManager.getInstance()
