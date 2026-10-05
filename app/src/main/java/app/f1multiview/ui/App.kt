@@ -853,6 +853,7 @@ private fun PitWall(
         ) {
             Text("OPEN MULTIVIEW FULLSCREEN", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
         }
+        }
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
         CanonicalMultiviewLayout(
