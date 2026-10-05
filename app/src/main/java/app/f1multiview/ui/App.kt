@@ -243,6 +243,16 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 }
 
+private fun displaySupportsHdr(context: Context): Boolean {
+    val display = (context as? Activity)?.display ?: return false
+    return if (Build.VERSION.SDK_INT >= 34) {
+        display.mode.supportedHdrTypes.isNotEmpty()
+    } else {
+        @Suppress("DEPRECATION")
+        display.hdrCapabilities.supportedHdrTypes.isNotEmpty()
+    }
+}
+
 private fun isTelevision(context: Context): Boolean {
     val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
     return uiMode == Configuration.UI_MODE_TYPE_TELEVISION || context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
@@ -1067,6 +1077,8 @@ private fun FullscreenMultiview(
     onLayout: (LayoutPreset) -> Unit
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
+    val context = LocalContext.current
+    val displayHdr = displaySupportsHdr(context)
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
     var feedPickerOpen by rememberSaveable { mutableStateOf(false) }
     var editSize by rememberSaveable { mutableStateOf(false) }
@@ -1462,6 +1474,7 @@ private fun FullscreenFeedControls(
 private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: String?, onClose: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val displayHdr = displaySupportsHdr(context)
     val player = remember(stream.id) { pool.get(stream.id) }
 
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
@@ -1652,6 +1665,12 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                                             if (diagnostics != null) {
                                                 "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
                                                     if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
+                                            ) + if (diagnostics?.hdr == true) {
+                                                if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
+                                            } else ""
+                                            ) + if (diagnostics?.hdr == true) {
+                                                if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
+                                            } else ""
                                             } else if (resolutions.isNotEmpty()) {
                                                 "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
                                             } else "TRACKS NOT READY",
