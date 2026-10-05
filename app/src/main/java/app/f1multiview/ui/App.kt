@@ -491,11 +491,15 @@ private fun ArchiveHero(event: VodEvent, compactPhone: Boolean, isTv: Boolean) {
 
 @Composable
 private fun ArchivePill(selected: Boolean, title: String, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
-        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick),
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) Red else Surface2,
-        border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+        border = if (selected || focused) BorderStroke(2.dp, if (selected) Red else White) else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
     ) {
         Text(
             title,
@@ -523,7 +527,7 @@ private fun ArchiveEventCard(
             .width(width)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            ,
+            .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(10.dp),
         color = Surface2,
         border = BorderStroke(2.dp, if (selected || focused) Red else Color.White.copy(alpha = .07f))
@@ -702,9 +706,18 @@ private fun EventCard(selected: Boolean, title: String, artworkUrl: String?, sea
 
 @Composable
 private fun SessionCard(selected: Boolean, title: String, type: String, artworkUrl: String?, isTv: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     val width = if (isTv) 280.dp else 220.dp
     val imageHeight = if (isTv) 158.dp else 124.dp
-    Surface(Modifier.width(width).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(12.dp), color = if (selected) Color(0xFF2A0D0F) else Surface2, border = BorderStroke(1.dp, if (selected) Red else Color.White.copy(alpha = .07f))) {
+    Surface(
+        Modifier.width(width)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .onFocusChanged { focused = it.isFocused },
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Color(0xFF2A0D0F) else Surface2,
+        border = BorderStroke(2.dp, if (selected || focused) Red else Color.White.copy(alpha = .07f))
+    ) {
         Column {
             Box(Modifier.fillMaxWidth().height(imageHeight)) {
                 F1Artwork(artworkUrl, title, Modifier.fillMaxSize(), ContentScale.Crop, title + type)
@@ -756,7 +769,13 @@ private fun PitWall(
             val isMain = stream.id == ui.mainStreamId
             Surface(Modifier.clip(RoundedCornerShape(10.dp)), shape = RoundedCornerShape(10.dp), color = if (isMain) Red else if (picked) Color(0xFF5A1012) else Surface2, border = BorderStroke(1.dp, if (isMain) Red else Color.White.copy(alpha = .08f))) {
                 Column(Modifier.widthIn(min = 135.dp, max = 190.dp).padding(horizontal = 9.dp, vertical = 7.dp)) {
-                    Row(Modifier.fillMaxWidth().clickable { onToggleStream(stream.id) }, verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { onToggleStream(stream.id) }
+                            .onFocusChanged { feedFocused = it.isFocused }
+                            .then(if (feedFocused) Modifier.border(2.dp, White, RoundedCornerShape(6.dp)) else Modifier),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Column(Modifier.weight(1f)) {
                             Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(when { isMain -> "MAIN FEED"; picked -> "IN MULTIVIEW"; else -> stream.kind.name }, color = if (isMain || picked) White.copy(alpha = .88f) else Muted, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 2.dp))
@@ -1116,9 +1135,16 @@ private fun FullscreenMultiview(
                         items(ui.streams) { stream ->
                             val picked = stream.id in ui.selectedStreamIds
                             val isMain = stream.id == ui.mainStreamId
+                            var feedFocused by remember(stream.id) { mutableStateOf(false) }
                             Surface(Modifier.widthIn(min = 145.dp, max = 205.dp), shape = RoundedCornerShape(8.dp), color = if (isMain) Red else if (picked) Color(0xFF5A1012) else Surface2) {
                                 Column(Modifier.padding(8.dp)) {
-                                    Row(Modifier.fillMaxWidth().clickable { onToggleStream(stream.id) }, verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        Modifier.fillMaxWidth()
+                                            .clickable { onToggleStream(stream.id) }
+                                            .onFocusChanged { feedFocused = it.isFocused }
+                                            .then(if (feedFocused) Modifier.border(2.dp, White, RoundedCornerShape(6.dp)) else Modifier),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(if (picked) "✓" else "+", color = White, fontSize = 11.sp, fontWeight = FontWeight.Black)
                                     }
@@ -1537,17 +1563,35 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     }
 }
 @Composable private fun SmallPlayerButton(label:String,onClick:()->Unit){
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick),color=Color.Black.copy(alpha=.65f),shape=RoundedCornerShape(8.dp)){
+    var focused by remember { mutableStateOf(false) }
+    Surface(
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).onFocusChanged { focused = it.isFocused },
+        color=Color.Black.copy(alpha=.65f),
+        shape=RoundedCornerShape(8.dp),
+        border=if (focused) BorderStroke(2.dp, White) else null
+    ){
         Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=7.dp))
     }
 }
 @Composable private fun PlayerControlButton(label:String,onClick:()->Unit){
-    Surface(Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick),color=if(label=="PAUSE"||label=="PLAY")Red else Color.White.copy(alpha=.12f),shape=RoundedCornerShape(50)){
+    var focused by remember { mutableStateOf(false) }
+    Surface(
+        Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick).onFocusChanged { focused = it.isFocused },
+        color=if(label=="PAUSE"||label=="PLAY")Red else Color.White.copy(alpha=.12f),
+        shape=RoundedCornerShape(50),
+        border=if (focused) BorderStroke(2.dp, White) else null
+    ){
         Text(label,color=White,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=11.dp,vertical=8.dp))
     }
 }
 @Composable private fun MenuButton(label:String,onClick:()->Unit){
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick),color=Color.White.copy(alpha=.08f),shape=RoundedCornerShape(8.dp)){
+    var focused by remember { mutableStateOf(false) }
+    Surface(
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick=onClick).onFocusChanged { focused = it.isFocused },
+        color=Color.White.copy(alpha=.08f),
+        shape=RoundedCornerShape(8.dp),
+        border=if (focused) BorderStroke(2.dp, White) else null
+    ){
         Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=9.dp,vertical=8.dp))
     }
 }
@@ -1612,7 +1656,15 @@ private fun LayoutGlyph(preset: LayoutPreset, selected: Boolean) {
 
 @Composable
 private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
-    Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick), shape = RoundedCornerShape(8.dp), color = if (selected) Red else Surface2) {
+    var focused by remember { mutableStateOf(false) }
+    Surface(
+        Modifier.clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .onFocusChanged { focused = it.isFocused },
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) Red else Surface2,
+        border = if (focused && !selected) BorderStroke(2.dp, White) else null
+    ) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
     }
 }
