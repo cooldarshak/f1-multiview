@@ -12,7 +12,7 @@ workflows:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
       - name: Assemble debug
-        script: chmod +x ./gradlew && set -o pipefail && ./gradlew assembleDebug --stacktrace 2>&1 | tee build-debug.log; rc=${PIPESTATUS[0]}; if [ "$rc" -ne 0 ]; then echo "===== GRADLE FAILURE ====="; tail -n 250 build-debug.log; fi; exit "$rc"
+        script: export CM_VERSION_CODE=$(date +%s) && chmod +x ./gradlew && set -o pipefail && ./gradlew assembleDebug --stacktrace 2>&1 | tee build-debug.log; rc=${PIPESTATUS[0]}; if [ "$rc" -ne 0 ]; then echo "===== GRADLE FAILURE ====="; tail -n 250 build-debug.log; fi; exit "$rc"
     artifacts:
       - app/build/outputs/apk/debug/*.apk
       - build-debug.log
@@ -26,7 +26,7 @@ workflows:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
       - name: Assemble release APK
-        script: chmod +x ./gradlew && ./gradlew assembleRelease
+        script: export CM_VERSION_CODE=$(date +%s) && chmod +x ./gradlew && ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/release/*.apk
 
