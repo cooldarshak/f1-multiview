@@ -3,6 +3,7 @@ package app.f1multiview.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -104,7 +105,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 }
                 "shows" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     items(ui.showsDocs){r->
-                        Surface(onClick={vm.setSession(Session(r.contentId,r.title,"F1","Editorial",false,series="F1",sessionType="show",artworkUrl=r.artworkUrl))},color=InfoSurface,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth()){
+                        Surface(color=InfoSurface,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth().clickable{vm.setSession(Session(r.contentId,r.title,"F1","Editorial",false,series="F1",sessionType="show",artworkUrl=r.artworkUrl))}){
                             Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically){
                                 Text("F1",color=InfoRed,fontWeight=FontWeight.Black,modifier=Modifier.width(38.dp))
                                 Column(Modifier.weight(1f)){Text(r.title,color=InfoWhite,fontWeight=FontWeight.Bold);Text("F1 TV EDITORIAL · PLAY",color=InfoMuted,fontSize=9.sp)}
