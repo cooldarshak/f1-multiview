@@ -37,7 +37,7 @@ data class UiState(
     val standings: List<StandingRow> = emptyList(),
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
-    val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false
+    val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1"
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -47,7 +47,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
     init{
-        _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false))
+        _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
         viewModelScope.launch{timingClient.rows.collect{rows->if(rows.isNotEmpty())_ui.value=_ui.value.copy(timing=rows)}}
         viewModelScope.launch{timingClient.status.collect{status->_ui.value=_ui.value.copy(timingStatus=status)}}
@@ -168,6 +168,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
         persist()
         if(source.url==null) resolveSource(source)
     }
+    fun setSeries(value:String){prefs.edit().putString("series_filter",value).apply();_ui.value=_ui.value.copy(selectedSeries=value)}
     fun setCustomRadioUrl(value:String){prefs.edit().putString("radio_url",value).apply();_ui.value=_ui.value.copy(customRadioUrl=value)}
     fun setRadioDelayMs(value:Long){prefs.edit().putLong("radio_delay_ms",value.coerceIn(0L,120_000L)).apply();_ui.value=_ui.value.copy(radioDelayMs=value.coerceIn(0L,120_000L))}
     fun setPreferCustomRadio(value:Boolean){prefs.edit().putBoolean("radio_prefer",value).apply();_ui.value=_ui.value.copy(preferCustomRadio=value)}
