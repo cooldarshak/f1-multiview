@@ -168,9 +168,12 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
+    // Keep all selected live feeds locked to the main feed. The sync engine itself
+    // uses playback-rate nudges for small live drift and a cooled-down seek only for
+    // large drift, so this loop never creates the old rewind loop.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         while (true) {
-            delay(12_000L)
+            delay(1_000L)
             val mainId = ui.mainStreamId ?: continue
             if (ui.selectedStreamIds.size > 1) pool.syncToMain(mainId)
         }
