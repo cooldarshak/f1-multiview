@@ -80,6 +80,7 @@ class PlayerPool(context: Context) {
                     override fun onPlayerError(error: PlaybackException) {
                         _errors.value = _errors.value + (id to (error.message ?: error.errorCodeName))
                         if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player)
+                        else recoverFromSourceFailure(id, player)
                     }
 
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -89,6 +90,7 @@ class PlayerPool(context: Context) {
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) {
+                            sourceRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
                             if (id in desiredPlaying && !player.isPlaying) player.play()
                         }
@@ -227,38 +229,45 @@ class PlayerPool(context: Context) {
         }
 
         when (quality) {
-            Quality.UHD -> builder
-                .setMinVideoSize(targetResolution(player, quality, 3840, 2160).first, targetResolution(player, quality, 3840, 2160).second)
-                .setMaxVideoSize(targetResolution(player, quality, 3840, 2160).first, targetResolution(player, quality, 3840, 2160).second)
-                .setForceHighestSupportedBitrate(true)
-            Quality.FHD -> builder
-                .setMinVideoSize(targetResolution(player, quality, 1920, 1080).first, targetResolution(player, quality, 1920, 1080).second)
-                .setMaxVideoSize(targetResolution(player, quality, 1920, 1080).first, targetResolution(player, quality, 1920, 1080).second)
-                .setForceHighestSupportedBitrate(true)
-            Quality.HD -> builder
-                .setMinVideoSize(targetResolution(player, quality, 1280, 720).first, targetResolution(player, quality, 1280, 720).second)
-                .setMaxVideoSize(targetResolution(player, quality, 1280, 720).first, targetResolution(player, quality, 1280, 720).second)
-                .setForceHighestSupportedBitrate(true)
-            Quality.SD -> builder
-                .setMinVideoSize(targetResolution(player, quality, 854, 480).first, targetResolution(player, quality, 854, 480).second)
-                .setMaxVideoSize(targetResolution(player, quality, 854, 480).first, targetResolution(player, quality, 854, 480).second)
-                .setForceHighestSupportedBitrate(true)
+            Quality.UHD -> {
+                val target = targetResolution(player, 2160, 3840, 2160)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.FHD -> {
+                val target = targetResolution(player, 1080, 1920, 1080)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.HD -> {
+                val target = targetResolution(player, 720, 1280, 720)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.SD -> {
+                val target = targetResolution(player, 480, 854, 480)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
             Quality.AUTO -> builder
                 .setMinVideoSize(0, 0)
-                .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
+                .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 1280, if (isMain) Int.MAX_VALUE else 720)
                 .setForceHighestSupportedBitrate(true)
         }
         return builder.build()
     }
 
-    private fun targetResolution(player: ExoPlayer, quality: Quality, fallbackWidth: Int, fallbackHeight: Int): Pair<Int,Int> {
+    private fun targetResolution(player: ExoPlayer, desiredHeight: Int, fallbackWidth: Int, fallbackHeight: Int): Pair<Int,Int> {
         val formats = player.currentTracks.groups
             .filter { it.type == C.TRACK_TYPE_VIDEO }
             .flatMap { group -> (0 until group.length).map { group.getTrackFormat(it) } }
             .filter { it.width > 0 && it.height > 0 }
             .distinctBy { it.width to it.height }
         if (formats.isEmpty()) return fallbackWidth to fallbackHeight
-        val desiredHeight = fallbackHeight
         val candidates = formats.filter { it.height >= desiredHeight - 32 && it.height <= desiredHeight + 256 }
         val best = candidates.maxWithOrNull(compareBy<androidx.media3.common.Format> { it.height }.thenBy { it.width })
             ?: formats.minByOrNull { kotlin.math.abs(it.height - desiredHeight) }
@@ -270,6 +279,32 @@ class PlayerPool(context: Context) {
             error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
             error.errorCodeName.contains("DECODER", true) ||
             error.message?.contains("MediaCodecVideoRenderer", true) == true
+    }
+
+    private val sourceRecoveryAttempts = mutableMapOf<String, Int>()
+
+    private fun recoverFromSourceFailure(id: String, player: ExoPlayer) {
+        val attempts = sourceRecoveryAttempts[id] ?: 0
+        if (attempts >= 2) return
+        val requested = selectedQualities[id] ?: Quality.AUTO
+        val fallback = when (requested) {
+            Quality.UHD -> Quality.FHD
+            Quality.FHD -> Quality.HD
+            Quality.HD -> Quality.SD
+            Quality.SD -> Quality.AUTO
+            Quality.AUTO -> return
+        }
+        sourceRecoveryAttempts[id] = attempts + 1
+        selectedQualities[id] = fallback
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = fallback,
+            isMain = id == audioPlayerId,
+            preserveAudioSetting = true
+        )
+        player.prepare()
+        player.playWhenReady = true
+        _errors.value = _errors.value + (id to "Playback source failed; retrying at " + fallback.name)
     }
 
     private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
