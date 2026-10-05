@@ -12,7 +12,15 @@ data class PlaybackSession(
     val licenseUrl: String? = null,
     val licenseHeaders: Map<String, String> = emptyMap(),
     val streamHeaders: Map<String, String> = emptyMap(),
-    val isLive: Boolean = true
+    val isLive: Boolean = true,
+    val contentId: String? = null,
+    val channelId: String? = null,
+    val playApiVersion: String? = null,
+    val platform: String? = null,
+    val streamType: String? = null,
+    val ascendonToken: String? = null,
+    val entitlementToken: String? = null,
+    val drmType: String? = null
 )
 data class VodSeason(val year: Int, val pageId: Int)
 data class VodEvent(val pageId: Int, val meetingName: String, val meetingNumber: Int, val seasonYear: Int, val isTest: Boolean = false)
