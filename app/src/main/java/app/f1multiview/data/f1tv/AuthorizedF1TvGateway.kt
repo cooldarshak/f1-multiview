@@ -14,11 +14,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
 class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     private val api=F1TvApiClient()
     private val store=SessionStore(context)
+    private val playbackResolveMutex = Mutex()
+    private var lastPlaybackResolveAt = 0L
     override suspend fun signIn(credentials: ProviderCredentials): Result<Unit> =runCatching{api.login(credentials.username,credentials.password);api.authHeaders()["ascendontoken"]?.let(store::put)}
     override suspend fun signInWithSessionToken(token: String): Result<Unit> =runCatching{api.initialize(token);api.authHeaders()["ascendontoken"]?.let(store::put)}
     override suspend fun restoreSession(): Result<Boolean> = runCatching {
@@ -333,7 +337,11 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
 
         (world + data + timing + tracker + helicam + other + onboard).distinctBy { it.id }
     }
-    override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = runCatching {
+    override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = playbackResolveMutex.withLock {
+        val waitMs = 450L - (System.currentTimeMillis() - lastPlaybackResolveAt)
+        if (waitMs > 0L) delay(waitMs)
+        lastPlaybackResolveAt = System.currentTimeMillis()
+        runCatching {
         ensurePlaybackSession()
         val tv=(context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)==Configuration.UI_MODE_TYPE_TELEVISION
         // Prefer the native big-screen DASH profile on TV, then fall back through
@@ -361,6 +369,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             return@runCatching PlaybackSession(result.manifestUrl,if(result.manifestUrl.contains(".m3u8",true))"application/x-mpegURL" else "application/dash+xml",license,licenseHeaders,streamHeaders,request.contentId.startsWith("live-"),request.contentId,request.channelId,result.playApiVersion,result.platform,result.streamType,api.authHeaders()["ascendontoken"],result.entitlementToken?:api.authHeaders()["entitlementtoken"],result.drmType)
         }catch(t:Throwable){last=t;if(index<platforms.lastIndex)delay(450)}}
         throw last?:F1TvException("No F1 TV playback profile succeeded")
+        }
     }
     private suspend fun ensurePlaybackSession() {
         val saved = store.get() ?: return
