@@ -750,50 +750,50 @@ private fun CanonicalMultiviewLayout(
                 PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, surfaceType)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus)
+                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus)
+                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, surfaceType)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus)
+                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus)
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus)
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, surfaceType)
                     }
                 }
             selected.size == 4 ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX = (topX + it / 1400f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - topX).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - topX).fillMaxHeight(), {}, onFocus, surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(1f - bottomX).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(1f - bottomX).fillMaxHeight(), {}, onFocus, surfaceType)
                     }
                 }
             else ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus)
+                        PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, surfaceType)
                     }
                 }
         }
