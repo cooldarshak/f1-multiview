@@ -115,7 +115,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                     }
                     item { InfoRow("WX","Weather","Air "+ui.weather.air+" · Track "+ui.weather.track+" · Humidity "+ui.weather.humidity,"Wind "+ui.weather.wind) }
                     items(ui.timing){r->
-                        InfoRow(r.position,r.driver,"Gap "+r.gap+" · Last "+r.lastLap+" · S1 "+r.sector1+" · S2 "+r.sector2+" · S3 "+r.sector3,""+r.tyre+" · "+r.speed)
+                        InfoRow(r.position.toString(),r.driver,"Gap "+r.gap+" · Last "+r.lastLap+" · S1 "+r.sector1+" · S2 "+r.sector2+" · S3 "+r.sector3,""+r.tyre+" · "+r.speed)
                     }
                     if(ui.raceControl.isNotEmpty()){
                         item { Text("RACE CONTROL",color=InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(top=8.dp)) }
