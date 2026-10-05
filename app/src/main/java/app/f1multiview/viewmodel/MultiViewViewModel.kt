@@ -12,6 +12,7 @@ import app.f1multiview.data.ResultRow
 import app.f1multiview.data.SavedSetupStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
 import app.f1multiview.data.timing.LiveTimingClient
+import app.f1multiview.data.timing.ReplayTimingClient
 import app.f1multiview.model.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -43,6 +44,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
     private val timingClient=LiveTimingClient(viewModelScope)
+    private val replayTimingClient=ReplayTimingClient()
     private val featureClient=UgisFeatureClient()
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
@@ -81,7 +83,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.stage.equals("race",true)&&!it.title.contains("highlight",true)->0;it.stage.equals("race",true)->1;it.stage.equals("qualifying",true)->2;it.stage.equals("sprint",true)->3;it.stage.equals("sprint-qualifying",true)->4;it.stage.startsWith("practice",true)->5;it.stage.equals("pre-show",true)->6;it.stage.equals("post-show",true)->7;else->8}}.thenBy{it.startTime}.thenBy{it.title});val selected=ordered.firstOrNull{it.stage.equals("race",true)&&!it.title.contains("highlight",true)}?:ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.stage,event.meetingNumber,selected.artworkUrl?:event.artworkUrl, selected.backgroundArtworkUrl?:event.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null);loadStreams(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun selectVodSeason(season:VodSeason)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedSeason=season,selectedEvent=null,vodEvents=emptyList(),vodSessions=emptyList());loadVodEvents(season)}
     fun selectVodEvent(event:VodEvent)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedEvent=event,vodSessions=emptyList());loadVodSessions(event)}
-    fun selectVodSession(vod:VodSession)=viewModelScope.launch{val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
+    fun selectVodSession(vod:VodSession)=viewModelScope.launch{val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session);loadReplayTiming(session)}
     fun setQuality(q:Quality){_ui.value=_ui.value.copy(quality=q)}
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session){
@@ -196,6 +198,8 @@ fun toggleStream(id:String)=viewModelScope.launch{
     fun loadStandings()=viewModelScope.launch{featureClient.standings().onSuccess{_ui.value=_ui.value.copy(standings=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun loadResults()=viewModelScope.launch{featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
+    fun updateReplayTiming(positionMs:Long){ val rows=replayTimingClient.rowsAt(positionMs); if(rows.isNotEmpty()) _ui.value=_ui.value.copy(timing=rows,timingStatus="REPLAY") }
+    fun loadReplayTiming(session:Session)=viewModelScope.launch{ val year=session.seasonYear ?: return@launch; val meeting=session.meetingNumber ?: return@launch; replayTimingClient.load(year,meeting,session.sessionType).onFailure{ if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found")) } }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
     fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("setup-"+System.currentTimeMillis(),name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
