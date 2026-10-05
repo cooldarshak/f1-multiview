@@ -63,9 +63,9 @@ internal object F1CatalogParser {
             else -> value
         }
         return when {
-            Regex("\\\bF1\\s*Academy\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F1 Academy"
-            Regex("\\\bFormula\\s*2\\\b|\\\bF2\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F2"
-            Regex("\\\bFormula\\s*3\\\b|\\\bF3\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F3"
+            Regex("""\\bF1\\s*Academy\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F1 Academy"
+            Regex("""\\bFormula\\s*2\\\b|\\\bF2\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F2"
+            Regex("""\\bFormula\\s*3\\\b|\\\bF3\\\b", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "F3"
             Regex("Porsche\\s+Supercup", RegexOption.IGNORE_CASE).containsMatchIn(fallbackText) -> "Porsche Supercup"
             else -> "F1"
         }
@@ -86,17 +86,17 @@ internal object F1CatalogParser {
         val combined = text.lowercase() + " " + emf.optString("VideoType").lowercase() + " " + meta.optString("contentSubtype").lowercase()
 
         val stage = when {
-            Regex("\\\bpre[- ]?show\\\b|\\\bpreview\\\b").containsMatchIn(combined) -> "pre-show"
-            Regex("\\\bpost[- ]?show\\\b|\\\bpostrace\\\b|\\\bpost race\\\b").containsMatchIn(combined) -> "post-show"
-            Regex("\\\bf1 kids\\\b|\\\bkids\\\b").containsMatchIn(combined) -> "f1-kids"
-            Regex("\\\bsprint qualifying\\\b|\\\bsprint shootout\\\b").containsMatchIn(combined) -> "sprint-qualifying"
-            Regex("\\\bsprint\\\b").containsMatchIn(combined) -> "sprint"
-            Regex("\\\bqualifying\\\b|\\\bquali\\\b").containsMatchIn(combined) -> "qualifying"
-            Regex("\\\bpractice 1\\\b|\\\bfp1\\\b").containsMatchIn(combined) -> "practice-1"
-            Regex("\\\bpractice 2\\\b|\\\bfp2\\\b").containsMatchIn(combined) -> "practice-2"
-            Regex("\\\bpractice 3\\\b|\\\bfp3\\\b").containsMatchIn(combined) -> "practice-3"
-            Regex("\\\bpractice\\\b|\\\bfree practice\\\b").containsMatchIn(combined) -> "practice"
-            Regex("\\\brace\\\b|\\\bgrand prix\\\b").containsMatchIn(combined) -> "race"
+            Regex("""\\bpre[- ]?show\\\b|\\\bpreview\\\b""").containsMatchIn(combined) -> "pre-show"
+            Regex("""\\bpost[- ]?show\\\b|\\\bpostrace\\\b|\\\bpost race\\\b""").containsMatchIn(combined) -> "post-show"
+            Regex("""\\bf1 kids\\\b|\\\bkids\\\b""").containsMatchIn(combined) -> "f1-kids"
+            Regex("""\\bsprint qualifying\\\b|\\\bsprint shootout\\\b""").containsMatchIn(combined) -> "sprint-qualifying"
+            Regex("""\\bsprint\\\b""").containsMatchIn(combined) -> "sprint"
+            Regex("""\\bqualifying\\\b|\\\bquali\\\b""").containsMatchIn(combined) -> "qualifying"
+            Regex("""\\bpractice 1\\\b|\\\bfp1\\\b""").containsMatchIn(combined) -> "practice-1"
+            Regex("""\\bpractice 2\\\b|\\\bfp2\\\b""").containsMatchIn(combined) -> "practice-2"
+            Regex("""\\bpractice 3\\\b|\\\bfp3\\\b""").containsMatchIn(combined) -> "practice-3"
+            Regex("""\\bpractice\\\b|\\\bfree practice\\\b""").containsMatchIn(combined) -> "practice"
+            Regex("""\\brace\\\b|\\\bgrand prix\\\b""").containsMatchIn(combined) -> "race"
             else -> return null
         }
 
@@ -104,8 +104,8 @@ internal object F1CatalogParser {
             stage == "pre-show" -> "pre-show"
             stage == "post-show" -> "post-show"
             stage == "f1-kids" -> "f1-kids"
-            Regex("\\\bf1 kids\\\b|\\\bkids\\\b").containsMatchIn(combined) -> "f1-kids"
-            Regex("\\\bfull race\\\b|\\\bfull session\\\b").containsMatchIn(combined) -> "main"
+            Regex("""\\bf1 kids\\\b|\\\bkids\\\b""").containsMatchIn(combined) -> "f1-kids"
+            Regex("""\\bfull race\\\b|\\\bfull session\\\b""").containsMatchIn(combined) -> "main"
             else -> "main"
         }
 
