@@ -1,8 +1,6 @@
 package app.f1multiview
 
-import android.content.res.Configuration
 import android.os.Bundle
-import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -28,16 +26,5 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(vm)
         }
-
-    }
-
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        return super.dispatchKeyEvent(event)
-    }
-
-    private fun isAndroidTv(): Boolean {
-        val uiMode = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
-        return uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
-            packageManager.hasSystemFeature("android.software.leanback")
     }
 }
