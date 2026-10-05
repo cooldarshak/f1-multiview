@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -44,8 +46,6 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
-import androidx.compose.ui.focus.focusable
-import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
@@ -1104,8 +1104,7 @@ private fun FullscreenMultiview(
     BackHandler(enabled = true) {
         when {
             menu != null -> menu = null
-            feedPickerOpen -> feedPickerOpen = false
-            editSize -> editSize = false
+            channelPickerOpen -> channelPickerOpen = false
             controlsVisible -> controlsVisible = false
             else -> onClose()
         }
@@ -1149,8 +1148,8 @@ private fun FullscreenMultiview(
     fun pauseAll() = selected.forEach { pool.pause(it.id) }
     fun seekAll(deltaMs: Long) = selected.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
-    LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
-        if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
+    LaunchedEffect(controlsVisible, channelPickerOpen, menu) {
+        if (controlsVisible && !channelPickerOpen && menu == null) {
             delay(5_000L)
             controlsVisible = false
         }
@@ -1679,33 +1678,34 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
 
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f))))) {
-                LazyRow(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp).focusGroup(), horizontalArrangement=Arrangement.spacedBy(7.dp), verticalAlignment=Alignment.CenterVertically) {
-                    Surface(
-                        Modifier
-                            .focusRequester(fullscreenBackFocusRequester)
-                            .clickable { onClose() }
-                            .onFocusChanged { fullscreenBackFocused = it.isFocused }
-                            .border(2.dp, if (fullscreenBackFocused) White else Color.Transparent, RoundedCornerShape(9.dp)),
-                        color=Color.Black.copy(alpha=.65f),
-                        shape=RoundedCornerShape(9.dp)
-                    ) {
-                        Text("‹  BACK", color=White, fontSize=10.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Surface(color=Red, shape=RoundedCornerShape(4.dp)) {
-                        Text(if(stream.isLive)"LIVE" else "REPLAY", color=White, fontSize=8.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=7.dp,vertical=5.dp))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(stream.driver?.takeIf{it.isNotBlank()}?:stream.title,color=White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
-                    Spacer(Modifier.weight(1f))
-                    SmallPlayerButton("CHANNEL"){ channelPickerOpen = !channelPickerOpen; menu = null }
-                    Spacer(Modifier.width(6.dp))
-                    SmallPlayerButton("PIP"){enterPip()}
-                    Spacer(Modifier.width(6.dp))
-                    SmallPlayerButton(if (fit) "FIT" else "FILL"){ fit=!fit; player.videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING }
-                    Spacer(Modifier.width(6.dp))
-                    SmallPlayerButton("HIDE"){ controlsVisible = false }
-                }
+                 Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(14.dp).focusGroup(), horizontalArrangement=Arrangement.spacedBy(7.dp), verticalAlignment=Alignment.CenterVertically) {
+                     Surface(
+                         Modifier
+                             .focusRequester(fullscreenBackFocusRequester)
+                             .clickable { onClose() }
+                             .focusable()
+                             .onFocusChanged { fullscreenBackFocused = it.isFocused }
+                             .border(2.dp, if (fullscreenBackFocused) White else Color.Transparent, RoundedCornerShape(9.dp)),
+                         color=Color.Black.copy(alpha=.65f),
+                         shape=RoundedCornerShape(9.dp)
+                     ) {
+                         Text("‹  BACK", color=White, fontSize=10.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
+                     }
+                     Spacer(Modifier.width(12.dp))
+                     Surface(color=Red, shape=RoundedCornerShape(4.dp)) {
+                         Text(if(stream.isLive)"LIVE" else "REPLAY", color=White, fontSize=8.sp, fontWeight=FontWeight.Black, modifier=Modifier.padding(horizontal=7.dp,vertical=5.dp))
+                     }
+                     Spacer(Modifier.width(8.dp))
+                     Text(stream.driver?.takeIf{it.isNotBlank()}?:stream.title,color=White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
+                     Spacer(Modifier.weight(1f))
+                     SmallPlayerButton("CHANNEL"){ channelPickerOpen = !channelPickerOpen; menu = null }
+                     Spacer(Modifier.width(6.dp))
+                     SmallPlayerButton("PIP"){enterPip()}
+                     Spacer(Modifier.width(6.dp))
+                     SmallPlayerButton(if (fit) "FIT" else "FILL"){ fit=!fit; player.videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING }
+                     Spacer(Modifier.width(6.dp))
+                     SmallPlayerButton("HIDE"){ controlsVisible = false }
+                 }
 
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal=14.dp,vertical=12.dp).focusGroup()) {
                     if(duration>0L){
