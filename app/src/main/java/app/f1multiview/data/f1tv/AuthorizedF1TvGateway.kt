@@ -271,6 +271,27 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         walk(root); return out
     }
 
+    override suspend fun showsAndDocs(): Result<List<EditorialItem>> = runCatching {
+        val out = linkedMapOf<String, EditorialItem>()
+        for (pageId in listOf(410, 413)) {
+            for (node in F1CatalogParser.flatten(api.fetchPage(pageId))) {
+                val meta = node.optJSONObject("metadata") ?: continue
+                val contentId = meta.optString("contentId").takeIf { it.isNotBlank() } ?: continue
+                val title = F1CatalogParser.title(node, meta).takeIf { it.isNotBlank() } ?: continue
+                out.putIfAbsent(
+                    contentId,
+                    EditorialItem(
+                        contentId = contentId,
+                        title = title,
+                        artworkUrl = pictureUrl(firstArtworkValue(node, meta), 640, 360),
+                        pageId = pageId
+                    )
+                )
+            }
+        }
+        out.values.toList()
+    }
+
     override suspend fun streams(sessionId:String):Result<List<StreamSource>> = runCatching {
         val container=api.contentVideo(sessionId)
         val metadata=container.optJSONObject("metadata")?:return@runCatching emptyList()
