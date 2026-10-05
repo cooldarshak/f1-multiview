@@ -8,6 +8,8 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+        - pattern: feature/android-tv-remote
+          include: true
     scripts:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"

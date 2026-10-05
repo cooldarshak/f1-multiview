@@ -12,11 +12,41 @@ data class PlaybackSession(
     val licenseUrl: String? = null,
     val licenseHeaders: Map<String, String> = emptyMap(),
     val streamHeaders: Map<String, String> = emptyMap(),
-    val isLive: Boolean = true
+    val isLive: Boolean = true,
+    val contentId: String? = null,
+    val channelId: String? = null,
+    val playApiVersion: String? = null,
+    val platform: String? = null,
+    val streamType: String? = null,
+    val ascendonToken: String? = null,
+    val entitlementToken: String? = null,
+    val drmType: String? = null
 )
 data class VodSeason(val year: Int, val pageId: Int)
-data class VodEvent(val pageId: Int, val meetingName: String, val meetingNumber: Int, val seasonYear: Int, val isTest: Boolean = false)
-data class VodSession(val contentId: String, val title: String, val type: String, val series: String = "F1", val eventPageId: Int)
+data class VodEvent(
+    val pageId: Int,
+    val meetingName: String,
+    val meetingNumber: Int,
+    val seasonYear: Int,
+    val isTest: Boolean = false,
+    val artworkUrl: String? = null,
+    val backgroundArtworkUrl: String? = null,
+    val series: String = "F1",
+    val startTime: Long = 0L
+)
+data class EditorialItem(val contentId:String,val title:String,val artworkUrl:String?=null,val pageId:Int=0)
+data class VodSession(
+    val contentId: String,
+    val title: String,
+    val type: String,
+    val series: String = "F1",
+    val eventPageId: Int,
+    val artworkUrl: String? = null,
+    val backgroundArtworkUrl: String? = null,
+    val stage: String = "other",
+    val broadcastVariant: String = "main",
+    val startTime: Long = 0L
+)
 interface PlaybackGateway {
     suspend fun signIn(credentials: ProviderCredentials): Result<Unit>
     suspend fun signInWithSessionToken(token: String): Result<Unit>
@@ -28,4 +58,5 @@ interface PlaybackGateway {
     suspend fun vodSeasons(): Result<List<VodSeason>>
     suspend fun vodEvents(season: VodSeason): Result<List<VodEvent>>
     suspend fun vodSessions(event: VodEvent): Result<List<VodSession>>
+    suspend fun showsAndDocs(): Result<List<EditorialItem>>
 }

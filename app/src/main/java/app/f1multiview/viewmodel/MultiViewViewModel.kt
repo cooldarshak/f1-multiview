@@ -5,6 +5,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.f1multiview.core.playback.*
 import app.f1multiview.data.DemoRepository
+import app.f1multiview.data.UgisFeatureClient
+import app.f1multiview.data.CalendarRace
+import app.f1multiview.data.StandingRow
+import app.f1multiview.data.ResultRow
 import app.f1multiview.data.SavedSetupStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
 import app.f1multiview.data.timing.LiveTimingClient
@@ -27,18 +31,30 @@ data class UiState(
     val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
-    val mainStreamId:String? = null
+    val mainStreamId:String? = null,
+    val savedSetups: List<SavedSetup> = emptyList(),
+    val calendar: List<CalendarRace> = emptyList(),
+    val standings: List<StandingRow> = emptyList(),
+    val results: List<ResultRow> = emptyList(),
+    val showsDocs: List<EditorialItem> = emptyList(),
+    val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1"
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
     private val timingClient=LiveTimingClient(viewModelScope)
+    private val featureClient=UgisFeatureClient()
+    private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
     init{
+        _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
         viewModelScope.launch{timingClient.rows.collect{rows->if(rows.isNotEmpty())_ui.value=_ui.value.copy(timing=rows)}}
         viewModelScope.launch{timingClient.status.collect{status->_ui.value=_ui.value.copy(timingStatus=status)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
+        viewModelScope.launch{
+            store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
+        }
         viewModelScope.launch{
             store.setup.collect{setup->
                 if(setup!=null&&setup.streamIds.isNotEmpty()&&_ui.value.streams.isNotEmpty()){
@@ -60,10 +76,10 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private suspend fun loadSessions(){provider.sessions().fold({sessions->val first=sessions.firstOrNull();_ui.value=_ui.value.copy(auth=AuthState.SignedIn,sessions=sessions,session=first);if(first!=null)loadStreams(first)},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Unable to load F1 TV sessions"),providerError=it.message)})}
     fun loadVodSeasons()=viewModelScope.launch{provider.vodSeasons().onSuccess{seasons->val selected=seasons.firstOrNull();_ui.value=_ui.value.copy(vodSeasons=seasons,selectedSeason=selected);if(selected!=null)loadVodEvents(selected)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     private suspend fun loadVodEvents(season:VodSeason){provider.vodEvents(season).onSuccess{events->val selected=events.maxWithOrNull(compareBy<VodEvent>{it.meetingNumber}.thenBy{it.meetingName})?:events.firstOrNull();_ui.value=_ui.value.copy(vodEvents=events,selectedEvent=selected);if(selected!=null)loadVodSessions(selected)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
-    private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.type.equals("race",true)&&!it.title.contains("highlight",true)->0;it.type.equals("race",true)->1;it.type.equals("sprint",true)->2;it.type.equals("qualifying",true)->3;it.type.equals("practice",true)->4;else->5}}.thenByDescending{it.title});val selected=ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.type);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null);loadStreams(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.stage.equals("race",true)&&!it.title.contains("highlight",true)->0;it.stage.equals("race",true)->1;it.stage.equals("qualifying",true)->2;it.stage.equals("sprint",true)->3;it.stage.equals("sprint-qualifying",true)->4;it.stage.startsWith("practice",true)->5;it.stage.equals("pre-show",true)->6;it.stage.equals("post-show",true)->7;else->8}}.thenBy{it.startTime}.thenBy{it.title});val selected=ordered.firstOrNull{it.stage.equals("race",true)&&!it.title.contains("highlight",true)}?:ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.stage,selected.artworkUrl?:event.artworkUrl, selected.backgroundArtworkUrl?:event.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null);loadStreams(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun selectVodSeason(season:VodSeason)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedSeason=season,selectedEvent=null,vodEvents=emptyList(),vodSessions=emptyList());loadVodEvents(season)}
     fun selectVodEvent(event:VodEvent)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedEvent=event,vodSessions=emptyList());loadVodSessions(event)}
-    fun selectVodSession(vod:VodSession)=viewModelScope.launch{val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
+    fun selectVodSession(vod:VodSession)=viewModelScope.launch{val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
     fun setQuality(q:Quality){_ui.value=_ui.value.copy(quality=q)}
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session){
@@ -93,7 +109,13 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                         url=playback.manifestUrl,
                         drmLicenseUrl=playback.licenseUrl,
                         requestHeaders=playback.streamHeaders,
-                        drmRequestHeaders=playback.licenseHeaders
+                        drmRequestHeaders=playback.licenseHeaders,
+                        playApiVersion=playback.playApiVersion,
+                        platform=playback.platform,
+                        streamType=playback.streamType,
+                        ascendonToken=playback.ascendonToken,
+                        entitlementToken=playback.entitlementToken,
+                        drmType=playback.drmType
                     ) else it
                 },
                 providerError=null
@@ -101,6 +123,22 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         }.onFailure{
             _ui.value=_ui.value.copy(providerError=it.message?:"Playback resolution failed")
         }
+    }
+    fun applyPreset(name:String){
+        val streams=_ui.value.streams
+        val world=streams.firstOrNull{it.kind==StreamKind.WORLD}
+        val obc=streams.firstOrNull{it.kind==StreamKind.ONBOARD}
+        val tracker=streams.firstOrNull{it.kind==StreamKind.TRACK}
+        val data=streams.firstOrNull{it.kind==StreamKind.DATA}
+        val picked=when(name){
+            "side" -> listOfNotNull(world,obc).map{it.id}
+            "quad" -> listOfNotNull(world,obc,tracker,data).map{it.id}
+            else -> listOfNotNull(world).map{it.id}
+        }
+        val layout=if(name=="side") LayoutPreset.SPLIT_2 else if(name=="quad") LayoutPreset.GRID_4 else LayoutPreset.SINGLE
+        _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=picked.take(if(layout==LayoutPreset.SPLIT_2)2 else if(layout==LayoutPreset.GRID_4)4 else 1),mainStreamId=picked.firstOrNull())
+        persist()
+        picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null}.forEach{viewModelScope.launch{resolveSource(it)}}
     }
     fun setLayout(layout:LayoutPreset){
     val maxFeeds=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
@@ -146,10 +184,21 @@ fun toggleStream(id:String)=viewModelScope.launch{
         persist()
         if(source.url==null) resolveSource(source)
     }
+    fun setSeries(value:String){prefs.edit().putString("series_filter",value).apply();_ui.value=_ui.value.copy(selectedSeries=value)}
+    fun setCustomRadioUrl(value:String){prefs.edit().putString("radio_url",value).apply();_ui.value=_ui.value.copy(customRadioUrl=value)}
+    fun setRadioDelayMs(value:Long){prefs.edit().putLong("radio_delay_ms",value.coerceIn(0L,120_000L)).apply();_ui.value=_ui.value.copy(radioDelayMs=value.coerceIn(0L,120_000L))}
+    fun setPreferCustomRadio(value:Boolean){prefs.edit().putBoolean("radio_prefer",value).apply();_ui.value=_ui.value.copy(preferCustomRadio=value)}
+    fun loadShowsDocs()=viewModelScope.launch{provider.showsAndDocs().onSuccess{_ui.value=_ui.value.copy(showsDocs=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    fun loadCalendar()=viewModelScope.launch{featureClient.calendar().onSuccess{_ui.value=_ui.value.copy(calendar=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    fun loadStandings()=viewModelScope.launch{featureClient.standings().onSuccess{_ui.value=_ui.value.copy(standings=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
+    fun loadResults()=viewModelScope.launch{featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta)}
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
-    fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("default",name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
+    fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("setup-"+System.currentTimeMillis(),name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
+    fun saveNamedSetup(id:String, name:String){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup(id,name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
+    fun loadSavedSetup(setup:SavedSetup){val available=_ui.value.streams.map{it.id}.toSet();val ids=setup.streamIds.filter{it in available};val max=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6};val main=setup.mainStreamId?.takeIf{it in ids}?:ids.firstOrNull();_ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=listOfNotNull(main)+ids.filterNot{it==main}.take(max-1),mainStreamId=main);persist()}
+    fun deleteSavedSetup(id:String)=viewModelScope.launch{store.delete(id)}
     fun clearSavedSetup()=viewModelScope.launch{store.clear()}
     override fun onCleared(){timingClient.stop();super.onCleared()}
     private fun persist(){saveCurrentSetup()}

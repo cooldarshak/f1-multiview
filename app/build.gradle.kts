@@ -10,10 +10,10 @@ android {
         applicationId="app.f1multiview"
         minSdk=26
         targetSdk=35
-        versionCode=(System.getenv("CM_VERSION_CODE")?.toIntOrNull() ?: 101)
-        versionName="1.1." + (System.getenv("CM_VERSION_CODE")?.takeLast(6) ?: "101")
+        versionCode=(System.getenv("CM_VERSION_CODE")?.toIntOrNull() ?: 102)
+        versionName="1.1." + (System.getenv("CM_VERSION_CODE")?.takeLast(6) ?: "102")
     }
-    buildFeatures { compose=true }
+    buildFeatures { compose=true; buildConfig=true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -49,6 +49,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.media3:media3-exoplayer:1.11.1")

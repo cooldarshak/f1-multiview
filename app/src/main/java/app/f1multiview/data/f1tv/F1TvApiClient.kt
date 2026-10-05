@@ -1,6 +1,7 @@
 package app.f1multiview.data.f1tv
 
 import android.util.Base64
+import android.webkit.CookieManager
 import app.f1multiview.core.network.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,7 +14,7 @@ class F1TvApiClient {
     companion object {
         const val BASE="https://f1tv.formula1.com"
         const val AUTH="https://api.formula1.com/v2/account/subscriber/authenticate/by-password"
-        const val BROWSER_UA="Mozilla/5.0 (Linux; Android 13; Android TV) AppleWebKit/537.36 Chrome/131.0 Safari/537.36"
+        val BROWSER_UA:String get()="Mozilla/5.0 (Linux; Android "+android.os.Build.VERSION.RELEASE+"; "+android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL+") AppleWebKit/537.36 Chrome/140.0 Safari/537.36"
         private const val LANG="ENG"
         private const val DEFAULT_ENTITLEMENT="F1_TV_Pro_Annual"
         private const val DEFAULT_GROUP="2"
@@ -25,6 +26,42 @@ class F1TvApiClient {
     @Volatile private var entitlement=DEFAULT_ENTITLEMENT
     @Volatile private var groupId=DEFAULT_GROUP
     fun isAuthenticated()=!subscriptionToken.isNullOrBlank()&&!entitlementToken.isNullOrBlank()
+    fun deviceInfo(): String = "device=android_tv;screen=bigscreen;os=android;model="+android.os.Build.MODEL.replace(";","_")+";osVersion="+android.os.Build.VERSION.SDK_INT+";manufacturer="+android.os.Build.MANUFACTURER.replace(";","_")+";appVersion=1.0;playerVersion=Media3;tms=1;"
+    fun isTokenExpired(token: String, skewSeconds: Long = 60): Boolean {
+        return runCatching {
+            val parts = token.split('.')
+            if (parts.size < 2) return@runCatching false
+            val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+            val exp = JSONObject(payload).optLong("exp", 0L)
+            exp > 0L && exp * 1000L <= System.currentTimeMillis() + skewSeconds * 1000L
+        }.getOrDefault(false)
+    }
+
+    fun subscriptionTokenFromCookieHeader(cookieHeader: String?): String? {
+        if (cookieHeader.isNullOrBlank()) return null
+        val raw = cookieHeader.split(';').asSequence().map { it.trim() }
+            .firstOrNull { it.startsWith("login-session=", ignoreCase = true) }
+            ?.substringAfter('=') ?: return null
+        return runCatching {
+            val decoded = java.net.URLDecoder.decode(raw, "UTF-8")
+            val json = JSONObject(decoded)
+            json.optJSONObject("data")?.optString("subscriptionToken")
+                ?.takeIf { it.length >= 50 }
+                ?: json.optString("subscriptionToken").takeIf { it.length >= 50 }
+        }.getOrNull()
+    }
+
+    fun subscriptionTokenFromWebViewCookies(): String? {
+        val cm = CookieManager.getInstance()
+        return listOf(
+            "https://account.formula1.com/",
+            "https://formula1.com/",
+            "https://f1tv.formula1.com/"
+        ).asSequence()
+            .mapNotNull { url -> subscriptionTokenFromCookieHeader(cm.getCookie(url)) }
+            .firstOrNull { !isTokenExpired(it) }
+    }
+
     suspend fun login(email:String,password:String){
         val response=execute(AUTH,"POST",JSONObject().put("Login",email).put("Password",password).toString(),emptyMap())
         if(response.code==403)throw F1TvException("F1 TV rejected direct login (HTTP 403). Use browser sign-in.")
@@ -49,18 +86,57 @@ class F1TvApiClient {
         val response=execute(BASE+"/1.0/R/"+LANG+"/WEB_DASH/ALL/EVENTS/LIVENOW/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"live catalog");return JSONObject(response.body)
     }
     suspend fun contentVideo(contentId:String):JSONObject{
-        val response=execute(BASE+"/4.0/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"content video")
-        return JSONObject(response.body).optJSONObject("resultObj")?.optJSONArray("containers")?.optJSONObject(0)?:throw F1TvException("CONTENT/VIDEO did not return a container")
+        // F1 TV's channel metadata is still exposed through the 3.0 WEB_HLS
+        // endpoint used by the reference Android TV client. Keep our newer
+        // 4.0 WEB_DASH endpoint as a fallback for accounts/content that use it.
+        // Current F1 TV clients use the 4.0 WEB_DASH content endpoint.
+        // Keep the older 3.0 WEB_HLS path only as a fallback.
+        val endpoints = listOf(
+            BASE+"/4.0/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId,
+            BASE+"/3.0/R/"+LANG+"/WEB_HLS/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
+        )
+        var last:Throwable? = null
+        for (endpoint in endpoints) {
+            try {
+                val response=execute(endpoint,"GET",null,authHeaders())
+                ensureSuccess(response,"content video")
+                val container=JSONObject(response.body).optJSONObject("resultObj")
+                    ?.optJSONArray("containers")?.optJSONObject(0)
+                if (container != null) return container
+                last=F1TvException("CONTENT/VIDEO returned no container")
+            } catch (t:Throwable) {
+                last=t
+            }
+        }
+        throw last ?: F1TvException("CONTENT/VIDEO did not return a container")
     }
     suspend fun contentPlay(contentId:String,channelId:String?,platform:String):PlaybackResponse{
         val query="?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
-        val response=execute(BASE+"/2.0/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,authHeaders());ensureSuccess(response,"content playback")
+        // The current reference client uses 2.0 CONTENT/PLAY.
+        // Keep 3.0 as a fallback for older content/pipelines.
+        val apiVersions=listOf("2.0","3.0")
+        var last:Throwable?=null
+        for(apiVersion in apiVersions){
+            try{
+                val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
+                ensureSuccess(response,"content playback")
+                return parsePlaybackResponse(response,contentId,channelId,platform)
+            }catch(t:Throwable){last=t}
+        }
+        throw last?:F1TvException("F1 TV playback failed")
+    }
+    private fun playHeaders(): Map<String,String> = buildMap {
+        putAll(authHeaders());put("Origin",BASE);put("Referer",BASE+"/");put("x-f1-device-info",deviceInfo())
+    }
+    private fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
         val result=JSONObject(response.body).optJSONObject("resultObj")?:JSONObject(response.body)
         val manifest=firstString(result,"url","manifestUrl","manifestURL","playUrl")?:throw F1TvException("CONTENT/PLAY did not return a manifest URL")
         val license=firstString(result,"laURL","laUrl","licenseUrl","licenseURL")
-        val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken");val streamType=firstString(result,"streamType")
-        val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0};val playToken=extractPlayToken(manifest)
-        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion)
+        val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken")
+        val streamType=firstString(result,"streamType");val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0}
+        val playToken=extractPlayToken(manifest);val playApiVersion=firstString(result,"playApiVersion","playAPIVersion")
+        val platform=firstString(result,"platform")?:requestedPlatform;val drmType=firstString(result,"drmType")
+        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
         val response=execute(BASE+"/2.0/R/"+LANG+"/WEB_DASH/ALL/PAGE/"+pageId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"archive page "+pageId)
@@ -119,6 +195,6 @@ class F1TvApiClient {
     }
     private fun firstString(obj:JSONObject,vararg keys:String):String?=keys.firstNotNullOfOrNull{key->obj.optString(key).takeIf{it.isNotBlank()}}
 }
-data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null)
+data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null)
 data class HttpResponse(val code:Int,val isSuccessful:Boolean,val body:String)
 class F1TvException(message:String):Exception(message)

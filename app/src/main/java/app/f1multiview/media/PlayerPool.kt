@@ -25,9 +25,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 @OptIn(UnstableApi::class)
+data class VideoDiagnostics(
+    val width: Int,
+    val height: Int,
+    val bitrate: Int,
+    val codec: String?,
+    val hdr: Boolean,
+    val colorTransfer: Int,
+    val colorSpace: Int,
+    val bitDepth: Int
+)
+
 class PlayerPool(context: Context) {
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
+    private val selectedQualities = mutableMapOf<String, Quality>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
@@ -68,20 +80,28 @@ class PlayerPool(context: Context) {
                 // This reduces simultaneous decoder/network pressure without forcing the
                 // main feed down to 720p on a flagship phone.
                 val isMain = id == audioPlayerId
-                val initialBuilder = player.trackSelectionParameters.buildUpon()
-                    .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
-                    .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-                player.trackSelectionParameters = initialBuilder.build()
+                player.trackSelectionParameters = buildQualityParameters(
+                    player = player,
+                    quality = selectedQualities[id] ?: Quality.AUTO,
+                    isMain = isMain,
+                    preserveAudioSetting = false
+                )
 
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         _errors.value = _errors.value + (id to (error.message ?: error.errorCodeName))
                         if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player)
+                        else recoverFromSourceFailure(id, player)
+                    }
+
+                    override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                        val selected = selectedQualities[id] ?: Quality.AUTO
+                        if (selected != Quality.AUTO) applyQuality(player, selected, id == audioPlayerId)
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) {
+                            sourceRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
                             if (id in desiredPlaying && !player.isPlaying) player.play()
                         }
@@ -136,66 +156,169 @@ class PlayerPool(context: Context) {
             DefaultMediaSourceFactory(dataSource)
         }
 
-        // The selected main feed, not the feed type, determines its quality budget.
-        // Data/Tracker can be the main reference too, so never silently force the main
-        // player back to 720p here.
+        // Preserve an explicit quality choice across media-source reloads.
         val isMain = stream.id == audioPlayerId
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
-            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-            .build()
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = selectedQualities[stream.id] ?: Quality.AUTO,
+            isMain = isMain,
+            preserveAudioSetting = false
+        )
 
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
 
     fun setQuality(id: String, quality: Quality) {
-        players[id]?.let { applyQuality(it, quality) }
+        selectedQualities[id] = quality
+        players[id]?.let { applyQuality(it, quality, id == audioPlayerId) }
     }
 
     fun setQuality(quality: Quality) {
-        players.values.forEach { applyQuality(it, quality) }
+        players.keys.forEach { id ->
+            selectedQualities[id] = quality
+            players[id]?.let { player -> applyQuality(player, quality, id == audioPlayerId) }
+        }
     }
 
-    private fun applyQuality(player: ExoPlayer, quality: Quality) {
-        val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-            Configuration.UI_MODE_TYPE_TELEVISION
+    fun getQuality(id: String): Quality = selectedQualities[id] ?: Quality.AUTO
 
-        val builder = player.trackSelectionParameters.buildUpon()
-
-        when (quality) {
-            Quality.UHD -> builder
-                .setMaxVideoSize(3840, 2160)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264)
-
-            Quality.FHD -> builder
-                .setMaxVideoSize(1920, 1080)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-
-            Quality.HD -> builder
-                .setMaxVideoSize(1280, 720)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-
-            Quality.SD -> builder
-                .setMaxVideoSize(854, 480)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-
-            Quality.AUTO -> {
-                if (isTv) {
-                    builder
-                        .clearVideoSizeConstraints()
-                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                } else {
-                    builder
-                        .setMaxVideoSize(1920, 1080)
-                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+    /** Returns the actual video resolutions currently exposed by Media3. */
+    fun availableVideoResolutions(id: String): List<Pair<Int, Int>> {
+        val player = players[id] ?: return emptyList()
+        return player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    val format = group.getTrackFormat(index)
+                    if (format.width > 0 && format.height > 0) format.width to format.height else null
                 }
             }
+            .distinct()
+            .sortedByDescending { it.second }
+    }
+
+    fun currentVideoDiagnostics(id: String): VideoDiagnostics? {
+        val player = players[id] ?: return null
+        val selected = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    if (group.isTrackSelected(index)) group.getTrackFormat(index) else null
+                }
+            }
+            .maxWithOrNull(compareBy<androidx.media3.common.Format> { it.height }.thenBy { it.bitrate })
+            ?: return null
+        val color = selected.colorInfo
+        return VideoDiagnostics(
+            width = selected.width,
+            height = selected.height,
+            bitrate = selected.bitrate,
+            codec = selected.codecs,
+            hdr = androidx.media3.common.ColorInfo.isTransferHdr(color),
+            colorTransfer = color?.colorTransfer ?: -1,
+            colorSpace = color?.colorSpace ?: -1,
+            bitDepth = color?.lumaBitdepth ?: -1
+        )
+    }
+
+    fun qualityAvailable(id: String, quality: Quality): Boolean {
+        val resolutions = availableVideoResolutionsForQualityMenu(id)
+        if (resolutions.isEmpty()) return false
+        return when (quality) {
+            Quality.AUTO -> true
+            Quality.UHD -> resolutions.any { it.second >= 2160 }
+            Quality.FHD -> resolutions.any { it.second >= 1080 }
+            Quality.HD -> resolutions.any { it.second >= 720 }
+            Quality.SD -> resolutions.any { it.second >= 480 }
+        }
+    }
+
+    /** Includes tracks Media3 reports as supported when capability checks are relaxed, matching the reference TV quality picker. */
+    fun availableVideoResolutionsForQualityMenu(id: String): List<Pair<Int,Int>> {
+        val player = players[id] ?: return emptyList()
+        return player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    val format = group.getTrackFormat(index)
+                    if (format.width > 0 && format.height > 0 && group.isTrackSupported(index, true)) format.width to format.height else null
+                }
+            }
+            .distinct()
+            .sortedByDescending { it.second }
+    }
+
+    private fun applyQuality(player: ExoPlayer, quality: Quality, isMain: Boolean) {
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = quality,
+            isMain = isMain,
+            preserveAudioSetting = true
+        )
+    }
+
+    /**
+     * Explicit quality is pinned with matching minimum and maximum dimensions.
+     * Auto remains adaptive within the feed's resource budget.
+     */
+    private fun buildQualityParameters(
+        player: ExoPlayer,
+        quality: Quality,
+        isMain: Boolean,
+        preserveAudioSetting: Boolean
+    ): androidx.media3.common.TrackSelectionParameters {
+        val builder = player.trackSelectionParameters.buildUpon()
+            
+
+        if (!preserveAudioSetting) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
         }
 
-        player.trackSelectionParameters = builder.build()
+        when (quality) {
+            Quality.UHD -> {
+                val target = targetResolution(player, 2160, 3840, 2160)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.FHD -> {
+                val target = targetResolution(player, 1080, 1920, 1080)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.HD -> {
+                val target = targetResolution(player, 720, 1280, 720)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.SD -> {
+                val target = targetResolution(player, 480, 854, 480)
+                builder.setMinVideoSize(target.first, target.second)
+                    .setMaxVideoSize(target.first, target.second)
+                    .setForceHighestSupportedBitrate(true)
+            }
+            Quality.AUTO -> builder
+                .setMinVideoSize(0, 0)
+                .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 1280, if (isMain) Int.MAX_VALUE else 720)
+                .setForceHighestSupportedBitrate(false)
+        }
+        return builder.build()
+    }
+
+    private fun targetResolution(player: ExoPlayer, desiredHeight: Int, fallbackWidth: Int, fallbackHeight: Int): Pair<Int,Int> {
+        val formats = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group -> (0 until group.length).map { group.getTrackFormat(it) } }
+            .filter { it.width > 0 && it.height > 0 }
+            .distinctBy { it.width to it.height }
+        if (formats.isEmpty()) return fallbackWidth to fallbackHeight
+        val candidates = formats.filter { it.height >= desiredHeight - 32 && it.height <= desiredHeight + 256 }
+        val best = candidates.maxWithOrNull(compareBy<androidx.media3.common.Format> { it.height }.thenBy { it.width })
+            ?: formats.minByOrNull { kotlin.math.abs(it.height - desiredHeight) }
+        return if (best != null) best.width to best.height else fallbackWidth to fallbackHeight
     }
 
     private fun isDecoderFailure(error: PlaybackException): Boolean {
@@ -205,16 +328,50 @@ class PlayerPool(context: Context) {
             error.message?.contains("MediaCodecVideoRenderer", true) == true
     }
 
-    private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setMaxVideoSize(1920, 1080)
-            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-            .build()
+    private val sourceRecoveryAttempts = mutableMapOf<String, Int>()
 
+    private fun recoverFromSourceFailure(id: String, player: ExoPlayer) {
+        val attempts = sourceRecoveryAttempts[id] ?: 0
+        if (attempts >= 2) return
+        val requested = selectedQualities[id] ?: Quality.AUTO
+        val fallback = when (requested) {
+            Quality.UHD -> Quality.FHD
+            Quality.FHD -> Quality.HD
+            Quality.HD -> Quality.SD
+            Quality.SD -> Quality.AUTO
+            Quality.AUTO -> return
+        }
+        sourceRecoveryAttempts[id] = attempts + 1
+        selectedQualities[id] = fallback
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = fallback,
+            isMain = id == audioPlayerId,
+            preserveAudioSetting = true
+        )
         player.prepare()
         player.playWhenReady = true
-        _errors.value = _errors.value + (id to "Decoder failed; retrying at 1080p")
+        _errors.value = _errors.value + (id to "Playback source failed; retrying at " + fallback.name)
+    }
+
+    private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
+        val isMain = id == audioPlayerId
+        val requested = selectedQualities[id] ?: Quality.AUTO
+        val recoveryQuality = when {
+            requested == Quality.UHD -> Quality.FHD
+            requested == Quality.FHD && !isMain -> Quality.HD
+            else -> requested
+        }
+        if (recoveryQuality != requested) selectedQualities[id] = recoveryQuality
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = recoveryQuality,
+            isMain = isMain,
+            preserveAudioSetting = true
+        )
+        player.prepare()
+        player.playWhenReady = true
+        _errors.value = _errors.value + (id to "Decoder failed; retrying at " + recoveryQuality.name)
     }
 
     fun setAudioPlayer(id: String?) {
@@ -222,11 +379,12 @@ class PlayerPool(context: Context) {
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
             player.volume = if (isMain) 1f else 0f
-            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-                .build()
+            player.trackSelectionParameters = buildQualityParameters(
+                player = player,
+                quality = selectedQualities[pid] ?: Quality.AUTO,
+                isMain = isMain,
+                preserveAudioSetting = false
+            )
         }
     }
 
@@ -388,6 +546,7 @@ class PlayerPool(context: Context) {
         syncPausedByReference.remove(id)
         desiredPlaying.remove(id)
         players.remove(id)?.release()
+        selectedQualities.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -399,6 +558,7 @@ class PlayerPool(context: Context) {
         players.clear()
         desiredPlaying.clear()
         audioPlayerId = null
+        selectedQualities.clear()
     }
 
     fun all(): Collection<ExoPlayer> = players.values
