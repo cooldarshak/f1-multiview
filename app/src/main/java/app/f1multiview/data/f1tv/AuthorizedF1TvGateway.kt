@@ -196,6 +196,14 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             val title = F1CatalogParser.title(node, meta)
             if (title.isBlank()) continue
 
+            // Some F1 TV event pages contain historical sessions for the same venue.
+            // Do not leak those sessions into the selected season.
+            val titleYear = Regex("\\b(19\\d{2}|20\\d{2})\\b")
+                .find(title)
+                ?.value
+                ?.toIntOrNull()
+            if (titleYear != null && titleYear != event.seasonYear) continue
+
             val info = F1CatalogParser.sessionInfo(node) ?: continue
             val series = if (info.series == "F1") event.series else info.series
             val videoType = emf.optString("VideoType")
