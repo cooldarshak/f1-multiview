@@ -23,8 +23,22 @@ data class PlaybackSession(
     val drmType: String? = null
 )
 data class VodSeason(val year: Int, val pageId: Int)
-data class VodEvent(val pageId: Int, val meetingName: String, val meetingNumber: Int, val seasonYear: Int, val isTest: Boolean = false)
-data class VodSession(val contentId: String, val title: String, val type: String, val series: String = "F1", val eventPageId: Int)
+data class VodEvent(
+    val pageId: Int,
+    val meetingName: String,
+    val meetingNumber: Int,
+    val seasonYear: Int,
+    val isTest: Boolean = false,
+    val artworkUrl: String? = null
+)
+data class VodSession(
+    val contentId: String,
+    val title: String,
+    val type: String,
+    val series: String = "F1",
+    val eventPageId: Int,
+    val artworkUrl: String? = null
+)
 interface PlaybackGateway {
     suspend fun signIn(credentials: ProviderCredentials): Result<Unit>
     suspend fun signInWithSessionToken(token: String): Result<Unit>
