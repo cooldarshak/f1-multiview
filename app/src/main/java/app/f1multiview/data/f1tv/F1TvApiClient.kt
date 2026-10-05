@@ -24,7 +24,8 @@ class F1TvApiClient {
     @Volatile private var entitlementToken:String?=null
     @Volatile private var entitlement=DEFAULT_ENTITLEMENT
     @Volatile private var groupId=DEFAULT_GROUP
-    fun isAuthenticated()=!subscriptionToken.isNullOrBlank()&&!entitlementToken.isNullOrBlank()\n    fun deviceInfo(): String = "device=android_tv;screen=bigscreen;os=android;model="+android.os.Build.MODEL.replace(";","_")+";osVersion="+android.os.Build.VERSION.SDK_INT+";manufacturer="+android.os.Build.MANUFACTURER.replace(";","_")+";appVersion=1.0;playerVersion=Media3;tms=1;"
+    fun isAuthenticated()=!subscriptionToken.isNullOrBlank()&&!entitlementToken.isNullOrBlank()
+    fun deviceInfo(): String = "device=android_tv;screen=bigscreen;os=android;model="+android.os.Build.MODEL.replace(";","_")+";osVersion="+android.os.Build.VERSION.SDK_INT+";manufacturer="+android.os.Build.MANUFACTURER.replace(";","_")+";appVersion=1.0;playerVersion=Media3;tms=1;"
     suspend fun login(email:String,password:String){
         val response=execute(AUTH,"POST",JSONObject().put("Login",email).put("Password",password).toString(),emptyMap())
         if(response.code==403)throw F1TvException("F1 TV rejected direct login (HTTP 403). Use browser sign-in.")
