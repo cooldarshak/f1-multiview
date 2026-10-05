@@ -1148,8 +1148,8 @@ private fun FullscreenMultiview(
     fun pauseAll() = selected.forEach { pool.pause(it.id) }
     fun seekAll(deltaMs: Long) = selected.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
-    LaunchedEffect(controlsVisible, channelPickerOpen, menu) {
-        if (controlsVisible && !channelPickerOpen && menu == null) {
+    LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
+        if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
             delay(5_000L)
             controlsVisible = false
         }
