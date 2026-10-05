@@ -25,6 +25,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 @OptIn(UnstableApi::class)
+data class VideoDiagnostics(
+    val width: Int,
+    val height: Int,
+    val bitrate: Int,
+    val codec: String?,
+    val hdr: Boolean,
+    val colorTransfer: Int,
+    val colorSpace: Int,
+    val bitDepth: Int
+)
+
 class PlayerPool(context: Context) {
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
@@ -185,6 +196,42 @@ class PlayerPool(context: Context) {
             }
             .distinct()
             .sortedByDescending { it.second }
+    }
+
+    fun currentVideoDiagnostics(id: String): VideoDiagnostics? {
+        val player = players[id] ?: return null
+        val selected = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    if (group.isTrackSelected(index)) group.getTrackFormat(index) else null
+                }
+            }
+            .maxWithOrNull(compareBy<androidx.media3.common.Format> { it.height }.thenBy { it.bitrate })
+            ?: return null
+        val color = selected.colorInfo
+        return VideoDiagnostics(
+            width = selected.width,
+            height = selected.height,
+            bitrate = selected.bitrate,
+            codec = selected.codecs,
+            hdr = androidx.media3.common.ColorInfo.isTransferHdr(color),
+            colorTransfer = color?.colorTransfer ?: C.NO_VALUE,
+            colorSpace = color?.colorSpace ?: C.NO_VALUE,
+            bitDepth = color?.lumaBitdepth ?: C.NO_VALUE
+        )
+    }
+
+    fun qualityAvailable(id: String, quality: Quality): Boolean {
+        val resolutions = availableVideoResolutionsForQualityMenu(id)
+        if (resolutions.isEmpty()) return false
+        return when (quality) {
+            Quality.AUTO -> true
+            Quality.UHD -> resolutions.any { it.second >= 2160 }
+            Quality.FHD -> resolutions.any { it.second >= 1080 }
+            Quality.HD -> resolutions.any { it.second >= 720 }
+            Quality.SD -> resolutions.any { it.second >= 480 }
+        }
     }
 
     /** Includes tracks Media3 reports as supported when capability checks are relaxed, matching the reference TV quality picker. */
