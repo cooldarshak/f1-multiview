@@ -225,7 +225,8 @@ private fun Header(ui: UiState, vm: MultiViewViewModel) {
     ) {
         F1TvLogo()
         Spacer(Modifier.width(22.dp))
-        Box(Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = .1f)))        Spacer(Modifier.width(16.dp))
+        Box(Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = .1f)))
+        Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(ui.session?.name ?: "F1 MULTIVIEW", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(if (ui.session?.live == true) "LIVE NOW" else "F1 TV", color = if (ui.session?.live == true) Red else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
