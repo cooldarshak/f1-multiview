@@ -327,9 +327,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             .distinct()
             .sortedWith(compareBy({ if (it == "F1") 0 else 1 }, { it }))
     }
-    var selectedSeries by remember(ui.selectedSeason?.year, seriesOptions) {
-        mutableStateOf(seriesOptions.firstOrNull() ?: "F1")
-    }
+    val selectedSeries = ui.selectedSeries.takeIf { it in seriesOptions } ?: seriesOptions.firstOrNull() ?: "F1"
     val eventsForSeries = ui.vodEvents.filter { it.series == selectedSeries || selectedSeries == "F1" && it.series == "F1" }
     val activeEvent = selectedEvent?.takeIf { it in eventsForSeries } ?: eventsForSeries.firstOrNull()
     val firstEventFocusRequester = remember { FocusRequester() }
@@ -370,7 +368,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
                 modifier = Modifier.focusGroup()
             ) {
                 items(seriesOptions) { series ->
-                    ArchivePill(selectedSeries == series, series) { selectedSeries = series }
+                    ArchivePill(selectedSeries == series, series) { vm.setSeries(series) }
                 }
             }
         }
