@@ -1160,8 +1160,8 @@ private fun FullscreenMultiview(
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
-            .onKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionCenter && !controlsVisible) {
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionCenter && !controlsVisible) {
                     controlsVisible = true
                     true
                 } else false
