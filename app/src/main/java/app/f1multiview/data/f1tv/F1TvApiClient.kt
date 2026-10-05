@@ -89,9 +89,11 @@ class F1TvApiClient {
         // F1 TV's channel metadata is still exposed through the 3.0 WEB_HLS
         // endpoint used by the reference Android TV client. Keep our newer
         // 4.0 WEB_DASH endpoint as a fallback for accounts/content that use it.
+        // Current F1 TV clients use the 4.0 WEB_DASH content endpoint.
+        // Keep the older 3.0 WEB_HLS path only as a fallback.
         val endpoints = listOf(
-            BASE+"/3.0/R/"+LANG+"/WEB_HLS/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId,
-            BASE+"/4.0/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
+            BASE+"/4.0/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId,
+            BASE+"/3.0/R/"+LANG+"/WEB_HLS/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
         )
         var last:Throwable? = null
         for (endpoint in endpoints) {
@@ -110,7 +112,9 @@ class F1TvApiClient {
     }
     suspend fun contentPlay(contentId:String,channelId:String?,platform:String):PlaybackResponse{
         val query="?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
-        val apiVersions=listOf("3.0","2.0")
+        // The current reference client uses 2.0 CONTENT/PLAY.
+        // Keep 3.0 as a fallback for older content/pipelines.
+        val apiVersions=listOf("2.0","3.0")
         var last:Throwable?=null
         for(apiVersion in apiVersions){
             try{
