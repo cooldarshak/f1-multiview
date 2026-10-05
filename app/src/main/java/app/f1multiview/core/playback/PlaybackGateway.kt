@@ -29,7 +29,8 @@ data class VodEvent(
     val meetingNumber: Int,
     val seasonYear: Int,
     val isTest: Boolean = false,
-    val artworkUrl: String? = null
+    val artworkUrl: String? = null,
+    val backgroundArtworkUrl: String? = null
 )
 data class VodSession(
     val contentId: String,
@@ -37,7 +38,8 @@ data class VodSession(
     val type: String,
     val series: String = "F1",
     val eventPageId: Int,
-    val artworkUrl: String? = null
+    val artworkUrl: String? = null,
+    val backgroundArtworkUrl: String? = null
 )
 interface PlaybackGateway {
     suspend fun signIn(credentials: ProviderCredentials): Result<Unit>
