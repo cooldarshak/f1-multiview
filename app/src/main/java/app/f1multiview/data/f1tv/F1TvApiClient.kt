@@ -1,6 +1,7 @@
 package app.f1multiview.data.f1tv
 
 import android.util.Base64
+import android.webkit.CookieManager
 import app.f1multiview.core.network.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,6 +27,41 @@ class F1TvApiClient {
     @Volatile private var groupId=DEFAULT_GROUP
     fun isAuthenticated()=!subscriptionToken.isNullOrBlank()&&!entitlementToken.isNullOrBlank()
     fun deviceInfo(): String = "device=android_tv;screen=bigscreen;os=android;model="+android.os.Build.MODEL.replace(";","_")+";osVersion="+android.os.Build.VERSION.SDK_INT+";manufacturer="+android.os.Build.MANUFACTURER.replace(";","_")+";appVersion=1.0;playerVersion=Media3;tms=1;"
+    fun isTokenExpired(token: String, skewSeconds: Long = 60): Boolean {
+        return runCatching {
+            val parts = token.split('.')
+            if (parts.size < 2) return@runCatching false
+            val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+            val exp = JSONObject(payload).optLong("exp", 0L)
+            exp > 0L && exp * 1000L <= System.currentTimeMillis() + skewSeconds * 1000L
+        }.getOrDefault(false)
+    }
+
+    fun subscriptionTokenFromCookieHeader(cookieHeader: String?): String? {
+        if (cookieHeader.isNullOrBlank()) return null
+        val raw = cookieHeader.split(';').asSequence().map { it.trim() }
+            .firstOrNull { it.startsWith("login-session=", ignoreCase = true) }
+            ?.substringAfter('=') ?: return null
+        return runCatching {
+            val decoded = java.net.URLDecoder.decode(raw, "UTF-8")
+            val json = JSONObject(decoded)
+            json.optJSONObject("data")?.optString("subscriptionToken")
+                ?.takeIf { it.length >= 50 }
+                ?: json.optString("subscriptionToken").takeIf { it.length >= 50 }
+        }.getOrNull()
+    }
+
+    fun subscriptionTokenFromWebViewCookies(): String? {
+        val cm = CookieManager.getInstance()
+        return listOf(
+            "https://account.formula1.com/",
+            "https://formula1.com/",
+            "https://f1tv.formula1.com/"
+        ).asSequence()
+            .mapNotNull { url -> subscriptionTokenFromCookieHeader(cm.getCookie(url)) }
+            .firstOrNull { !isTokenExpired(it) }
+    }
+
     suspend fun login(email:String,password:String){
         val response=execute(AUTH,"POST",JSONObject().put("Login",email).put("Password",password).toString(),emptyMap())
         if(response.code==403)throw F1TvException("F1 TV rejected direct login (HTTP 403). Use browser sign-in.")
