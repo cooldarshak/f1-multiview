@@ -1381,10 +1381,12 @@ private fun FullscreenFeedControls(
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var position by remember(stream.id) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0L)) }
     var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
+    var trackVersion by remember(stream.id) { mutableIntStateOf(0) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { playing = value }
             override fun onPlaybackStateChanged(state: Int) { playing = player.isPlaying; duration = player.duration.takeIf { it > 0 } ?: 0L }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { trackVersion++ }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -1433,8 +1435,35 @@ private fun FullscreenFeedControls(
                         "speed" -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { v -> Control(speed == v, v.toString() + "x") { onSpeed(v); player.setPlaybackParameters(PlaybackParameters(v)); onMenu(null) } }
                         }
-                        "quality" -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (q, label) -> Control(quality == q, label) { onQuality(q); pool.setQuality(stream.id, q); onMenu(null) } }
+                        "quality" -> {
+                            val resolutions = remember(trackVersion) { pool.availableVideoResolutionsForQualityMenu(stream.id) }
+                            val diagnostics = remember(trackVersion) { pool.currentVideoDiagnostics(stream.id) }
+                            Text(
+                                (
+                                    if (diagnostics != null) {
+                                        "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
+                                            if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
+                                    } else if (resolutions.isNotEmpty()) {
+                                        "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
+                                    } else "TRACKS NOT READY"
+                                ) + if (diagnostics?.hdr == true) {
+                                    if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
+                                } else "",
+                                color=White.copy(alpha=.72f), fontSize=7.sp, fontWeight=FontWeight.Bold,
+                                modifier=Modifier.padding(bottom=5.dp)
+                            )
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (q, label) ->
+                                    val available = pool.qualityAvailable(stream.id, q)
+                                    Control(quality == q, if (available || q == Quality.AUTO) label else "$label — N/A") {
+                                        if (available || q == Quality.AUTO) {
+                                            onQuality(q)
+                                            pool.setQuality(stream.id, q)
+                                            onMenu(null)
+                                        }
+                                    }
+                                }
+                            }
                         }
                         "audio" -> {
                             Text("AUDIO TRACKS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
