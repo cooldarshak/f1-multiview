@@ -953,6 +953,7 @@ private fun ResizeHandle(
             if (enabled) {
                 Modifier
                     .focusTarget()
+                    .focusable()
                     .onFocusChanged { focused = it.isFocused }
                     .onKeyEvent { event ->
                         val delta = when (event.nativeKeyEvent.keyCode) {
