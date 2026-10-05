@@ -295,52 +295,299 @@ private fun Hero(ui: UiState, isTv: Boolean, isPortrait: Boolean) {
 
 @Composable
 private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean) {
-    val side = if (compactPhone) 12.dp else 18.dp
-    Column(Modifier.fillMaxWidth().padding(top = if (compactPhone) 12.dp else 18.dp)) {
-        if (ui.vodSessions.isNotEmpty()) {
-            val featured = ui.vodSessions.first()
-            SectionHeader("FEATURED REPLAY", featured.series.uppercase(), side)
+    val side = if (compactPhone) 12.dp else if (isTv) 28.dp else 18.dp
+    val selectedEvent = ui.selectedEvent
+    val seriesOptions = remember(ui.vodEvents, ui.vodSessions) {
+        (ui.vodEvents.map { it.series } + ui.vodSessions.map { it.series })
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedWith(compareBy({ if (it == "F1") 0 else 1 }, { it }))
+    }
+    var selectedSeries by remember(ui.selectedSeason?.year, seriesOptions) {
+        mutableStateOf(seriesOptions.firstOrNull() ?: "F1")
+    }
+    val eventsForSeries = ui.vodEvents.filter { it.series == selectedSeries || selectedSeries == "F1" && it.series == "F1" }
+    val activeEvent = selectedEvent?.takeIf { it in eventsForSeries } ?: eventsForSeries.firstOrNull()
+    val sessionsForEvent = if (activeEvent != null) {
+        ui.vodSessions.filter { it.eventPageId == activeEvent.pageId && (selectedSeries == "F1" || it.series == selectedSeries) }
+    } else emptyList()
+
+    Column(Modifier.fillMaxWidth().padding(top = if (compactPhone) 8.dp else 14.dp)) {
+        if (activeEvent != null) {
+            ArchiveHero(activeEvent, compactPhone, isTv)
+            Spacer(Modifier.height(if (compactPhone) 14.dp else 20.dp))
+        }
+
+        SectionHeader("F1 TV ARCHIVE", "SEASONS", side)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(ui.vodSeasons) { season ->
+                ArchivePill(ui.selectedSeason == season, season.year.toString()) {
+                    vm.selectVodSeason(season)
+                }
+            }
+        }
+
+        if (seriesOptions.size > 1) {
+            SectionHeader("SERIES", selectedSeries.uppercase(), side)
             LazyRow(
-                contentPadding = PaddingValues(horizontal = side),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(ui.vodSessions.take(5)) { session ->
-                    FeaturedReplayCard(
-                        session,
-                        ui.session?.id == session.contentId,
-                        compactPhone
-                    ) { vm.selectVodSession(session) }
+                items(seriesOptions) { series ->
+                    ArchivePill(selectedSeries == series, series) { selectedSeries = series }
                 }
             }
-            Spacer(Modifier.height(if (compactPhone) 18.dp else 24.dp))
         }
-        SectionHeader("F1 TV ARCHIVE", "SEASON", side)
-        LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            items(ui.vodSeasons) { season -> Pill(ui.selectedSeason == season, season.year.toString()) { vm.selectVodSeason(season) } }
-        }
-        Spacer(Modifier.height(14.dp))
-        SectionHeader("GRAND PRIX", ui.selectedSeason?.year?.toString() ?: "", side)
-        if (ui.vodEvents.isEmpty() && ui.selectedSeason != null) {
-            Text("No Grand Prix events found for " + ui.selectedSeason.year, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = side, vertical = 8.dp))
+
+        SectionHeader(
+            "GRAND PRIX",
+            ui.selectedSeason?.year?.toString() ?: "",
+            side
+        )
+        if (eventsForSeries.isEmpty()) {
+            Text(
+                "No archive events found for this selection.",
+                color = Muted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = side, vertical = 12.dp)
+            )
         } else {
-            LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(ui.vodEvents) { event ->
-                    EventCard(ui.selectedEvent == event, prettyEvent(event.meetingName), event.artworkUrl, event.seasonYear, isTv) { vm.selectVodEvent(event) }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = side, vertical = 9.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp)
+            ) {
+                items(eventsForSeries) { event ->
+                    ArchiveEventCard(
+                        event = event,
+                        selected = activeEvent?.pageId == event.pageId,
+                        compactPhone = compactPhone,
+                        onClick = { vm.selectVodEvent(event) }
+                    )
                 }
             }
         }
-        if (ui.vodSessions.isNotEmpty()) {
-            Spacer(Modifier.height(16.dp))
-            SectionHeader("SESSION", "SELECT", side)
-            LazyRow(contentPadding = PaddingValues(horizontal = side), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(ui.vodSessions) { session ->
-                    SessionCard(ui.session?.id == session.contentId, session.title, session.type.uppercase(), session.artworkUrl ?: ui.selectedEvent?.artworkUrl, isTv) { vm.selectVodSession(session) }
+
+        if (activeEvent != null) {
+            Spacer(Modifier.height(if (compactPhone) 8.dp else 12.dp))
+            WeekendSessions(
+                sessions = sessionsForEvent,
+                compactPhone = compactPhone,
+                isTv = isTv,
+                selectedId = ui.session?.id,
+                side = side,
+                onSelect = vm::selectVodSession
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArchiveHero(event: VodEvent, compactPhone: Boolean, isTv: Boolean) {
+    val height = when {
+        compactPhone -> 175.dp
+        isTv -> 270.dp
+        else -> 225.dp
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF171820))
+    ) {
+        F1Artwork(
+            event.backgroundArtworkUrl ?: event.artworkUrl,
+            event.meetingName,
+            Modifier.fillMaxSize(),
+            ContentScale.Crop,
+            "event-" + event.pageId
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    listOf(
+                        Color.Black.copy(alpha = .88f),
+                        Color.Black.copy(alpha = .54f),
+                        Color.Black.copy(alpha = .18f)
+                    )
+                )
+            )
+        )
+        Column(
+            Modifier.align(Alignment.BottomStart).padding(
+                horizontal = if (isTv) 34.dp else 20.dp,
+                vertical = if (compactPhone) 16.dp else 22.dp
+            )
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = Red, shape = RoundedCornerShape(4.dp)) {
+                    Text(
+                        if (event.isTest) "TEST" else "GRAND PRIX",
+                        color = White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                    )
                 }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    event.series,
+                    color = White.copy(alpha = .82f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (event.meetingNumber > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "ROUND " + event.meetingNumber,
+                        color = White.copy(alpha = .62f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                prettyEvent(event.meetingName),
+                color = White,
+                fontSize = if (isTv) 31.sp else if (compactPhone) 22.sp else 27.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (event.startTime > 0L) {
+                Text(
+                    java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault())
+                        .format(java.util.Date(event.startTime)),
+                    color = White.copy(alpha = .68f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
     }
 }
 
+@Composable
+private fun ArchivePill(selected: Boolean, title: String, onClick: () -> Unit) {
+    Surface(
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable(),
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) Red else Surface2,
+        border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+    ) {
+        Text(
+            title,
+            color = White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp)
+        )
+    }
+}
+
+@Composable
+private fun ArchiveEventCard(
+    event: VodEvent,
+    selected: Boolean,
+    compactPhone: Boolean,
+    onClick: () -> Unit
+) {
+    val width = if (compactPhone) 205.dp else 270.dp
+    val height = if (compactPhone) 145.dp else 175.dp
+    Surface(
+        Modifier
+            .width(width)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .focusable(),
+        shape = RoundedCornerShape(10.dp),
+        color = Surface2,
+        border = BorderStroke(2.dp, if (selected) Red else Color.White.copy(alpha = .07f))
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            F1Artwork(
+                event.artworkUrl ?: event.backgroundArtworkUrl,
+                event.meetingName,
+                Modifier.fillMaxSize(),
+                ContentScale.Crop,
+                "event-card-" + event.pageId
+            )
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = .18f), Color.Black.copy(alpha = .92f))
+                    )
+                )
+            )
+            Column(
+                Modifier.align(Alignment.BottomStart).padding(
+                    horizontal = 12.dp,
+                    vertical = 10.dp
+                )
+            ) {
+                Text(
+                    prettyEvent(event.meetingName),
+                    color = White,
+                    fontSize = if (compactPhone) 13.sp else 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    if (event.isTest) "TEST" else "ROUND " + event.meetingNumber,
+                    color = White.copy(alpha = .68f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekendSessions(
+    sessions: List<VodSession>,
+    compactPhone: Boolean,
+    isTv: Boolean,
+    selectedId: String?,
+    side: androidx.compose.ui.unit.Dp,
+    onSelect: (VodSession) -> Unit
+) {
+    val groups = listOf(
+        "PRACTICE" to listOf("practice-1", "practice-2", "practice-3", "practice"),
+        "SPRINT" to listOf("sprint-qualifying", "sprint"),
+        "QUALIFYING" to listOf("qualifying"),
+        "RACE" to listOf("race"),
+        "SHOWS & EXTRAS" to listOf("pre-show", "post-show", "f1-kids")
+    )
+    groups.forEach { (heading, stages) ->
+        val stageSessions = sessions.filter { it.stage in stages }
+        if (stageSessions.isNotEmpty()) {
+            Spacer(Modifier.height(if (compactPhone) 10.dp else 14.dp))
+            SectionHeader(heading, stageSessions.size.toString() + " VIDEOS", side)
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp)
+            ) {
+                items(stageSessions) { session ->
+                    SessionCard(
+                        selectedId == session.contentId,
+                        session.title,
+                        session.broadcastVariant.replace("-", " ").uppercase(),
+                        session.artworkUrl,
+                        isTv,
+                        onClick = { onSelect(session) }
+                    )
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun SectionHeader(title: String, meta: String, side: androidx.compose.ui.unit.Dp = 18.dp) {
     Row(Modifier.fillMaxWidth().padding(horizontal = side, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
