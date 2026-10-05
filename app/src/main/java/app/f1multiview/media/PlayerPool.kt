@@ -31,6 +31,7 @@ class PlayerPool(context: Context) {
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
+    private val desiredPlaying = mutableSetOf<String>()
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
     val errors: StateFlow<Map<String, String>> = _errors.asStateFlow()
 
@@ -71,8 +72,9 @@ class PlayerPool(context: Context) {
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING) {
+                        if (playbackState == Player.STATE_READY) {
                             _errors.value = _errors.value - id
+                            if (id in desiredPlaying && !player.isPlaying) player.play()
                         }
                     }
                 })
@@ -244,59 +246,40 @@ class PlayerPool(context: Context) {
         val main = players[mainId] ?: return
         if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
 
-        val isLive = main.isCurrentWindowLive || main.currentLiveOffset != C.TIME_UNSET
-        val mainPosition = main.currentPosition.coerceAtLeast(0L)
         val mainLiveOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
+        val mainEpoch = absolutePresentationTime(main)
         val now = android.os.SystemClock.elapsedRealtime()
 
         players.forEach { (id, player) ->
-            if (id == mainId) {
-                player.setPlaybackSpeed(1f)
-                player.playWhenReady = true
-                if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
-                    player.play()
-                }
-                return@forEach
-            }
+            if (id == mainId) return@forEach
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
+            desiredPlaying.add(id)
             player.playWhenReady = true
-            if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
-                player.play()
-            }
-
-            if (!isLive) {
-                // F1OpenViewer's stable VOD strategy: main is the reference and
-                // followers seek once to exactly the same media position.
-                val target = mainPosition
-                if (kotlin.math.abs(player.currentPosition - target) >= 500L) {
-                    player.seekTo(target)
-                }
-                player.setPlaybackSpeed(1f)
-                return@forEach
-            }
+            if (player.playbackState == Player.STATE_READY && !player.isPlaying) player.play()
 
             val secondaryLiveOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-            val driftMs = if (mainLiveOffset != null && secondaryLiveOffset != null) {
-                // Positive means follower is further behind live edge and must move forward.
-                secondaryLiveOffset - mainLiveOffset
-            } else {
-                null
+            val secondaryEpoch = absolutePresentationTime(player)
+
+            // correctionMs is always expressed as: positive = follower must move forward.
+            val correctionMs: Long? = when {
+                mainLiveOffset != null && secondaryLiveOffset != null ->
+                    secondaryLiveOffset - mainLiveOffset
+                mainEpoch != null && secondaryEpoch != null ->
+                    mainEpoch - secondaryEpoch
+                else -> null
             } ?: return@forEach
 
-            val absDrift = kotlin.math.abs(driftMs)
-            val rate = when {
-                absDrift < 350L -> 1f
-                driftMs > 0L -> 1.02f
-                else -> 0.98f
-            }
-            player.setPlaybackSpeed(rate)
+            val absCorrection = kotlin.math.abs(correctionMs)
 
-            if (absDrift >= 3_000L && now - (lastLiveSeekMs[id] ?: 0L) >= 8_000L) {
-                val target = (player.currentPosition + driftMs).coerceAtLeast(0L)
+            // Do NOT continuously change playback speed. That was the source of the
+            // choppy cadence on the phone. Use seek-only convergence with hysteresis.
+            if (absCorrection >= 1_500L &&
+                now - (lastLiveSeekMs[id] ?: 0L) >= 8_000L
+            ) {
+                val target = (player.currentPosition + correctionMs).coerceAtLeast(0L)
                 val duration = player.duration
                 player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                player.setPlaybackSpeed(1f)
                 lastLiveSeekMs[id] = now
             }
         }
@@ -316,16 +299,19 @@ class PlayerPool(context: Context) {
     }
 
     fun play(id: String) {
+        desiredPlaying.add(id)
         get(id).play()
     }
 
     fun pause(id: String) {
+        desiredPlaying.remove(id)
         get(id).pause()
     }
 
     fun playAll() {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        players.values.forEach { player ->
+        players.forEach { (id, player) ->
+            desiredPlaying.add(id)
             player.playWhenReady = true
             if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
                 player.play()
@@ -334,6 +320,7 @@ class PlayerPool(context: Context) {
     }
 
     fun pauseAll() {
+        players.keys.forEach { desiredPlaying.remove(it) }
         players.values.forEach { it.pause() }
     }
 
