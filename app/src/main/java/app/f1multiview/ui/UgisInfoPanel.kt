@@ -43,7 +43,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 Spacer(Modifier.weight(1f))
                 TextButton({vm.panel(null)}) { Text("CLOSE",color=InfoWhite,fontWeight=FontWeight.Bold) }
             }
-            Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 InfoButton(section=="calendar","CALENDAR"){vm.panel("calendar");vm.loadCalendar()}
                 InfoButton(section=="standings","STANDINGS"){vm.panel("standings");vm.loadStandings()}
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
