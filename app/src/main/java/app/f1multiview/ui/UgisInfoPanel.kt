@@ -30,7 +30,7 @@ private val InfoSurface = Color(0xFF14151B)
 
 @Composable
 fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("shows","calendar","standings","results","radio","updates","saved") } ?: "calendar"
+    val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","updates","saved") } ?: "calendar"
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
     val updateManager=remember(context){AppUpdateManager(context)}
@@ -43,6 +43,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 TextButton({vm.panel(null)}) { Text("CLOSE",color=InfoWhite,fontWeight=FontWeight.Bold) }
             }
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                InfoButton(section=="timing","LIVE TIMING"){vm.panel("timing")}
                 InfoButton(section=="calendar","CALENDAR"){vm.panel("calendar");vm.loadCalendar()}
                 InfoButton(section=="standings","STANDINGS"){vm.panel("standings");vm.loadStandings()}
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
@@ -96,6 +97,26 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 }
             }
             when(section) {
+                "timing" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    item {
+                        Surface(color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Text("LIVE TIMING",color=InfoWhite,fontWeight=FontWeight.Black)
+                                Spacer(Modifier.weight(1f))
+                                Text(ui.timingStatus,color=if(ui.timingStatus=="LIVE") Color(0xFF66E07A) else InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black)
+                            }
+                        }
+                    }
+                    items(ui.timing){r->
+                        InfoRow(r.position,r.driver,"Gap "+r.gap+" · Last "+r.lastLap,""+r.tyre)
+                    }
+                    if(ui.raceControl.isNotEmpty()){
+                        item { Text("RACE CONTROL",color=InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(top=8.dp)) }
+                        items(ui.raceControl){e->
+                            InfoRow(e.time,e.message,e.severity,"")
+                        }
+                    }
+                }
                 "calendar" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     items(ui.calendar){r-> InfoRow(r.round.toString(),r.name,listOf(r.circuit,r.location).filter{it.isNotBlank()}.joinToString(" · "),r.date)}
                 }
