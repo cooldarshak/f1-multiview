@@ -768,6 +768,18 @@ private fun PitWall(
     onSetMainStream: (String) -> Unit
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
+    var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
+    LaunchedEffect(ui.mainStreamId, selected.size) {
+        repeat(16) {
+            val id = ui.mainStreamId ?: selected.firstOrNull()?.id
+            val d = id?.let(pool::currentVideoDiagnostics)
+            if (d != null && d.width > 0 && d.height > 0) {
+                wallAspect = (d.width.toFloat() / d.height.toFloat()).coerceIn(1.2f, 2.4f)
+                return@LaunchedEffect
+            }
+            delay(500L)
+        }
+    }
     var feedPanelOpen by rememberSaveable { mutableStateOf(false) }
     var feedToggleFocused by remember { mutableStateOf(false) }
     var tvResizeMode by rememberSaveable { mutableStateOf(false) }
@@ -882,7 +894,7 @@ private fun PitWall(
             errors,
             if (isTv) tvResizeMode else false,
             {},
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+            Modifier.fillMaxWidth().aspectRatio(wallAspect)
         )
     }
 }
