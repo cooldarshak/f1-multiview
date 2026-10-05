@@ -23,6 +23,7 @@ import androidx.compose.foundation.Image
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import app.f1multiview.data.f1tv.F1TvApiClient
 import okhttp3.Request
 
 private val artworkClient = OkHttpClient()
@@ -46,7 +47,7 @@ fun F1Artwork(
             runCatching {
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "F1MultiView/1.0")
+                    .header("User-Agent", F1TvApiClient.BROWSER_UA)
                     .build()
                 artworkClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@runCatching null
