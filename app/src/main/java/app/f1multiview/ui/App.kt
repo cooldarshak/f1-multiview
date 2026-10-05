@@ -57,6 +57,7 @@ import app.f1multiview.core.playback.VodSession
 import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.media.PlayerPool
 import app.f1multiview.media.RadioPlayer
+import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
 import android.app.Activity
@@ -114,6 +115,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val compactPhone = !isTv && configuration.screenWidthDp < 600
 
     val pool = remember(context) { PlayerPool(context) }
+    LaunchedEffect(context) { HdrPresentationDiagnostics.log(context, "multiview-enter") }
     val radioPlayer = remember(context) { RadioPlayer(context) }
     val errors by pool.errors.collectAsState()
     var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
