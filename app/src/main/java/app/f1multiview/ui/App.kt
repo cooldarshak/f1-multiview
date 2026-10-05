@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -980,11 +981,11 @@ private fun ResizeHandle(
                     .focusTarget()
                     .onFocusChanged { focused = it.isFocused }
                     .onKeyEvent { event ->
-                        val delta = when (event.nativeKeyEvent.keyCode) {
-                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (orientation == Orientation.Horizontal) -step else null
-                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> if (orientation == Orientation.Horizontal) step else null
-                            android.view.KeyEvent.KEYCODE_DPAD_UP -> if (orientation == Orientation.Vertical) -step else null
-                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> if (orientation == Orientation.Vertical) step else null
+                        val delta = when (event.key) {
+                            Key.DirectionLeft -> if (orientation == Orientation.Horizontal) -step else null
+                            Key.DirectionRight -> if (orientation == Orientation.Horizontal) step else null
+                            Key.DirectionUp -> if (orientation == Orientation.Vertical) -step else null
+                            Key.DirectionDown -> if (orientation == Orientation.Vertical) step else null
                             else -> null
                         }
                         if (delta != null) {
