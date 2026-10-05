@@ -202,7 +202,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
 
     val fullscreenStream = ui.streams.firstOrNull { it.id == fullscreenStreamId }
     if (fullscreenStream != null) {
-        FullscreenPlayer(fullscreenStream, pool, errors[fullscreenStream.id]) { fullscreenStreamId = null }
+        FullscreenPlayer(fullscreenStream, ui, pool, errors[fullscreenStream.id], { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { fullscreenStreamId = null }
         return
     }
 
@@ -1183,6 +1183,29 @@ private fun FullscreenMultiview(
             }
         }
 
+        if (channelPickerOpen) {
+            Surface(
+                Modifier.align(Alignment.TopCenter).padding(top = 62.dp).fillMaxWidth(0.92f),
+                color = Color(0xFF101116).copy(alpha = .98f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = .14f))
+            ) {
+                LazyRow(
+                    contentPadding = PaddingValues(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier.focusGroup()
+                ) {
+                    items(ui.streams) { candidate ->
+                        val active = candidate.id == stream.id
+                        Control(active, candidate.driver?.takeIf { it.isNotBlank() } ?: candidate.title) {
+                            channelPickerOpen = false
+                            onSwitchStream(candidate.id)
+                        }
+                    }
+                }
+            }
+        }
+
         if (controlsVisible) {
             Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1500,7 +1523,7 @@ private fun FullscreenFeedControls(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: String?, onClose: () -> Unit) {
+private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool, error: String?, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
@@ -1518,6 +1541,7 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
     var fit by rememberSaveable(stream.id) { mutableStateOf(false) }
     var muted by rememberSaveable(stream.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf<String?>(null) }
+    var channelPickerOpen by rememberSaveable { mutableStateOf(false) }
     var trackVersion by remember { mutableIntStateOf(0) }
     val fullscreenBackFocusRequester = remember { FocusRequester() }
     val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
@@ -1630,6 +1654,8 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
                     Spacer(Modifier.width(8.dp))
                     Text(stream.driver?.takeIf{it.isNotBlank()}?:stream.title,color=White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
                     Spacer(Modifier.weight(1f))
+                    SmallPlayerButton("CHANNEL"){ channelPickerOpen = !channelPickerOpen; menu = null }
+                    Spacer(Modifier.width(6.dp))
                     SmallPlayerButton("PIP"){enterPip()}
                     Spacer(Modifier.width(6.dp))
                     SmallPlayerButton(if (fit) "FIT" else "FILL"){ fit=!fit; player.videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING }
