@@ -16,6 +16,8 @@ data class RaceControlEvent(val time: String, val message: String, val severity:
 data class Session(
     val id: String, val name: String, val country: String, val dateLabel: String, val live: Boolean,
     val seasonYear: Int? = null, val eventPageId: Int? = null, val series: String = "F1",
-    val sessionType: String = "other", val artworkUrl: String? = null
+    val sessionType: String = "other",
+    val artworkUrl: String? = null,
+    val backgroundArtworkUrl: String? = null
 )
 data class SavedSetup(val id: String, val name: String, val layout: LayoutPreset, val streamIds: List<String>, val mainStreamId: String? = null)
