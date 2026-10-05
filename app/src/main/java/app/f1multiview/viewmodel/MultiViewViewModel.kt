@@ -55,6 +55,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.status.collect{status->_ui.value=_ui.value.copy(timingStatus=status)}}
         viewModelScope.launch{timingClient.raceControl.collect{events->if(events.isNotEmpty())_ui.value=_ui.value.copy(raceControl=events)}}
         viewModelScope.launch{timingClient.weather.collect{weather->_ui.value=_ui.value.copy(weather=weather)}}
+        viewModelScope.launch{timingClient.teamRadio.collect{items->_ui.value=_ui.value.copy(teamRadio=items)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
