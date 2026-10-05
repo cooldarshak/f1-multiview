@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class PlayerPool(context: Context) {
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
+    private val selectedQualities = mutableMapOf<String, Quality>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
@@ -68,11 +69,12 @@ class PlayerPool(context: Context) {
                 // This reduces simultaneous decoder/network pressure without forcing the
                 // main feed down to 720p on a flagship phone.
                 val isMain = id == audioPlayerId
-                val initialBuilder = player.trackSelectionParameters.buildUpon()
-                    .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
-                    .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-                player.trackSelectionParameters = initialBuilder.build()
+                player.trackSelectionParameters = buildQualityParameters(
+                    player = player,
+                    quality = selectedQualities[id] ?: Quality.AUTO,
+                    isMain = isMain,
+                    preserveAudioSetting = false
+                )
 
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
@@ -136,66 +138,97 @@ class PlayerPool(context: Context) {
             DefaultMediaSourceFactory(dataSource)
         }
 
-        // The selected main feed, not the feed type, determines its quality budget.
-        // Data/Tracker can be the main reference too, so never silently force the main
-        // player back to 720p here.
+        // Preserve an explicit quality choice across media-source reloads.
         val isMain = stream.id == audioPlayerId
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
-            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-            .build()
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = selectedQualities[stream.id] ?: Quality.AUTO,
+            isMain = isMain,
+            preserveAudioSetting = false
+        )
 
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
 
     fun setQuality(id: String, quality: Quality) {
-        players[id]?.let { applyQuality(it, quality) }
+        selectedQualities[id] = quality
+        players[id]?.let { applyQuality(it, quality, id == audioPlayerId) }
     }
 
     fun setQuality(quality: Quality) {
-        players.values.forEach { applyQuality(it, quality) }
+        players.keys.forEach { id ->
+            selectedQualities[id] = quality
+            players[id]?.let { player -> applyQuality(player, quality, id == audioPlayerId) }
+        }
     }
 
-    private fun applyQuality(player: ExoPlayer, quality: Quality) {
-        val isTv = (appContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-            Configuration.UI_MODE_TYPE_TELEVISION
+    fun getQuality(id: String): Quality = selectedQualities[id] ?: Quality.AUTO
 
+    /** Returns the actual video resolutions currently exposed by Media3. */
+    fun availableVideoResolutions(id: String): List<Pair<Int, Int>> {
+        val player = players[id] ?: return emptyList()
+        return player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    val format = group.getTrackFormat(index)
+                    if (format.width > 0 && format.height > 0) format.width to format.height else null
+                }
+            }
+            .distinct()
+            .sortedByDescending { it.second }
+    }
+
+    private fun applyQuality(player: ExoPlayer, quality: Quality, isMain: Boolean) {
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = quality,
+            isMain = isMain,
+            preserveAudioSetting = true
+        )
+    }
+
+    /**
+     * Explicit quality is pinned with matching minimum and maximum dimensions.
+     * Auto remains adaptive within the feed's resource budget.
+     */
+    private fun buildQualityParameters(
+        player: ExoPlayer,
+        quality: Quality,
+        isMain: Boolean,
+        preserveAudioSetting: Boolean
+    ): androidx.media3.common.TrackSelectionParameters {
         val builder = player.trackSelectionParameters.buildUpon()
+            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+
+        if (!preserveAudioSetting) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
+        }
 
         when (quality) {
             Quality.UHD -> builder
+                .setMinVideoSize(3840, 2160)
                 .setMaxVideoSize(3840, 2160)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264)
-
+                .setForceHighestSupportedBitrate(true)
             Quality.FHD -> builder
+                .setMinVideoSize(1920, 1080)
                 .setMaxVideoSize(1920, 1080)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-
+                .setForceHighestSupportedBitrate(true)
             Quality.HD -> builder
+                .setMinVideoSize(1280, 720)
                 .setMaxVideoSize(1280, 720)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-
+                .setForceHighestSupportedBitrate(true)
             Quality.SD -> builder
+                .setMinVideoSize(854, 480)
                 .setMaxVideoSize(854, 480)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-
-            Quality.AUTO -> {
-                if (isTv) {
-                    builder
-                        .clearVideoSizeConstraints()
-                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                } else {
-                    builder
-                        .setMaxVideoSize(1920, 1080)
-                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                }
-            }
+                .setForceHighestSupportedBitrate(true)
+            Quality.AUTO -> builder
+                .setMinVideoSize(0, 0)
+                .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
+                .setForceHighestSupportedBitrate(true)
         }
-
-        player.trackSelectionParameters = builder.build()
+        return builder.build()
     }
 
     private fun isDecoderFailure(error: PlaybackException): Boolean {
@@ -206,15 +239,23 @@ class PlayerPool(context: Context) {
     }
 
     private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setMaxVideoSize(1920, 1080)
-            .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-            .build()
-
+        val isMain = id == audioPlayerId
+        val requested = selectedQualities[id] ?: Quality.AUTO
+        val recoveryQuality = when {
+            requested == Quality.UHD -> Quality.FHD
+            requested == Quality.FHD && !isMain -> Quality.HD
+            else -> requested
+        }
+        if (recoveryQuality != requested) selectedQualities[id] = recoveryQuality
+        player.trackSelectionParameters = buildQualityParameters(
+            player = player,
+            quality = recoveryQuality,
+            isMain = isMain,
+            preserveAudioSetting = true
+        )
         player.prepare()
         player.playWhenReady = true
-        _errors.value = _errors.value + (id to "Decoder failed; retrying at 1080p")
+        _errors.value = _errors.value + (id to "Decoder failed; retrying at " + recoveryQuality.name)
     }
 
     fun setAudioPlayer(id: String?) {
@@ -222,11 +263,12 @@ class PlayerPool(context: Context) {
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
             player.volume = if (isMain) 1f else 0f
-            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setMaxVideoSize(if (isMain) 1920 else 1280, if (isMain) 1080 else 720)
-                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-                .build()
+            player.trackSelectionParameters = buildQualityParameters(
+                player = player,
+                quality = selectedQualities[pid] ?: Quality.AUTO,
+                isMain = isMain,
+                preserveAudioSetting = false
+            )
         }
     }
 
@@ -388,6 +430,7 @@ class PlayerPool(context: Context) {
         syncPausedByReference.remove(id)
         desiredPlaying.remove(id)
         players.remove(id)?.release()
+        selectedQualities.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -399,6 +442,7 @@ class PlayerPool(context: Context) {
         players.clear()
         desiredPlaying.clear()
         audioPlayerId = null
+        selectedQualities.clear()
     }
 
     fun all(): Collection<ExoPlayer> = players.values
