@@ -845,6 +845,12 @@ private fun PitWall(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (ui.session?.live == true && ui.streams.any { it.kind == StreamKind.TRACK }) {
+            Control(false, "MAP") {
+                val tracker = ui.streams.firstOrNull { it.kind == StreamKind.TRACK }
+                if (tracker != null) onSetMainStream(tracker.id)
+            }
+        }
         if (isTv) {
             Control(tvResizeMode, if (tvResizeMode) "DONE RESIZE" else "RESIZE") {
                 tvResizeMode = !tvResizeMode
