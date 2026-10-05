@@ -307,7 +307,7 @@ class PlayerPool(context: Context) {
             }
             Quality.AUTO -> builder
                 .setMinVideoSize(0, 0)
-                .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 1280, if (isMain) Int.MAX_VALUE else 720)
+                 .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 854, if (isMain) Int.MAX_VALUE else 480)
                 .setForceHighestSupportedBitrate(false)
         }
         return builder.build()
@@ -355,8 +355,12 @@ class PlayerPool(context: Context) {
             preserveAudioSetting = true
         )
         // Retry transient CDN/manifest/network failures before surfacing an error.
-        player.prepare()
-        player.playWhenReady = true
+        mainHandler.postDelayed({
+            if (players[id] === player) {
+                player.prepare()
+                player.playWhenReady = true
+            }
+        }, 700L * (attempts + 1))
         _errors.value = _errors.value + (id to if (fallback == requested) {
             "Playback interrupted; retrying (" + (attempts + 1) + "/3)"
         } else {
