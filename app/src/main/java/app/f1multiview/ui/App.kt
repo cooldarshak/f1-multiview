@@ -316,7 +316,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
         LazyRow(
             contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
+            modifier = Modifier.focusGroup()
         ) {
             items(ui.vodSeasons) { season ->
                 ArchivePill(ui.selectedSeason == season, season.year.toString()) {
@@ -355,7 +355,7 @@ private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactP
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
-                modifier = Modifier
+                modifier = Modifier.focusGroup()
             ) {
                 items(eventsForSeries) { event ->
                     ArchiveEventCard(
@@ -509,7 +509,8 @@ private fun ArchiveEventCard(
         Modifier
             .width(width)
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+             .clickable(onClick = onClick)
+            .focusable()
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(10.dp),
         color = Surface2,
@@ -580,7 +581,7 @@ private fun WeekendSessions(
             LazyRow(
                 contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
-                modifier = Modifier
+                modifier = Modifier.focusGroup()
             ) {
                 items(stageSessions) { session ->
                     SessionCard(
@@ -610,7 +611,7 @@ private fun SectionHeader(title: String, meta: String, side: androidx.compose.ui
 @Composable
 private fun Pill(selected: Boolean, title: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(Modifier.clip(RoundedCornerShape(9.dp)).clickable(onClick = onClick).onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else if (focused) BorderStroke(2.dp, White) else BorderStroke(1.dp, Color.White.copy(alpha = .07f))) {
+    Surface(Modifier.clip(RoundedCornerShape(9.dp)) .clickable(onClick = onClick).focusable().onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(9.dp), color = if (selected) Red else Surface2, border = if (selected) null else if (focused) BorderStroke(2.dp, White) else BorderStroke(1.dp, Color.White.copy(alpha = .07f))) {
         Text(title, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp))
     }
 }
@@ -624,7 +625,8 @@ private fun FeaturedReplayCard(session: VodSession, selected: Boolean, compactPh
         Modifier
             .width(width)
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+             .clickable(onClick = onClick)
+            .focusable()
             .onFocusChanged { focused = it.isFocused }
             ,
         shape = RoundedCornerShape(10.dp),
@@ -761,6 +763,7 @@ private fun PitWall(
         Surface(
             Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
                 .clickable { feedPanelOpen = !feedPanelOpen }
+                .focusable()
                 .onFocusChanged { feedToggleFocused = it.isFocused },
             shape = RoundedCornerShape(10.dp),
             color = if (feedPanelOpen) Red else Surface2,
@@ -785,6 +788,7 @@ private fun PitWall(
                     Row(
                         Modifier.fillMaxWidth()
                             .clickable { onToggleStream(stream.id) }
+                            .focusable()
                             .onFocusChanged { feedFocused = it.isFocused }
                             .then(if (feedFocused) Modifier.border(2.dp, White, RoundedCornerShape(6.dp)) else Modifier),
                         verticalAlignment = Alignment.CenterVertically
@@ -800,6 +804,7 @@ private fun PitWall(
                     Surface(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp))
                             .clickable { onSetMainStream(stream.id) }
+                            .focusable()
                             .onFocusChanged { mainActionFocused = it.isFocused },
                         shape = RoundedCornerShape(7.dp),
                         color = if (isMain) Color.Black.copy(alpha = .28f) else Red.copy(alpha = .18f),
@@ -846,6 +851,7 @@ private fun PitWall(
         Surface(
             Modifier.clip(RoundedCornerShape(9.dp))
                 .clickable { onFullscreenAll() }
+                .focusable()
                 .onFocusChanged { fullscreenFocused = it.isFocused },
             shape = RoundedCornerShape(9.dp),
             color = Red,
