@@ -1015,7 +1015,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
 
     var tileFocused by remember { mutableStateOf(false) }
     val tileModifier = if (onFocus != null) {
-        modifier.clickable { onFocus(stream.id) }.onFocusChanged { tileFocused = it.isFocused }
+        modifier.clickable { onFocus(stream.id) }.focusable().onFocusChanged { tileFocused = it.isFocused }
             .then(if (tileFocused) Modifier.border(2.dp, White, RoundedCornerShape(10.dp)) else Modifier)
     } else modifier
     Card(tileModifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
@@ -1254,7 +1254,7 @@ private fun FullscreenMultiview(
                                 Column(Modifier.padding(8.dp)) {
                                     Row(
                                         Modifier.fillMaxWidth()
-                                            .clickable { onToggleStream(stream.id) }
+                                            .clickable { onToggleStream(stream.id) }.focusable()
                                             .onFocusChanged { feedFocused = it.isFocused }
                                             .then(if (feedFocused) Modifier.border(2.dp, White, RoundedCornerShape(6.dp)) else Modifier),
                                         verticalAlignment = Alignment.CenterVertically
