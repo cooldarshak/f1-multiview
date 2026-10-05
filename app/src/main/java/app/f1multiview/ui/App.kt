@@ -39,6 +39,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.compose.ui.layout.ContentScale
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
@@ -174,7 +175,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     // alignment pass. VOD sync is seek-only; live sync uses a gentle live-edge correction.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
-            delay(3_000L)
+            delay(4_000L)
             val mainId = ui.mainStreamId
             if (mainId != null) pool.syncToMain(mainId)
         }
@@ -509,7 +510,7 @@ private fun ResizeHandle(orientation:Orientation,enabled:Boolean,onDelta:(Float)
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null) {
+private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
     val player = remember(stream.id) { pool.get(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
@@ -528,7 +529,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
     val tileModifier = if (onFocus != null) modifier.clickable { onFocus(stream.id) } else modifier
     Card(tileModifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            ContentFrame(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW, contentScale = ContentScale.Fit, keepContentOnReset = true)
+            ContentFrame(player = player, modifier = Modifier.fillMaxSize(), surfaceType = surfaceType, contentScale = ContentScale.Fit, keepContentOnReset = true)
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
@@ -642,7 +643,19 @@ private fun FullscreenMultiview(
                 }
             }
     ) {
-        CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize())
+        CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize(), SURFACE_TYPE_TEXTURE_VIEW)
+
+        if (!controlsVisible) {
+            Surface(
+                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable(),
+                color = Color.Black.copy(alpha = .78f),
+                shape = RoundedCornerShape(9.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
+            ) {
+                Text("SHOW CONTROLS", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+            }
+        }
 
         if (controlsVisible) {
             Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
@@ -714,7 +727,8 @@ private fun CanonicalMultiviewLayout(
     errors: Map<String, String>,
     editSize: Boolean,
     onFocus: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW
 ) {
     val gap = 6.dp
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -733,7 +747,7 @@ private fun CanonicalMultiviewLayout(
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
             selected.size == 1 ->
-                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus)
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, surfaceType)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus)
@@ -974,7 +988,19 @@ private fun FullscreenPlayer(stream: StreamSource, pool: PlayerPool, error: Stri
         Modifier.fillMaxSize().background(Color.Black).clickable { controlsVisible = !controlsVisible },
         contentAlignment = Alignment.Center
     ) {
-        PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
+        PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_TEXTURE_VIEW)
+
+        if (!controlsVisible) {
+            Surface(
+                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable(),
+                color = Color.Black.copy(alpha = .78f),
+                shape = RoundedCornerShape(9.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
+            ) {
+                Text("SHOW CONTROLS", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+            }
+        }
 
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=.72f), Color.Transparent, Color.Black.copy(alpha=.90f))))) {
