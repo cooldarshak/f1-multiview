@@ -10,6 +10,8 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -81,7 +83,7 @@ private fun F1TvLogo() {
 private fun LoginScreen(auth: AuthState, vm: MultiViewViewModel) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var browser by remember { mutableStateOf(false) }
+    var browser by remember { mutableStateOf(true) }
 
     Box(
         Modifier.fillMaxSize().background(
@@ -168,13 +170,13 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
-    // F1-style live sync: let all feeds buffer independently, then gently correct
-    // follower drift. The sync engine never touches the main player's transport.
+    // Let every selected feed buffer independently, then perform one stable
+    // alignment pass. VOD sync is seek-only; live sync uses a gentle live-edge correction.
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
-        while (true) {
-            delay(1_000L)
-            val mainId = ui.mainStreamId ?: continue
-            if (ui.selectedStreamIds.size > 1) pool.syncToMain(mainId)
+        if (ui.selectedStreamIds.size > 1) {
+            delay(3_000L)
+            val mainId = ui.mainStreamId
+            if (mainId != null) pool.syncToMain(mainId)
         }
     }
 
@@ -628,7 +630,18 @@ private fun FullscreenMultiview(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(controlsVisible, feedPickerOpen, editSize, menu) {
+                detectTapGestures {
+                    if (!feedPickerOpen && !editSize && menu == null) {
+                        controlsVisible = !controlsVisible
+                    }
+                }
+            }
+    ) {
         CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize())
 
         if (controlsVisible) {
@@ -649,6 +662,7 @@ private fun FullscreenMultiview(
                     Control(false, "FEEDS ${ui.streams.size}") { feedPickerOpen = !feedPickerOpen }
                     Spacer(Modifier.width(5.dp))
                     Control(false, "SYNC ALL") {
+                        pool.playAll()
                         val mainId = ui.mainStreamId ?: active?.id
                         if (mainId != null) pool.syncToMain(mainId)
                     }
@@ -679,16 +693,6 @@ private fun FullscreenMultiview(
             }
         }
 
-        if (!controlsVisible) {
-            Surface(
-                Modifier.align(Alignment.TopEnd).padding(12.dp).clickable { controlsVisible = true }.focusable(),
-                color = Color.Black.copy(alpha = .65f),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("SHOW CONTROLS", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
-            }
-        }
 
         if (active != null && controlsVisible) {
             Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {                FullscreenFeedControls(
