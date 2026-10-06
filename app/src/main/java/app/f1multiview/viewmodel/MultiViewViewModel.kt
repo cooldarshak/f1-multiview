@@ -10,6 +10,7 @@ import app.f1multiview.data.CalendarRace
 import app.f1multiview.data.StandingRow
 import app.f1multiview.data.ResultRow
 import app.f1multiview.data.SavedSetupStore
+import app.f1multiview.data.ContinueWatchingStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
 import app.f1multiview.data.timing.LiveTimingClient
 import app.f1multiview.data.timing.ReplayTimingClient
@@ -39,10 +40,13 @@ data class UiState(
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
     val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(),
-    val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1"
+    val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
+    val continueWatching: List<ContinueWatchingEntry> = emptyList(),
+    val pendingResume: ContinueWatchingEntry? = null
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
+     private val continueStore=ContinueWatchingStore(application)
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
     private val timingClient=LiveTimingClient(viewModelScope)
     private val replayTimingClient=ReplayTimingClient()
@@ -85,8 +89,95 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.stage.equals("race",true)&&!it.title.contains("highlight",true)->0;it.stage.equals("race",true)->1;it.stage.equals("qualifying",true)->2;it.stage.equals("sprint",true)->3;it.stage.equals("sprint-qualifying",true)->4;it.stage.startsWith("practice",true)->5;it.stage.equals("pre-show",true)->6;it.stage.equals("post-show",true)->7;else->8}}.thenBy{it.startTime}.thenBy{it.title});val selected=ordered.firstOrNull{it.stage.equals("race",true)&&!it.title.contains("highlight",true)}?:ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.stage,event.meetingNumber,selected.artworkUrl?:event.artworkUrl, selected.backgroundArtworkUrl?:event.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null);loadStreams(session);loadReplayTiming(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun selectVodSeason(season:VodSeason)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedSeason=season,selectedEvent=null,vodEvents=emptyList(),vodSessions=emptyList());loadVodEvents(season)}
     fun selectVodEvent(event:VodEvent)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedEvent=event,vodSessions=emptyList());loadVodSessions(event)}
-    fun selectVodSession(vod:VodSession)=viewModelScope.launch{val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session);loadReplayTiming(session)}
+    fun selectVodSession(vod:VodSession)=viewModelScope.launch{
+         val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl)
+         val resume=continueStore.entries.first().firstOrNull { it.contentId == vod.contentId }
+         _ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,pendingResume=resume)
+         loadStreams(session)
+         loadReplayTiming(session)
+     }
     fun setQuality(q:Quality){_ui.value=_ui.value.copy(quality=q)}
+
+     fun clearPendingResume() {
+         _ui.value = _ui.value.copy(pendingResume = null)
+     }
+
+     fun saveContinueWatching(session: Session, positionMs: Long, durationMs: Long, streamId: String?) {
+         if (session.live || positionMs < 10_000L) return
+         val safeDuration = durationMs.coerceAtLeast(0L)
+         val safePosition = positionMs.coerceAtLeast(0L)
+         if (safeDuration > 0L && safePosition >= (safeDuration - 15_000L).coerceAtLeast(0L)) {
+             viewModelScope.launch { continueStore.remove(session.id) }
+             return
+         }
+         viewModelScope.launch {
+             continueStore.upsert(
+                 ContinueWatchingEntry(
+                     contentId = session.id,
+                     title = session.name,
+                     series = session.series,
+                     eventPageId = session.eventPageId ?: 0,
+                     stage = session.sessionType,
+                     positionMs = safePosition,
+                     durationMs = safeDuration,
+                     updatedAtMs = System.currentTimeMillis(),
+                     artworkUrl = session.artworkUrl,
+                     backgroundArtworkUrl = session.backgroundArtworkUrl,
+                     seasonYear = session.seasonYear,
+                     meetingNumber = session.meetingNumber,
+                     streamId = streamId
+                 )
+             )
+         }
+     }
+
+     fun removeContinueWatching(contentId: String) =
+         viewModelScope.launch { continueStore.remove(contentId) }
+
+     fun resumeContinueWatching(entry: ContinueWatchingEntry) = viewModelScope.launch {
+         val season = _ui.value.vodSeasons.firstOrNull { it.year == entry.seasonYear }
+             ?: provider.vodSeasons().getOrNull()?.firstOrNull { it.year == entry.seasonYear }
+         if (season == null) {
+             _ui.value = _ui.value.copy(providerError = "Unable to locate the saved race season")
+             return@launch
+         }
+         val events = provider.vodEvents(season).getOrElse {
+             _ui.value = _ui.value.copy(providerError = it.message ?: "Unable to load saved race")
+             return@launch
+         }
+         val event = events.firstOrNull { it.pageId == entry.eventPageId } ?: events.firstOrNull()
+         if (event == null) {
+             _ui.value = _ui.value.copy(providerError = "Saved race is no longer available")
+             return@launch
+         }
+         val sessions = provider.vodSessions(event).getOrElse {
+             _ui.value = _ui.value.copy(providerError = it.message ?: "Unable to load saved session")
+             return@launch
+         }
+         val vod = sessions.firstOrNull { it.contentId == entry.contentId }
+         if (vod == null) {
+             _ui.value = _ui.value.copy(providerError = "Saved session is no longer available")
+             return@launch
+         }
+         val session = Session(vod.contentId, vod.title, vod.series, "Replay", false,
+             season.year, vod.eventPageId, vod.series, vod.type, event.meetingNumber,
+             vod.artworkUrl ?: event.artworkUrl,
+             vod.backgroundArtworkUrl ?: event.backgroundArtworkUrl)
+         _ui.value = _ui.value.copy(
+             selectedSeason = season,
+             vodEvents = events,
+             selectedEvent = event,
+             vodSessions = sessions.sortedBy { it.startTime },
+             session = session,
+             streams = emptyList(),
+             selectedStreamIds = emptyList(),
+             mainStreamId = null,
+             providerError = null,
+             pendingResume = entry
+         )
+         loadStreams(session)
+         loadReplayTiming(session)
+     }
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session){
         provider.streams(session.id).fold(
