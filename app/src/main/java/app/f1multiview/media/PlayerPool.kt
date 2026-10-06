@@ -260,7 +260,7 @@ class PlayerPool(context: Context) {
             .flatMap { group ->
                 (0 until group.length).mapNotNull { index ->
                     val format = group.getTrackFormat(index)
-                    if (format.width > 0 && format.height > 0 && group.isTrackSupported(index, true)) format.width to format.height else null
+                    if (format.width > 0 && format.height > 0 && (group.getTrackSupport(index) == C.FORMAT_HANDLED || group.getTrackSupport(index) == C.FORMAT_EXCEEDS_CAPABILITIES)) format.width to format.height else null
                 }
             }
             .distinct()
