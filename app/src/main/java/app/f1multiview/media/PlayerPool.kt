@@ -816,34 +816,24 @@ class PlayerPool(context: Context) {
     }
 
     /**
-     * Controlled multiview startup ramp.
+     * Start every prepared multiview feed immediately.
      *
-     * Keep the main feed immediate and give followers a small bounded playback ramp.
-     * This replaces the removed 500 ms/feed preparation delay without starting all
-     * DRM-protected decoders at exactly the same instant.
+     * There is no artificial startup delay. Media3/decoder initialization is allowed to
+     * determine when each feed can actually render. Startup timing and first-frame metrics
+     * provide the evidence needed if the device later proves that resource back-pressure
+     * is required.
      */
     private fun scheduleStartupPlayback(id: String) {
         if (!playAllRequested || id !in desiredPlaying) return
         val player = players[id] ?: return
-        val ordered = players.keys.toList()
-        val index = ordered.indexOf(id)
-        if (index < 0) return
-
-        val delayMs = when {
-            id == audioPlayerId -> 0L
-            index == 1 -> 120L
-            index == 2 -> 240L
-            else -> 360L
+        if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
+            player.playWhenReady = true
+            player.play()
+            Log.i(
+                "PlayerPool",
+                "STARTUP_PLAY id=" + id + " immediate=true players=" + players.size
+            )
         }
-
-        mainHandler.postDelayed({
-            if (players[id] !== player || !playAllRequested || id !in desiredPlaying) return@postDelayed
-            if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
-                player.playWhenReady = true
-                player.play()
-                Log.i("PlayerPool", "STARTUP_PLAY id=" + id + " delayMs=" + delayMs + " index=" + index + " players=" + players.size)
-            }
-        }, delayMs)
     }
 
     fun playAll() {
@@ -853,8 +843,8 @@ class PlayerPool(context: Context) {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
         val ordered = players.keys.toList()
         ordered.forEach { desiredPlaying.add(it) }
-        // Use a small bounded playback ramp. Media3 preparation remains independent;
-        // only the moment playback is requested is staggered.
+        // Do not artificially delay any feed. Prepared players are allowed to start
+        // immediately; decoder/resource behavior is measured rather than assumed.
         ordered.forEach { id ->
             scheduleStartupPlayback(id)
         }
