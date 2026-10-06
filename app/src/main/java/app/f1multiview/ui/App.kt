@@ -163,6 +163,8 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         pool.retain(selectedIds)
         val ordered = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
+        val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
+        pool.setAudioPlayer(mainId)
         ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
                 pool.load(stream)
@@ -170,8 +172,6 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
                 delay(500L)
             }
         }
-        val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
-        pool.setAudioPlayer(mainId)
     }
 
     LaunchedEffect(fullscreenMultiview) {
