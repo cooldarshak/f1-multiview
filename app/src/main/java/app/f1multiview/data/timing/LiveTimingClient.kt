@@ -38,6 +38,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val driverMeta=mutableMapOf<String,DriverMeta>()
     private val timingMeta=mutableMapOf<String,TimingMeta>()
     private val positionMeta=mutableMapOf<String,TrackPositionRaw>()
+    // F1 SignalR sends TimingData as differential updates. Keep the latest merged Lines state.
+    private val timingLinesState=JSONObject()
+    private val timingLock=Any()
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
@@ -261,7 +264,34 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         return value to "NORMAL"
     }
 
-    private fun parseTiming(data:JSONObject?){if(data==null)return;val lines=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
+    private fun mergeTimingLines(incoming:JSONObject):JSONObject {
+        synchronized(timingLock) {
+            val keys=incoming.keys()
+            while(keys.hasNext()){
+                val number=keys.next()
+                val patch=incoming.optJSONObject(number) ?: continue
+                val existing=timingLinesState.optJSONObject(number)
+                if(existing==null) timingLinesState.put(number, JSONObject(patch.toString()))
+                else mergeJsonObject(existing, patch)
+            }
+            return JSONObject(timingLinesState.toString())
+        }
+    }
+    private fun mergeJsonObject(target:JSONObject, patch:JSONObject) {
+        val keys=patch.keys()
+        while(keys.hasNext()){
+            val key=keys.next()
+            val value=patch.opt(key)
+            if(value is JSONObject){
+                val current=target.optJSONObject(key)
+                if(current!=null) mergeJsonObject(current,value) else target.put(key,JSONObject(value.toString()))
+            } else {
+                target.put(key,value)
+            }
+        }
+    }
+
+    private fun parseTiming(data:JSONObject?){if(data==null)return;val incoming=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val lines=mergeTimingLines(incoming);if(lines.length()==0)return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
         while(keys.hasNext()){val number=keys.next();val line=lines.optJSONObject(number)?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("Tla").ifBlank{driverMeta[number]?.acronym ?: ""}.ifBlank{line.optString("FullName")}.ifBlank{line.optString("RacingNumber")}.ifBlank{"P"+pos};val gap=line.optString("GapToLeader").ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val lastObj=line.optJSONObject("LastLapTime");val bestObj=line.optJSONObject("BestLapTime");val last=lastObj?.optString("Value")?:line.optString("LastLapTime");val best=bestObj?.optString("Value")?:line.optString("BestLapTime");val tyre=bestObj?.optString("Compound")?:line.optString("Compound");val s1=sectorValue(lastObj,line,"Sector1");val s2=sectorValue(lastObj,line,"Sector2");val s3=sectorValue(lastObj,line,"Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val drs=line.optBoolean("DRS",line.optInt("DRS",0)>0);rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0),s1.first,s2.first,s3.first,speed.ifBlank{"-"},drs,best.ifBlank{"-"},line.optInt("Lap",0).takeIf{it>0}?:line.optInt("LapNumber",0),s1.second,s2.second,s3.second)}
         if(rows.isNotEmpty()){
             _rows.value=rows.sortedBy{it.position}
