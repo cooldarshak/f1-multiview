@@ -1429,7 +1429,7 @@ private fun FullscreenMultiview(
     }
 
     val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
-    val activePlayer = active?.let { pool.get(it.id) }
+    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }?.let { pool.get(it.id) }
 
     LaunchedEffect(activePlayer, ui.session?.live) {
         if (activePlayer != null && ui.session?.live == false) {
@@ -1461,9 +1461,9 @@ private fun FullscreenMultiview(
         } ?: emptyList()
     }
 
-    fun playAll() = selected.forEach { pool.play(it.id) }
-    fun pauseAll() = selected.forEach { pool.pause(it.id) }
-    fun seekAll(deltaMs: Long) = selected.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
+    fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }.forEach { pool.play(it.id) }
+    fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }.forEach { pool.pause(it.id) }
+    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
     LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
         if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
@@ -1609,7 +1609,7 @@ private fun FullscreenMultiview(
         }
 
 
-        if (active != null && controlsVisible) {
+        if (active != null && activePlayer != null && controlsVisible) {
             Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
                     stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
                     speed = speed, quality = quality, fit = fit, menu = menu, onReplayPosition = onReplayPosition,
