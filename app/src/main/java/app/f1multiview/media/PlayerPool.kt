@@ -155,7 +155,7 @@ class PlayerPool(context: Context) {
                             val firstFrameAt = android.os.SystemClock.elapsedRealtime()
                             firstFrameRendered.add(id)
                             startupFirstFrameAtMs[id] = firstFrameAt
-                            startupRequestedAtMs.remove(id)?.let { requestedAt ->
+                            startupRequestedAtMs[id]?.let { requestedAt ->
                                 Log.i("PlayerPool", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
                             }
                             val referenceId = syncMainId
@@ -168,7 +168,7 @@ class PlayerPool(context: Context) {
                             if (isPlaying && id !in startupPlayingAtMs) {
                                 val playingAt = android.os.SystemClock.elapsedRealtime()
                                 startupPlayingAtMs[id] = playingAt
-                                startupRequestedAtMs[id]?.let { requestedAt ->
+                                startupRequestedAtMs.remove(id)?.let { requestedAt ->
                                     Log.i("PlayerPool", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
                                 }
                             }
