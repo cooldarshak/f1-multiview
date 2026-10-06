@@ -175,7 +175,7 @@ class PlayerPool(context: Context) {
                             }
                         }
                     }
-                })
+                )
             }
     }
 
