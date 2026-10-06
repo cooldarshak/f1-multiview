@@ -15,6 +15,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -50,6 +52,9 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
     var focusSelected by remember { mutableStateOf(false) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
+    val mapFocusRequester=remember{FocusRequester()}
+
+    LaunchedEffect(Unit){ mapFocusRequester.requestFocus() }
 
     LaunchedEffect(drivers) {
         if(selected==null || drivers.none{it.number==selected}) selected=drivers.firstOrNull()?.number
@@ -85,7 +90,7 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
         }
 
         Surface(
-            Modifier.weight(1f).fillMaxWidth().focusable(),
+            Modifier.weight(1f).fillMaxWidth().focusRequester(mapFocusRequester).focusable(),
             color=MapBg,shape=RoundedCornerShape(12.dp),
             border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))
         ){
