@@ -289,3 +289,70 @@ private fun trackStatusColor(code:Int)=when(code){2->Color(0xFFD9A400);4,6,7->Co
 private fun teamColor(hex:String):Color=runCatching{
     Color(android.graphics.Color.parseColor("#"+hex.removePrefix("#").padStart(6,'F')))
 }.getOrDefault(Color.White)
+
+
+@Composable
+fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
+    val drivers = ui.trackPositions
+    val selected = drivers.firstOrNull()?.number
+    Column(
+        modifier.fillMaxSize().background(MapBg).padding(if (isTv) 5.dp else 3.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("DRIVER TRACKER", color = MapWhite, fontSize = if (isTv) 9.sp else 8.sp, fontWeight = FontWeight.Black)
+                Text(
+                    ui.liveSessionInfo.name.ifBlank { "LIVE TRACK" } + " · " + ui.trackStatus.label,
+                    color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                )
+            }
+            Text("${drivers.size} CARS", color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+        }
+        if (drivers.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("WAITING FOR TRACK DATA", color = MapMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Surface(
+                Modifier.fillMaxWidth().weight(1f),
+                color = MapBg,
+                shape = RoundedCornerShape(3.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+            ) {
+                TrackCanvas(
+                    geometry = ui.trackGeometry,
+                    drivers = drivers,
+                    selectedNumber = selected,
+                    zoom = 1f,
+                    focusSelected = false,
+                    panX = 0f,
+                    panY = 0f,
+                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                drivers.take(6).forEach { d ->
+                    Surface(
+                        color = teamColor(d.teamColor).copy(alpha = .9f),
+                        shape = RoundedCornerShape(2.dp)
+                    ) {
+                        Text(
+                            d.acronym.uppercase(),
+                            color = Color.White,
+                            fontSize = 6.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
