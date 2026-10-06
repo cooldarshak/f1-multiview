@@ -2,6 +2,7 @@ package app.f1multiview.media
 
 import android.content.Context
 import android.content.res.Configuration
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -459,21 +460,68 @@ class PlayerPool(context: Context) {
         })
     }
 
+    private fun isLikelySecureDecoderCapacityFailure(id: String, error: PlaybackException): Boolean {
+        val stream = streams[id]
+        val secureCandidate = id != audioPlayerId &&
+            players.size >= 4 &&
+            stream?.drmLicenseUrl?.isNullOrBlank() == false
+        if (!secureCandidate) return false
+
+        val evidence = buildList {
+            add(error.message.orEmpty())
+            add(error.errorCodeName)
+            var cause: Throwable? = error.cause
+            repeat(8) {
+                if (cause == null) return@repeat
+                add(cause?.javaClass?.name.orEmpty())
+                add(cause?.message.orEmpty())
+                cause = cause?.cause
+            }
+        }.joinToString(" | ").lowercase()
+
+        val resourceEvidence = listOf(
+            "resourcebusyexception",
+            "insufficient resource",
+            "insufficientresources",
+            "resource busy",
+            "too many",
+            "resource exhausted",
+            "resource limit",
+            "secure decoder",
+            "securedecoder",
+            "omx.error.insufficientresources",
+            "error_insufficient_resources"
+        ).any(evidence::contains)
+
+        Log.w(
+            "PlayerPool",
+            "Decoder failure id=$id players=${players.size} drm=true capacityEvidence=$resourceEvidence " +
+                "code=${error.errorCodeName} message=${error.message}"
+        )
+        return resourceEvidence || (
+            players.size >= 4 &&
+            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED &&
+            evidence.contains("mediacodec")
+        )
+    }
+
     private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
         val isMain = id == audioPlayerId
         val requested = selectedQualities[id] ?: Quality.AUTO
         val attempts = decoderRecoveryAttempts[id] ?: 0
 
-        // A fourth-feed decoder-init failure can be a secure-decoder resource limit,
-        // not a bad stream. Retry the secondary once with Widevine L3 before falling
-        // back through the normal quality recovery ladder.
-        if (!isMain && id !in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
+        // Only attempt the L3 fallback for a secondary DRM stream when the failure
+        // has evidence consistent with secure-decoder/resource exhaustion. Do not
+        // downgrade every decoder error: a bad codec/manifest must follow the normal
+        // recovery ladder instead.
+        val capacityFailure = isLikelySecureDecoderCapacityFailure(id, error)
+        if (!isMain && capacityFailure && id !in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
             l3SecondaryFallback.add(id)
             decoderRecoveryAttempts[id] = attempts + 1
             player.stop()
             player.clearMediaItems()
             _errors.value = _errors.value + (
-                id to "Secure decoder capacity reached; retrying secondary with Widevine L3"
+                id to "Secondary secure decoder capacity suspected; retrying with Widevine L3"
             )
             mainHandler.postDelayed({
                 if (players[id] === player) {
