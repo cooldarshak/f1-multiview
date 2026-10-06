@@ -1054,7 +1054,7 @@ private fun PitWall(
             errors,
             if (isTv) tvResizeMode else false,
             {},
-            Modifier.fillMaxWidth().aspectRatio(wallAspect)
+            modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
         )
     }
 }
@@ -1594,7 +1594,8 @@ private fun CanonicalMultiviewLayout(
                         Modifier.weight(mainX).fillMaxHeight(),
                         {},
                         onFocus,
-                        surfaceType
+                        active = activeId == selected[0].id,
+                        surfaceType = surfaceType
                     )
                     ResizeHandle(
                         Orientation.Horizontal,
@@ -1614,7 +1615,8 @@ private fun CanonicalMultiviewLayout(
                             Modifier.weight(fourSideH1).fillMaxWidth(),
                             {},
                             onFocus,
-                            surfaceType
+                            active = activeId == selected[1].id,
+                            surfaceType = surfaceType
                         )
                         ResizeHandle(Orientation.Vertical, editSize) {
                             val delta = it / 900f
@@ -1628,7 +1630,8 @@ private fun CanonicalMultiviewLayout(
                             Modifier.weight(fourSideH2).fillMaxWidth(),
                             {},
                             onFocus,
-                            surfaceType
+                            active = activeId == selected[2].id,
+                            surfaceType = surfaceType
                         )
                         ResizeHandle(Orientation.Vertical, editSize) {
                             val delta = it / 900f
@@ -1641,7 +1644,8 @@ private fun CanonicalMultiviewLayout(
                             Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
                             {},
                             onFocus,
-                            surfaceType
+                            active = activeId == selected[3].id,
+                            surfaceType = surfaceType
                         )
                     }
                 }
