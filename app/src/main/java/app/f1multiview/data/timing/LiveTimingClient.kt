@@ -18,7 +18,7 @@ class LiveTimingClient(private val scope:CoroutineScope){
         private const val WS="wss://livetiming.formula1.com/signalrcore?id="
         private const val RS='\u001e'
         private const val KEEPALIVE_MS=15000L
-        private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingAppData","TimingStats","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree","TeamRadio")
+        private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingAppData","TimingStats","CarData","Position","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree","TeamRadio")
     }
     private val http=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(0,TimeUnit.MILLISECONDS).build()
     private val _rows=MutableStateFlow<List<TimingRow>>(emptyList());val rows: StateFlow<List<TimingRow>> = _rows.asStateFlow()
