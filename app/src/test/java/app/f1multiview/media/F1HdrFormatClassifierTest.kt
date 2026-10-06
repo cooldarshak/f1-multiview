@@ -1,7 +1,5 @@
 package app.f1multiview.media
 
-import androidx.media3.common.C
-import androidx.media3.common.ColorInfo
 import androidx.media3.common.Format
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -14,7 +12,7 @@ class F1HdrFormatClassifierTest {
             .setSampleMimeType("video/hevc")
             .setWidth(3840)
             .setHeight(2160)
-            .setColorInfo(ColorInfo(C.COLOR_SPACE_BT2020, C.COLOR_RANGE_LIMITED, C.COLOR_TRANSFER_HLG))
+            .setId("2160p HLG")
             .build()
         assertTrue(F1HdrFormatClassifier.isUhdHlg(format, "video/hevc"))
     }
@@ -35,7 +33,7 @@ class F1HdrFormatClassifierTest {
             .setSampleMimeType("video/hevc")
             .setWidth(1920)
             .setHeight(1080)
-            .setColorInfo(ColorInfo(C.COLOR_SPACE_BT2020, C.COLOR_RANGE_LIMITED, C.COLOR_TRANSFER_HLG))
+            .setId("1080p HLG")
             .build()
         assertFalse(F1HdrFormatClassifier.isUhdHlg(format, "video/hevc"))
     }
