@@ -60,4 +60,6 @@ interface PlaybackGateway {
     suspend fun vodEvents(season: VodSeason): Result<List<VodEvent>>
     suspend fun vodSessions(event: VodEvent): Result<List<VodSession>>
     suspend fun showsAndDocs(): Result<List<EditorialItem>>
+    /** Bearer credentials for authenticated F1 live GPS/telemetry topics. */
+    suspend fun liveTimingHeaders(): Map<String, String> = emptyMap()
 }
