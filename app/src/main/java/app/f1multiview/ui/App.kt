@@ -197,6 +197,12 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
+    LaunchedEffect(ui.selectedStreamIds, ui.liveSessionInfo.circuitKey) {
+        if (ui.selectedStreamIds.any { id -> ui.streams.firstOrNull { it.id == id }?.kind == StreamKind.TRACK }) {
+            vm.loadTrackMapGeometry()
+        }
+    }
+
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
             // Do not wait 1.5s for a one-shot sync. The PlayerPool continuously watches
