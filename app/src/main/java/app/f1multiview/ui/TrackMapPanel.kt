@@ -9,6 +9,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -55,13 +56,12 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
     val mapFocusRequester=remember{FocusRequester()}
 
     LaunchedEffect(Unit){ mapFocusRequester.requestFocus() }
-
     LaunchedEffect(drivers) {
         if(selected==null || drivers.none{it.number==selected}) selected=drivers.firstOrNull()?.number
     }
 
     Column(
-        Modifier.fillMaxSize().background(MapBg).focusGroup()
+        Modifier.fillMaxSize().background(MapBg).padding(if(isTv) 6.dp else 2.dp).focusGroup()
             .onPreviewKeyEvent {
                 if(it.type!=KeyEventType.KeyUp) return@onPreviewKeyEvent false
                 when(it.key){
@@ -74,71 +74,94 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
                 }
             }
     ){
-        Row(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-            Column(Modifier.weight(1f)){
-                Text("LIVE TRACK MAP",color=MapWhite,fontSize=17.sp,fontWeight=FontWeight.Black)
-                Text(
-                    ui.liveSessionInfo.meeting+" · "+ui.liveSessionInfo.sessionType+
-                        " · "+ui.trackStatus.label+
-                        if(drivers.isEmpty()) " · WAITING FOR GPS" else " · "+drivers.size+" CARS",
-                    color=MapMuted,fontSize=9.sp
-                )
+        RaceHeader(ui,drivers.size)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            Surface(Modifier.weight(1.65f).fillMaxHeight().focusRequester(mapFocusRequester).focusable(),color=MapBg,shape=RoundedCornerShape(5.dp),border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))){
+                TrackCanvas(geometry=ui.trackGeometry,drivers=drivers,selectedNumber=selected,zoom=zoom,focusSelected=focusSelected,panX=panX,panY=panY,modifier=Modifier.fillMaxSize().padding(5.dp))
             }
-            MapBadge(ui.trackStatus.label,trackStatusColor(ui.trackStatus.code))
-            Spacer(Modifier.width(8.dp))
-            Text("ZOOM "+String.format("%.2fx",zoom),color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold)
+            Column(Modifier.weight(.85f).fillMaxHeight()){
+                RaceLeaderboard(drivers,selected){selected=it;focusSelected=true}
+                Spacer(Modifier.height(6.dp))
+                RaceControlCompact(ui.raceControl)
+            }
         }
-
-        Surface(
-            Modifier.weight(1f).fillMaxWidth().focusRequester(mapFocusRequester).focusable(),
-            color=MapBg,shape=RoundedCornerShape(12.dp),
-            border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))
-        ){
-            TrackCanvas(
-                geometry=ui.trackGeometry,
-                drivers=drivers,
-                selectedNumber=selected,
-                zoom=zoom,
-                focusSelected=focusSelected,
-                panX=panX,
-                panY=panY,
-                modifier=Modifier.fillMaxSize().padding(10.dp)
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(5.dp)){
             TrackControl("−"){zoom=max(1f,zoom-.25f)}
             TrackControl("+"){zoom=min(4f,zoom+.25f)}
             TrackControl(if(focusSelected)"UNFOCUS" else "FOCUS"){focusSelected=!focusSelected}
-            TrackControl("PAN ◀"){panX-=.12f}
-            TrackControl("PAN ▶"){panX+=.12f}
-            TrackControl("PAN ▲"){panY-=.12f}
-            TrackControl("PAN ▼"){panY+=.12f}
+            TrackControl("◀"){panX-=.12f}
+            TrackControl("▶"){panX+=.12f}
+            TrackControl("▲"){panY-=.12f}
+            TrackControl("▼"){panY+=.12f}
+            Spacer(Modifier.weight(1f))
+            Text("D-PAD  DRIVER  •  ▲▼ ZOOM  •  OK FOCUS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=5.dp,vertical=8.dp))
         }
-        if(drivers.isNotEmpty()){
-            Spacer(Modifier.height(8.dp))
-            LazyRow(
-                Modifier.fillMaxWidth().focusGroup(),
-                horizontalArrangement=Arrangement.spacedBy(6.dp)
-            ){
-                items(drivers.size){ index ->
-                    val d=drivers[index]
-                    TrackDriverButton(
-                        d=d,selected=d.number==selected,
-                        onClick={selected=d.number;focusSelected=true}
-                    )
-                }
+    }
+}
+
+@Composable
+private fun RaceHeader(ui:UiState,carCount:Int){
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+        Column(Modifier.weight(1f)){
+            Text(ui.liveSessionInfo.meeting.ifBlank{"FORMULA 1"}.uppercase()+"  ·  "+ui.liveSessionInfo.sessionType.uppercase(),color=MapWhite,fontSize=13.sp,fontWeight=FontWeight.Black)
+            Text(ui.liveSessionInfo.name+"  ·  LAP DATA / LIVE GPS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold)
+        }
+        RaceStat("CARS",carCount.toString());RaceStat("STATUS",ui.trackStatus.label);RaceStat("GPS",if(carCount>0)"LIVE" else "WAIT")
+    }
+}
+@Composable private fun RaceStat(label:String,value:String){
+    Column(Modifier.padding(horizontal=8.dp).widthIn(min=48.dp),horizontalAlignment=Alignment.End){
+        Text(label,color=MapMuted,fontSize=7.sp,fontWeight=FontWeight.Bold)
+        Text(value,color=MapWhite,fontSize=9.sp,fontWeight=FontWeight.Black)
+    }
+}
+@Composable private fun RaceLeaderboard(drivers:List<TrackDriverPosition>,selected:String?,onSelect:(String)->Unit){
+    Column(Modifier.fillMaxWidth()){
+        Text("LIVE TIMING",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(bottom=4.dp))
+        Surface(Modifier.fillMaxWidth(),color=Color.White.copy(alpha=.035f),shape=RoundedCornerShape(4.dp)){
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max=430.dp),verticalArrangement=Arrangement.spacedBy(1.dp)){
+                items(drivers){d->RaceDriverRow(d,d.number==selected){onSelect(d.number)}}
             }
         }
-        if(ui.trackGeometry==null && drivers.isNotEmpty()){
-            Text("Loading circuit geometry…",color=MapMuted,fontSize=9.sp,modifier=Modifier.padding(top=5.dp))
-        }
-        Text(
-            "D-pad: ◀ ▶ select driver · ▲ ▼ zoom · OK focus selected. GPS comes from F1 Position.z; the F1 TV tracker video is not used.",
-            color=MapMuted,fontSize=8.sp,modifier=Modifier.padding(top=5.dp)
-        )
     }
+}
+@Composable private fun RaceDriverRow(d:TrackDriverPosition,selected:Boolean,onClick:()->Unit){
+    var focused by remember{mutableStateOf(false)}
+    Surface(onClick=onClick,color=when{selected->MapRed.copy(alpha=.9f);focused->Color.White.copy(alpha=.10f);else->Color.White.copy(alpha=.025f)},shape=RoundedCornerShape(2.dp),modifier=Modifier.fillMaxWidth().focusable().onFocusChanged{focused=it.isFocused}){
+        Row(Modifier.fillMaxWidth().padding(horizontal=6.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically){
+            Text(if(d.position>0)d.position.toString() else "—",color=if(selected)MapWhite else MapMuted,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(22.dp))
+            Text(d.acronym.uppercase(),color=MapWhite,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(36.dp))
+            Box(Modifier.width(4.dp).height(13.dp).background(teamColor(d.teamColor),RoundedCornerShape(1.dp)))
+            Spacer(Modifier.width(5.dp))
+            Column(Modifier.weight(1f)){
+                Text(d.team,color=if(selected)MapWhite else MapMuted,fontSize=7.sp,maxLines=1)
+                Text("L"+d.lap+"  "+if(d.inPit)"PIT" else if(d.stopped)"STOP" else "RUN",color=if(selected)MapWhite else MapMuted,fontSize=7.sp,fontWeight=FontWeight.Bold)
+            }
+            Column(horizontalAlignment=Alignment.End){
+                Text(if(d.speed>0)d.speed.toString()+" km/h" else "—",color=MapWhite,fontSize=7.sp)
+                Text(if(d.position>0)"P"+d.position else "—",color=MapMuted,fontSize=7.sp)
+            }
+        }
+    }
+}
+@Composable private fun RaceControlCompact(events:List<RaceControlEvent>){
+    Column(Modifier.fillMaxWidth()){
+        Text("RACE CONTROL",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(bottom=4.dp))
+        Surface(Modifier.fillMaxWidth().heightIn(min=70.dp,max=150.dp),color=Color.White.copy(alpha=.035f),shape=RoundedCornerShape(4.dp)){
+            if(events.isEmpty()) Text("No race-control messages",color=MapMuted,fontSize=8.sp,modifier=Modifier.padding(8.dp))
+            else LazyColumn(Modifier.fillMaxWidth()){items(events.takeLast(5).asReversed()){e->
+                Column(Modifier.fillMaxWidth().padding(horizontal=7.dp,vertical=5.dp)){
+                    Row(Modifier.fillMaxWidth()){Text(e.time,color=MapMuted,fontSize=7.sp,modifier=Modifier.weight(1f));Text(e.severity.uppercase(),color=raceSeverityColor(e.severity),fontSize=7.sp,fontWeight=FontWeight.Black)}
+                    Text(e.message,color=MapWhite,fontSize=8.sp,maxLines=2)
+                }
+            }}
+        }
+    }
+}
+private fun raceSeverityColor(value:String)=when(value.lowercase()){
+    "red","critical"->Color(0xFFE10600);"yellow","warning"->Color(0xFFD9A400);"green"->Color(0xFF35B968);else->MapMuted
 }
 
 @Composable private fun TrackCanvas(
