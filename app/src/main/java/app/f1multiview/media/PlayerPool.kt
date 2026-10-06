@@ -134,11 +134,18 @@ class PlayerPool(context: Context) {
                                 Log.i("PlayerPool", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
                             }
                             if (playAllRequested) desiredPlaying.add(id)
-                            if (id in desiredPlaying && !player.isPlaying) player.play()
-                            // A newly-ready follower must join the already-running sync loop
-                            // immediately. Do not require the user to press SYNC ALL again.
-                            syncMainId?.let { mainId ->
-                                if (id != mainId) syncToMainOnce(mainId)
+                            val referenceId = syncMainId
+                            if (referenceId != null && id != referenceId && id in desiredPlaying) {
+                                // Hold a newly-ready follower for one synchronization pass so
+                                // it does not visibly start behind the reference and then require
+                                // a manual SYNC ALL to catch up.
+                                desiredPlaying.remove(id)
+                                syncToMainOnce(referenceId)
+                                desiredPlaying.add(id)
+                                player.playWhenReady = true
+                                player.play()
+                            } else if (id in desiredPlaying && !player.isPlaying) {
+                                player.play()
                             }
                         }
                     }
@@ -783,26 +790,19 @@ class PlayerPool(context: Context) {
         // automatically when they reach READY.
         playAllRequested = true
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        val mainId = audioPlayerId
         val ordered = players.keys.toList()
         ordered.forEach { desiredPlaying.add(it) }
-        // Start the reference feed first, then stagger secondary decoders. Starting
-        // multiple DRM/4K pipelines on the same frame can overwhelm TV hardware.
-        ordered.forEachIndexed { index, id ->
-            val player = players[id] ?: return@forEachIndexed
-            val delayMs = when {
-                id == mainId -> 0L
-                index == 0 -> 150L
-                else -> 250L * index
-            }
-            mainHandler.postDelayed({
-                if (players[id] === player && desiredPlaying.contains(id)) {
-                    player.playWhenReady = true
-                    if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
-                        player.play()
-                    }
+        // Do not add artificial playback delays. The four-feed ceiling protects
+        // decoder pressure, while each prepared player can start as soon as it is READY.
+        // Late-ready followers are synchronized before their first visible playback.
+        ordered.forEach { id ->
+            val player = players[id] ?: return@forEach
+            if (desiredPlaying.contains(id)) {
+                player.playWhenReady = true
+                if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
+                    player.play()
                 }
-            }, delayMs)
+            }
         }
     }
 
