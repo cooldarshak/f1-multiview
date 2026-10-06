@@ -1,7 +1,6 @@
 package app.f1multiview.ui
 
 import android.graphics.Paint
-import android.graphics.Path
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -15,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -221,7 +222,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
                         textAlign=Paint.Align.CENTER
                         typeface=android.graphics.Typeface.DEFAULT_BOLD
                     }
-                    canvas.nativeCanvas.drawText(c.number.toString()+c.letter,p.x,p.y-10f,paint)
+                    drawContext.canvas.nativeCanvas.drawText(c.number.toString()+c.letter,p.x,p.y-10f,paint)
                 }
             }
         }
@@ -245,7 +246,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
                     typeface=android.graphics.Typeface.DEFAULT_BOLD
                     setShadowLayer(4f,0f,0f,android.graphics.Color.BLACK)
                 }
-                canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-12f,paint)
+                drawContext.canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-12f,paint)
             }
         }
     }
