@@ -169,15 +169,12 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val ordered = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
         val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
-        ordered.forEachIndexed { index, stream ->
+        // PlayerPool owns decoder/resource protection. Do not serialize feed preparation
+        // here: every selected feed should enter Media3 immediately.
+        ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
                 pool.load(stream)
                 startedFeeds[stream.id] = true
-                // Keep only a small decoder/network ramp. The previous 500 ms per-feed
-                // delay made Data/Tracker visibly arrive seconds after the main feed.
-                // Resource protection remains in PlayerPool via the four-feed ceiling
-                // and decoder recovery; preparation itself should not be artificially slow.
-                if (index < ordered.lastIndex) delay(100L)
             }
         }
     }
