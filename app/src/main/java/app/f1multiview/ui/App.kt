@@ -133,7 +133,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             val mainId = ui.mainStreamId ?: break
             val player = pool.get(mainId)
             val position = player.currentPosition.coerceAtLeast(0L)
-            val duration = player.duration.takeIf { it != Player.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
+            val duration = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
             if (player.currentMediaItem != null && position >= 10_000L) {
                 vm.saveContinueWatching(session, position, duration, mainId)
             }
@@ -401,7 +401,7 @@ private fun ContinueWatchingCard(
                     )
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = progress,
                         modifier = Modifier.fillMaxWidth().height(3.dp),
                         color = Red,
                         trackColor = Color.White.copy(alpha = .22f)
