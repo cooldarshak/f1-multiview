@@ -8,7 +8,7 @@ import org.junit.Test
 class SyncEngineTest {
     @Test fun targetUsesMedianToIgnoreOutlier() {
         val engine = SyncEngine()
-        assertEquals(1000L, engine.targetPosition(listOf(1000L, 1010L, 100000L)))
+        assertEquals(1010L, engine.targetPosition(listOf(1000L, 1010L, 100000L)))
     }
 
     @Test fun exposesConfiguredThresholds() {
