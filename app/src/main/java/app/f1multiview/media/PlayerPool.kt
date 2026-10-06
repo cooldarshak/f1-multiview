@@ -110,6 +110,7 @@ class PlayerPool(context: Context) {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) {
                             sourceRecoveryAttempts.remove(id)
+                            decoderRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
                             if (id in desiredPlaying && !player.isPlaying) player.play()
                         }
@@ -423,21 +424,39 @@ class PlayerPool(context: Context) {
     private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
         val isMain = id == audioPlayerId
         val requested = selectedQualities[id] ?: Quality.AUTO
+        val attempts = decoderRecoveryAttempts[id] ?: 0
         val recoveryQuality = when {
             requested == Quality.UHD -> Quality.FHD
             requested == Quality.FHD && !isMain -> Quality.HD
+            requested == Quality.HD && !isMain -> Quality.SD
+            requested == Quality.AUTO && !isMain -> Quality.SD
+            requested == Quality.AUTO && isMain -> Quality.FHD
             else -> requested
         }
+
+        decoderRecoveryAttempts[id] = attempts + 1
         if (recoveryQuality != requested) selectedQualities[id] = recoveryQuality
+
+        player.stop()
         player.trackSelectionParameters = buildQualityParameters(
             player = player,
             quality = recoveryQuality,
             isMain = isMain,
             preserveAudioSetting = true
         )
-        player.prepare()
-        player.playWhenReady = true
-        _errors.value = _errors.value + (id to "Decoder failed; retrying at " + recoveryQuality.name)
+        mainHandler.postDelayed({
+            if (players[id] === player) {
+                player.prepare()
+                player.playWhenReady = true
+            }
+        }, 250L)
+
+        val message = if (!isMain && requested == Quality.AUTO) {
+            "Decoder capacity reached; retrying secondary at " + recoveryQuality.name
+        } else {
+            "Decoder failed; retrying at " + recoveryQuality.name
+        }
+        _errors.value = _errors.value + (id to message)
     }
 
     fun setAudioPlayer(id: String?) {
@@ -640,6 +659,8 @@ class PlayerPool(context: Context) {
         desiredPlaying.remove(id)
         players.remove(id)?.release()
         selectedQualities.remove(id)
+        streamKinds.remove(id)
+        decoderRecoveryAttempts.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -652,6 +673,8 @@ class PlayerPool(context: Context) {
         desiredPlaying.clear()
         audioPlayerId = null
         selectedQualities.clear()
+        streamKinds.clear()
+        decoderRecoveryAttempts.clear()
     }
 
     fun all(): Collection<ExoPlayer> = players.values
