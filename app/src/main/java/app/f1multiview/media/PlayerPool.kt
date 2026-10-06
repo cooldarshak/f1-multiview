@@ -166,7 +166,6 @@ class PlayerPool(context: Context) {
                                 }
                             }
                         }
-                        }
                     }
                 })
             }
