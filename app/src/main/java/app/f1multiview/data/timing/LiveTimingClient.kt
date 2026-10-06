@@ -64,12 +64,54 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;_status.value="RETRYING";scheduleReconnect()}
         override fun onClosed(ws:WebSocket,code:Int,reason:String){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"}
     }
-    private fun parseDriverList(data:JSONObject?) {
-        // DriverList is intentionally parsed defensively. It is used as enrichment for
-        // TimingData rather than being required for the timing table to function.
-        if(data == null) return
+    private fun decodeFeedObject(raw:Any?):JSONObject? {
+        if(raw is JSONObject) return raw
+        val encoded = raw as? String ?: return null
+        if(encoded.isBlank()) return null
+        val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() ?: return null
+        val inflater = Inflater(true)
+        return try {
+            inflater.setInput(bytes)
+            val out = ByteArray(1024 * 1024)
+            val size = inflater.inflate(out)
+            if(size > 0) JSONObject(String(out, 0, size, Charsets.UTF_8))
+            else runCatching { JSONObject(encoded) }.getOrNull()
+        } catch(_:Throwable) {
+            runCatching { JSONObject(encoded) }.getOrNull()
+        } finally {
+            inflater.end()
+        }
     }
 
+    private data class DriverMeta(val name:String,val acronym:String,val team:String,val teamColor:String)
+    private data class TimingMeta(val position:Int=0,val speed:Int=0,val lap:Int=0,val inPit:Boolean=false,val stopped:Boolean=false,val retired:Boolean=false)
+    private data class TrackPositionRaw(val x:Double,val y:Double,val z:Double)
+
+    private fun publishTrackPositions() {
+        val now=System.currentTimeMillis()
+        _trackPositions.value=positionMeta.map { (number,pos) ->
+            val driver=driverMeta[number]
+            val timing=timingMeta[number] ?: TimingMeta()
+            TrackDriverPosition(number=number,name=driver?.name ?: number,acronym=driver?.acronym ?: number,team=driver?.team ?: "-",teamColor=driver?.teamColor ?: "FFFFFF",x=pos.x,y=pos.y,z=pos.z,position=timing.position,speed=timing.speed,lap=timing.lap,inPit=timing.inPit,stopped=timing.stopped,retired=timing.retired,updatedAtMs=now)
+        }.sortedWith(compareBy<TrackDriverPosition> { it.position.takeIf { p -> p > 0 } ?: 999 }.thenBy { it.number })
+    }
+    private fun parseDriverList(data:JSONObject?) {
+        if(data == null) return
+        val root=data.optJSONObject("DriverList") ?: data
+        val keys=root.keys()
+        while(keys.hasNext()){
+            val number=keys.next()
+            val x=root.optJSONObject(number) ?: continue
+            val racingNumber=x.optString("RacingNumber").ifBlank{number}
+            driverMeta[racingNumber]=DriverMeta(
+                name=x.optString("FullName").ifBlank{listOf(x.optString("FirstName"),x.optString("LastName")).filter(String::isNotBlank).joinToString(" ")}.ifBlank{x.optString("BroadcastName")}.ifBlank{racingNumber},
+                acronym=x.optString("Tla").ifBlank{x.optString("ShortName")}.ifBlank{racingNumber},
+                team=x.optString("TeamName").ifBlank{x.optString("Team")}.ifBlank{"-"},
+                teamColor=x.optString("TeamColour").ifBlank{x.optString("TeamColor")}.ifBlank{"FFFFFF"}
+            )
+        }
+        publishTrackPositions()
+    }
     private fun parseSessionInfo(data:JSONObject?) {
         if(data == null) return
         val info = data.optJSONObject("SessionInfo") ?: data
