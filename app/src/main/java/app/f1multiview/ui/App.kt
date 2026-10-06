@@ -1292,12 +1292,12 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
         modifier.clickable { onFocus(stream.id) }.focusable().onFocusChanged { tileFocused = it.isFocused }
             .then(if (tileFocused) Modifier.border(2.dp, White, RoundedCornerShape(10.dp)) else Modifier)
     } else modifier
+    // Active and focused are intentionally different:
+    // - focus = where the TV/D-pad cursor is
+    // - active = the feed currently targeted by multiview controls
+    // Keep the active indicator subtle so it does not compete with the video.
     Card(
-        tileModifier.border(
-            if (active) 3.dp else 1.dp,
-            if (active) Red else Color.White.copy(alpha = .09f),
-            RoundedCornerShape(14.dp)
-        ),
+        tileModifier,
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Black)
     ) {
@@ -1317,6 +1317,14 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
                     Text(if (stream.isLive) "LIVE" else "REPLAY", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
                 }
                 Spacer(Modifier.width(7.dp))
+                if (active) {
+                    Box(
+                        Modifier
+                            .size(5.dp)
+                            .background(Red, RoundedCornerShape(50))
+                    )
+                    Spacer(Modifier.width(5.dp))
+                }
                 Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
                 Text(if (pool.isMuted(stream.id)) "MUTED" else "AUDIO ON", color = if (pool.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A), fontSize = 7.sp, fontWeight = FontWeight.Bold)
