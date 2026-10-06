@@ -42,6 +42,10 @@ data class VideoDiagnostics(
 )
 
 class PlayerPool(context: Context) {
+    // Four simultaneous video feeds are the validated safe ceiling on the current
+    // target device. Keep this guard here as well as in the ViewModel so an accidental
+    // caller cannot instantiate a fifth decoder and crash the process.
+    private val maxVideoFeeds = 4
     // Phase 2 resource guard: secondary feeds are deliberately constrained before decoder pressure rises.
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
@@ -127,6 +131,13 @@ class PlayerPool(context: Context) {
 
     fun load(stream: StreamSource, forceReload: Boolean = false) {
         val url = stream.url ?: return
+        if (!forceReload && stream.id !in players && players.size >= maxVideoFeeds) {
+            _errors.value = _errors.value + (
+                stream.id to "4 simultaneous video feeds is the safe limit; 5th feed blocked to prevent decoder crash"
+            )
+            Log.w("PlayerPool", "Blocked feed " + stream.id + ": maxVideoFeeds=" + maxVideoFeeds)
+            return
+        }
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
         val player = get(stream.id)
