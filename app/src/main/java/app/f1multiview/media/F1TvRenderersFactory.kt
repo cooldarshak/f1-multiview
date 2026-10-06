@@ -71,19 +71,31 @@ private class F1HdrMediaCodecVideoRenderer(
     ):MediaFormat {
         val mf=super.getMediaFormat(format,codecMimeType,codecMaxValues,codecOperatingRate,deviceNeedsNoPostProcessWorkaround,tunnelingAudioSessionId)
         if(isF1UhdHlg(format,codecMimeType)) {
+            // Mirror the reference Android TV path: preserve source frame rate and
+            // avoid an injected operating-rate hint for the 4K HLG path.
             mf.setInteger("priority",0)
             if(format.frameRate>0f) mf.setFloat("frame-rate",format.frameRate)
             mf.setInteger("rotation-degrees",0)
+            Log.i("F1TvRenderersFactory",
+                "Protected UHD/HLG MediaCodec format: " + format.width + "x" + format.height +
+                    " fps=" + format.frameRate + " mime=" + format.sampleMimeType)
         }
         return mf
     }
 
     override fun getCodecOperatingRateV23(operatingRate:Float,format:Format,streamFormats:Array<Format>):Float {
-        return if(isF1UhdHlg(format,format.sampleMimeType.orEmpty())) -1f
-        else super.getCodecOperatingRateV23(operatingRate,format,streamFormats)
+        // Keep the protected UHD/HLG path free of a Media3 operating-rate override.
+        return if(isF1UhdHlg(format,format.sampleMimeType.orEmpty())) {
+            Log.i("F1TvRenderersFactory",
+                "Suppressing codec operating-rate for protected UHD/HLG " + format.width + "x" + format.height)
+            -1f
+        } else super.getCodecOperatingRateV23(operatingRate,format,streamFormats)
     }
 
     override fun createPlaybackVideoGraphWrapper(context:Context,videoFrameReleaseControl:VideoFrameReleaseControl):PlaybackVideoGraphWrapper {
+        // Force the VideoSink/GL path to stay alive so the protected EGL output
+        // surface is actually used instead of being optimized away.
+        setVideoEffects(emptyList<Effect>())
         val processor=DefaultVideoFrameProcessor.Factory.Builder()
             .setGlObjectsProvider(ProtectedHlgGlObjectsProvider())
             .build()
