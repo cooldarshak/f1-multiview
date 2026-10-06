@@ -40,8 +40,7 @@ class ContinueWatchingStore(private val context: Context) {
             prefs[entriesKey] = existing
                 .sortedByDescending { it.updatedAtMs }
                 .take(maxEntries)
-                .joinToString("
-", transform = ::encode)
+                .joinToString("\n", transform = ::encode)
         }
     }
 
@@ -52,8 +51,7 @@ class ContinueWatchingStore(private val context: Context) {
                 .mapNotNull(::decode)
                 .filterNot { it.contentId == contentId }
             if (remaining.isEmpty()) prefs.remove(entriesKey)
-            else prefs[entriesKey] = remaining.joinToString("
-", transform = ::encode)
+            else prefs[entriesKey] = remaining.joinToString("\n", transform = ::encode)
         }
     }
 
@@ -103,8 +101,7 @@ class ContinueWatchingStore(private val context: Context) {
     }
 
     private fun escape(value: String): String =
-        value.replace("%", "%25").replace("|", "%7C").replace("
-", " ")
+        value.replace("%", "%25").replace("|", "%7C").replace("\n", " ")
 
     private fun unescape(value: String): String =
         value.replace("%7C", "|").replace("%25", "%")
