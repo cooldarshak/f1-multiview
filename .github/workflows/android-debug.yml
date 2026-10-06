@@ -2,9 +2,6 @@ name: Android Debug APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/android-tv-remote
 
 jobs:
   build:
@@ -32,6 +29,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
 
       - name: Restore signing keystore
         env:
