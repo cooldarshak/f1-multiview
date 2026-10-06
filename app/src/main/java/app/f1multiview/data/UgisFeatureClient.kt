@@ -1,5 +1,6 @@
 package app.f1multiview.data
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -11,12 +12,15 @@ data class CalendarRace(val round:Int,val name:String,val circuit:String,val loc
 data class StandingRow(val position:String,val name:String,val constructor:String,val points:String,val wins:String)
 data class ResultRow(val position:String,val name:String,val constructor:String,val points:String,val status:String)
 
-class UgisFeatureClient {
+class UgisFeatureClient(context: Context? = null) {
     private val http = OkHttpClient.Builder().callTimeout(15, TimeUnit.SECONDS).build()
     private val base = "https://api.jolpi.ca/ergast/f1"
-    private val userAgent = "F1MultiView/1.1"
+    private val userAgent = "F1MultiView/1.2"
+    private val cache = LinkedHashMap<String, Pair<Long, JSONObject>>(16, 0.75f, true)
+    private val cacheTtlMs = 5 * 60 * 1000L
+    private val diskCache = context?.getSharedPreferences("f1_feature_cache", Context.MODE_PRIVATE)
 
-    suspend fun calendar(season:String="current"):Result<List<CalendarRace>> = get("$base/$season/races/").map { root ->
+    suspend fun calendar(season:String="current"):Result<List<CalendarRace>> = getCached("$base/$season/races/").map { root ->
         val races = root.optJSONObject("MRData")?.optJSONObject("RaceTable")?.optJSONArray("Races") ?: org.json.JSONArray()
         (0 until races.length()).mapNotNull { i ->
             val r=races.optJSONObject(i) ?: return@mapNotNull null
@@ -26,7 +30,7 @@ class UgisFeatureClient {
         }
     }
 
-    suspend fun standings(season:String="current"):Result<List<StandingRow>> = get("$base/$season/driverstandings/").map { root ->
+    suspend fun standings(season:String="current"):Result<List<StandingRow>> = getCached("$base/$season/driverstandings/").map { root ->
         val lists=root.optJSONObject("MRData")?.optJSONObject("StandingsTable")?.optJSONArray("StandingsLists") ?: org.json.JSONArray()
         val rows=lists.optJSONObject(0)?.optJSONArray("DriverStandings") ?: org.json.JSONArray()
         (0 until rows.length()).mapNotNull { i ->
@@ -38,7 +42,7 @@ class UgisFeatureClient {
         }
     }
 
-    suspend fun results(season:String="current"):Result<List<ResultRow>> = get("$base/$season/last/results/").map { root ->
+    suspend fun results(season:String="current"):Result<List<ResultRow>> = getCached("$base/$season/last/results/").map { root ->
         val races=root.optJSONObject("MRData")?.optJSONObject("RaceTable")?.optJSONArray("Races") ?: org.json.JSONArray()
         val rows=races.optJSONObject(0)?.optJSONArray("Results") ?: org.json.JSONArray()
         (0 until rows.length()).mapNotNull { i ->
@@ -49,13 +53,24 @@ class UgisFeatureClient {
         }
     }
 
-    private suspend fun get(url:String):Result<JSONObject> = withContext(Dispatchers.IO) {
+    private suspend fun getCached(url:String):Result<JSONObject> = withContext(Dispatchers.IO) {
+        synchronized(cache) {
+            val hit = cache[url]
+            if (hit != null && System.currentTimeMillis() - hit.first < cacheTtlMs) return@withContext Result.success(JSONObject(hit.second.toString()))
+        }
         runCatching {
             val request=Request.Builder().url(url).header("User-Agent",userAgent).build()
             http.newCall(request).execute().use { response ->
                 if(!response.isSuccessful) error("F1 data service HTTP ${response.code}")
-                JSONObject(response.body?.string().orEmpty())
+                val json=JSONObject(response.body?.string().orEmpty())
+                synchronized(cache) { cache[url]=System.currentTimeMillis() to JSONObject(json.toString()) }
+                diskCache?.edit()?.putString(url,json.toString())?.putLong(url+"@ts",System.currentTimeMillis())?.apply()
+                json
             }
+        }.recoverCatching { error ->
+            synchronized(cache) { cache[url]?.second?.let { return@recoverCatching JSONObject(it.toString()) } }
+            diskCache?.getString(url,null)?.let { return@recoverCatching JSONObject(it) }
+            throw error
         }
     }
 }

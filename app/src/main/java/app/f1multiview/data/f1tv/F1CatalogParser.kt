@@ -88,8 +88,12 @@ internal object F1CatalogParser {
         val combined = text.lowercase() + " " + emf.optString("VideoType").lowercase() + " " + meta.optString("contentSubtype").lowercase()
 
         val stage = when {
-            combined.contains("pre-show") || combined.contains("preshow") || combined.contains("preview") -> "pre-show"
-            combined.contains("post-show") || combined.contains("postrace") || combined.contains("post race") -> "post-show"
+            combined.contains("pre-show") || combined.contains("preshow") || combined.contains("pre race show") || combined.contains("preview") -> "pre-show"
+            combined.contains("post-show") || combined.contains("postrace") || combined.contains("post race show") || combined.contains("post race") -> "post-show"
+            combined.contains("race in 30") -> "race-in-30"
+            combined.contains("highlights") || combined.contains("best of") -> "highlights"
+            combined.contains("press conference") || combined.contains("post-race press") || combined.contains("post race press") -> "press-conference"
+            combined.contains("conference") -> "conference"
             combined.contains("f1 kids") || combined.contains("f1kids") -> "f1-kids"
             combined.contains("sprint qualifying") || combined.contains("sprint shootout") -> "sprint-qualifying"
             combined.contains("sprint") -> "sprint"
@@ -106,7 +110,7 @@ internal object F1CatalogParser {
             stage == "pre-show" -> "pre-show"
             stage == "post-show" -> "post-show"
             stage == "f1-kids" -> "f1-kids"
-            combined.contains("f1 kids") || combined.contains("f1kids") -> "f1-kids"
+            stage == "highlights" || stage == "race-in-30" || stage == "press-conference" || stage == "conference" -> "editorial"
             combined.contains("full race") || combined.contains("full session") -> "main"
             else -> "main"
         }

@@ -20,7 +20,8 @@ data class PlaybackSession(
     val streamType: String? = null,
     val ascendonToken: String? = null,
     val entitlementToken: String? = null,
-    val drmType: String? = null
+    val drmType: String? = null,
+    val playToken: String? = null
 )
 data class VodSeason(val year: Int, val pageId: Int)
 data class VodEvent(

@@ -64,7 +64,7 @@ class PlayerPool(context: Context) {
         .build()
 
     fun get(id: String): ExoPlayer = players.getOrPut(id) {
-        ExoPlayer.Builder(appContext, DefaultRenderersFactory(appContext).setEnableDecoderFallback(true))
+        ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
             .setLoadControl(ProductionLoadControl.create())
             .build()
             .also { player ->
@@ -135,11 +135,19 @@ class PlayerPool(context: Context) {
             }
             .build()
 
-        val dataSource = DefaultHttpDataSource.Factory()
+        val baseDataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
             .setDefaultRequestProperties(stream.requestHeaders)
-        val drmHeaders = stream.drmRequestHeaders.ifEmpty { stream.requestHeaders }
+        val dataSource = if (url.contains(".m3u8", true)) {
+            F1CmafHlsDrmFixingDataSource.Factory(baseDataSource)
+        } else {
+            baseDataSource
+        }
+        val drmHeaders = buildMap {
+            putAll(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
+            stream.playToken?.takeIf { it.isNotBlank() }?.let { put("Cookie", "playToken=" + it) }
+        }
         val drmDataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
@@ -280,29 +288,29 @@ class PlayerPool(context: Context) {
                 val target = targetResolution(player, 2160, 3840, 2160)
                 builder.setMinVideoSize(target.first, target.second)
                     .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(true)
+                    .setForceHighestSupportedBitrate(false)
             }
             Quality.FHD -> {
                 val target = targetResolution(player, 1080, 1920, 1080)
                 builder.setMinVideoSize(target.first, target.second)
                     .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(true)
+                    .setForceHighestSupportedBitrate(false)
             }
             Quality.HD -> {
                 val target = targetResolution(player, 720, 1280, 720)
                 builder.setMinVideoSize(target.first, target.second)
                     .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(true)
+                    .setForceHighestSupportedBitrate(false)
             }
             Quality.SD -> {
                 val target = targetResolution(player, 480, 854, 480)
                 builder.setMinVideoSize(target.first, target.second)
                     .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(true)
+                    .setForceHighestSupportedBitrate(false)
             }
             Quality.AUTO -> builder
                 .setMinVideoSize(0, 0)
-                .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 1280, if (isMain) Int.MAX_VALUE else 720)
+                 .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 854, if (isMain) Int.MAX_VALUE else 480)
                 .setForceHighestSupportedBitrate(false)
         }
         return builder.build()
@@ -332,26 +340,35 @@ class PlayerPool(context: Context) {
 
     private fun recoverFromSourceFailure(id: String, player: ExoPlayer) {
         val attempts = sourceRecoveryAttempts[id] ?: 0
-        if (attempts >= 2) return
+        if (attempts >= 3) return
         val requested = selectedQualities[id] ?: Quality.AUTO
         val fallback = when (requested) {
             Quality.UHD -> Quality.FHD
             Quality.FHD -> Quality.HD
             Quality.HD -> Quality.SD
             Quality.SD -> Quality.AUTO
-            Quality.AUTO -> return
+            Quality.AUTO -> Quality.AUTO
         }
         sourceRecoveryAttempts[id] = attempts + 1
-        selectedQualities[id] = fallback
+        if (fallback != requested) selectedQualities[id] = fallback
         player.trackSelectionParameters = buildQualityParameters(
             player = player,
             quality = fallback,
             isMain = id == audioPlayerId,
             preserveAudioSetting = true
         )
-        player.prepare()
-        player.playWhenReady = true
-        _errors.value = _errors.value + (id to "Playback source failed; retrying at " + fallback.name)
+        // Retry transient CDN/manifest/network failures before surfacing an error.
+        mainHandler.postDelayed({
+            if (players[id] === player) {
+                player.prepare()
+                player.playWhenReady = true
+            }
+        }, 700L * (attempts + 1))
+        _errors.value = _errors.value + (id to if (fallback == requested) {
+            "Playback interrupted; retrying (" + (attempts + 1) + "/3)"
+        } else {
+            "Playback source failed; retrying at " + fallback.name
+        })
     }
 
     private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
@@ -418,12 +435,18 @@ class PlayerPool(context: Context) {
      * Live feeds use live-edge offset when Media3 exposes it. Small drift is corrected
      * gently; a large drift is corrected once with a cooldown.
      */
-    fun syncToMain(mainId: String) {
+    fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
+
+    /** Synchronize followers while applying curated replay channel offsets. */
+    fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
         syncMainId = mainId
+        activeChannelOffsetsMs = channelOffsetsMs
         mainHandler.removeCallbacks(syncRunnable)
         syncToMainOnce(mainId)
         mainHandler.postDelayed(syncRunnable, 1_000L)
     }
+
+    private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
 
     private fun syncToMainOnce(mainId: String) {
         val main = players[mainId] ?: return
@@ -466,7 +489,7 @@ class PlayerPool(context: Context) {
                 // For VOD/replay, the main player's media position is the authoritative
                 // clock. This is deliberately NOT based on each manifest's windowStartTimeMs:
                 // different feed manifests can expose different epoch/window metadata.
-                main.currentPosition - player.currentPosition
+                main.currentPosition + (activeChannelOffsetsMs[id] ?: 0L) - player.currentPosition
             }
 
             val correction = correctionMs ?: return@forEach
@@ -519,18 +542,39 @@ class PlayerPool(context: Context) {
 
     fun playAll() {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        players.forEach { (id, player) ->
-            desiredPlaying.add(id)
-            player.playWhenReady = true
-            if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
-                player.play()
+        val mainId = audioPlayerId
+        val ordered = players.keys.toList()
+        ordered.forEach { desiredPlaying.add(it) }
+        // Start the reference feed first, then stagger secondary decoders. Starting
+        // multiple DRM/4K pipelines on the same frame can overwhelm TV hardware.
+        ordered.forEachIndexed { index, id ->
+            val player = players[id] ?: return@forEachIndexed
+            val delayMs = when {
+                id == mainId -> 0L
+                index == 0 -> 150L
+                else -> 250L * index
             }
+            mainHandler.postDelayed({
+                if (players[id] === player && desiredPlaying.contains(id)) {
+                    player.playWhenReady = true
+                    if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
+                        player.play()
+                    }
+                }
+            }, delayMs)
         }
     }
 
     fun pauseAll() {
         players.keys.forEach { desiredPlaying.remove(it) }
-        players.values.forEach { it.pause() }
+        players.values.forEach { it.pause(); it.playWhenReady = false }
+    }
+
+    fun stopAll() {
+        players.keys.forEach { desiredPlaying.remove(it) }
+        players.values.forEach { it.stop(); it.playWhenReady = false }
+        mainHandler.removeCallbacks(syncRunnable)
+        syncMainId = null
     }
 
     fun retain(ids: Set<String>) {
@@ -568,7 +612,7 @@ class PlayerPool(context: Context) {
 private object ProductionLoadControl {
     fun create(): androidx.media3.exoplayer.LoadControl =
         androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(3_000, 10_000, 1_000, 2_000)
+            .setBufferDurationsMs(5_000, 20_000, 1_500, 5_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 }
