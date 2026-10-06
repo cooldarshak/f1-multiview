@@ -1486,6 +1486,7 @@ private fun FullscreenMultiview(
             }
     ) {
         CanonicalMultiviewLayout(
+            ui,
             selected,
             pool,
             errors,
@@ -1654,21 +1655,21 @@ private fun CanonicalMultiviewLayout(
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
             selected.size == 1 ->
-                MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    MultiviewFeedTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[1], ui, pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], ui, pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        MultiviewFeedTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], ui, pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                 }
             selected.size == 4 ->
@@ -1744,19 +1745,19 @@ private fun CanonicalMultiviewLayout(
             else ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], ui, pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], ui, pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[3], ui, pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[4], ui, pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[5], ui, pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
                     }
                 }
         }
