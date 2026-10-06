@@ -266,6 +266,46 @@ class PlayerPool(context: Context) {
             .sortedByDescending { it.second }
     }
 
+    private fun applyAutoResourceBudget(id: String, player: ExoPlayer) {
+        if (id == audioPlayerId) return
+
+        val maxHeight = if (players.size >= 4) 360 else 480
+        val maxWidth = if (maxHeight <= 360) 640 else 854
+
+        val candidates = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).map { index -> group to index }
+            }
+            .map { (group, index) -> group to index to group.getTrackFormat(index) }
+            .filter { (_, format) -> format.width > 0 && format.height > 0 }
+            .filter { (_, format) -> format.height <= maxHeight && format.width <= maxWidth }
+            .filter { (group, index) -> group.isTrackSupported(index, true) }
+
+        if (candidates.isEmpty()) return
+
+        val selected = candidates.sortedWith(
+            compareByDescending<Pair<Pair<androidx.media3.common.TrackGroup, Int>, androidx.media3.common.Format>> { (_, format) ->
+                format.sampleMimeType.equals(MimeTypes.VIDEO_H264, true)
+            }.thenByDescending { (_, format) -> format.height }
+                .thenByDescending { (_, format) -> format.width }
+                .thenByDescending { (_, format) -> format.bitrate }
+        ).firstOrNull() ?: return
+
+        val group = selected.first.first
+        val index = selected.first.second
+        val alreadySelected = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .any { g -> (0 until g.length).any { i -> g === group && i == index && g.isTrackSelected(i) } }
+
+        if (!alreadySelected) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setMaxVideoSize(maxWidth, maxHeight)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+                .build()
+        }
+    }
+
     private fun applyQuality(player: ExoPlayer, quality: Quality, isMain: Boolean) {
         player.trackSelectionParameters = buildQualityParameters(
             player = player,
