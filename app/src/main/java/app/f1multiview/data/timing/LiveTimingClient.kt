@@ -36,19 +36,19 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
     fun restart(){ stop(); start() }
     private fun connect(){scope.launch(Dispatchers.IO){try{
-        _status.value="CONNECTING";affinityCookie=fetchAffinityCookie()?:affinityCookie
-        val token=negotiate()?:throw IllegalStateException("Timing negotiation returned no connection token")
+        _status.value="CONNECTING";val authHeaders=runCatching{authHeadersProvider()}.getOrDefault(emptyMap());affinityCookie=fetchAffinityCookie(authHeaders)?:affinityCookie
+        val token=negotiate(authHeaders)?:throw IllegalStateException("Timing negotiation returned no connection token")
         val requestBuilder=Request.Builder().url(WS+java.net.URLEncoder.encode(token,"UTF-8")).apply{affinityCookie?.let{header("Cookie",it)}}.header("User-Agent","F1MultiView/1.0 Android")
         runCatching { authHeadersProvider() }.getOrDefault(emptyMap()).forEach { (key,value) -> requestBuilder.header(key,value) }
         val request=requestBuilder.build()
         socket=http.newWebSocket(request,Listener())
     }catch(_:Throwable){_status.value="RETRYING";scheduleReconnect()}}}
-    private fun fetchAffinityCookie():String?{
-        val req=Request.Builder().url("$BASE/signalrcore/negotiate").method("OPTIONS",null).header("User-Agent","F1MultiView/1.0 Android").build()
+    private fun fetchAffinityCookie(authHeaders:Map<String,String>):String?{
+        val reqBuilder=Request.Builder().url("$BASE/signalrcore/negotiate").method("OPTIONS",null).header("User-Agent","F1MultiView/1.0 Android");authHeaders.forEach{(k,v)->reqBuilder.header(k,v)};val req=reqBuilder.build()
         return runCatching{http.newCall(req).execute().use{r->r.headers.values("Set-Cookie").firstNotNullOfOrNull{c->c.substringBefore(';').takeIf{it.startsWith("AWSALBCORS=",true)}}}}.getOrNull()
     }
-    private fun negotiate():String?{
-        val req=Request.Builder().url(NEGOTIATE).post("".toRequestBody("application/json".toMediaType())).header("User-Agent","F1MultiView/1.0 Android").apply{affinityCookie?.let{header("Cookie",it)}}.build()
+    private fun negotiate(authHeaders:Map<String,String>):String?{
+        val reqBuilder=Request.Builder().url(NEGOTIATE).post("".toRequestBody("application/json".toMediaType())).header("User-Agent","F1MultiView/1.0 Android").apply{affinityCookie?.let{header("Cookie",it)}};authHeaders.forEach{(k,v)->reqBuilder.header(k,v)};val req=reqBuilder.build()
         http.newCall(req).execute().use{r->if(!r.isSuccessful)return null;val json=JSONObject(r.body?.string().orEmpty());return json.optString("connectionToken").ifBlank{json.optString("connectionId")}.takeIf{it.isNotBlank()}}
     }
     private fun scheduleReconnect(){if(reconnect?.isActive==true)return;reconnect=scope.launch{delay(2000);if(isActive)connect()}}
