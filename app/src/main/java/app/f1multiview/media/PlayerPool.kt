@@ -58,6 +58,9 @@ class PlayerPool(context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
     private val startupRequestedAtMs = mutableMapOf<String, Long>()
+    private val startupFirstFrameAtMs = mutableMapOf<String, Long>()
+    private val startupPlayingAtMs = mutableMapOf<String, Long>()
+    private val firstFrameRendered = mutableSetOf<String>()
     private val syncPausedByReference = mutableSetOf<String>()
     private val syncEngine = SyncEngine()
     private var syncMainId: String? = null
@@ -134,19 +137,35 @@ class PlayerPool(context: Context) {
                                 Log.i("PlayerPool", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
                             }
                             if (playAllRequested) desiredPlaying.add(id)
-                            val referenceId = syncMainId
-                            if (referenceId != null && id != referenceId && id in desiredPlaying) {
-                                // Hold a newly-ready follower for one synchronization pass so
-                                // it does not visibly start behind the reference and then require
-                                // a manual SYNC ALL to catch up.
-                                desiredPlaying.remove(id)
-                                syncToMainOnce(referenceId)
-                                desiredPlaying.add(id)
-                                player.playWhenReady = true
-                                player.play()
-                            } else if (id in desiredPlaying && !player.isPlaying) {
-                                player.play()
+                            if (id in desiredPlaying) {
+                                // READY means Media3 can play immediately, but it does not mean
+                                // the first video frame has reached the surface yet.
+                                scheduleStartupPlayback(id)
                             }
+                        }
+
+                        override fun onRenderedFirstFrame() {
+                            val firstFrameAt = android.os.SystemClock.elapsedRealtime()
+                            firstFrameRendered.add(id)
+                            startupFirstFrameAtMs[id] = firstFrameAt
+                            startupRequestedAtMs[id]?.let { requestedAt ->
+                                Log.i("PlayerPool", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
+                            }
+                            val referenceId = syncMainId
+                            if (referenceId != null && referenceId != id && firstFrameRendered.contains(referenceId)) {
+                                syncToMainOnce(referenceId)
+                            }
+                        }
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (isPlaying && id !in startupPlayingAtMs) {
+                                val playingAt = android.os.SystemClock.elapsedRealtime()
+                                startupPlayingAtMs[id] = playingAt
+                                startupRequestedAtMs[id]?.let { requestedAt ->
+                                    Log.i("PlayerPool", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
+                                }
+                            }
+                        }
                         }
                     }
                 })
@@ -251,7 +270,10 @@ class PlayerPool(context: Context) {
         )
 
         startupRequestedAtMs[stream.id] = android.os.SystemClock.elapsedRealtime()
-        Log.i("PlayerPool", "STARTUP_LOAD id=${stream.id} players=${players.size} main=${stream.id == audioPlayerId}")
+        startupFirstFrameAtMs.remove(stream.id)
+        startupPlayingAtMs.remove(stream.id)
+        firstFrameRendered.remove(stream.id)
+        Log.i("PlayerPool", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
@@ -676,6 +698,7 @@ class PlayerPool(context: Context) {
 
     private fun syncToMainOnce(mainId: String) {
         val main = players[mainId] ?: return
+        if (!firstFrameRendered.contains(mainId)) return
         if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
 
         val now = android.os.SystemClock.elapsedRealtime()
@@ -690,6 +713,7 @@ class PlayerPool(context: Context) {
 
         players.forEach { (id, player) ->
             if (id == mainId) return@forEach
+            if (!firstFrameRendered.contains(id)) return@forEach
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
             if (mainBuffering) {
@@ -785,6 +809,37 @@ class PlayerPool(context: Context) {
         get(id).pause()
     }
 
+    /**
+     * Controlled multiview startup ramp.
+     *
+     * Keep the main feed immediate and give followers a small bounded playback ramp.
+     * This replaces the removed 500 ms/feed preparation delay without starting all
+     * DRM-protected decoders at exactly the same instant.
+     */
+    private fun scheduleStartupPlayback(id: String) {
+        if (!playAllRequested || id !in desiredPlaying) return
+        val player = players[id] ?: return
+        val ordered = players.keys.toList()
+        val index = ordered.indexOf(id)
+        if (index < 0) return
+
+        val delayMs = when {
+            id == audioPlayerId -> 0L
+            index == 1 -> 120L
+            index == 2 -> 240L
+            else -> 360L
+        }
+
+        mainHandler.postDelayed({
+            if (players[id] !== player || !playAllRequested || id !in desiredPlaying) return@postDelayed
+            if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
+                player.playWhenReady = true
+                player.play()
+                Log.i("PlayerPool", "STARTUP_PLAY id=" + id + " delayMs=" + delayMs + " index=" + index + " players=" + players.size)
+            }
+        }, delayMs)
+    }
+
     fun playAll() {
         // Persist the intent so feeds that are still being prepared will also start
         // automatically when they reach READY.
@@ -792,17 +847,10 @@ class PlayerPool(context: Context) {
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
         val ordered = players.keys.toList()
         ordered.forEach { desiredPlaying.add(it) }
-        // Do not add artificial playback delays. The four-feed ceiling protects
-        // decoder pressure, while each prepared player can start as soon as it is READY.
-        // Late-ready followers are synchronized before their first visible playback.
+        // Use a small bounded playback ramp. Media3 preparation remains independent;
+        // only the moment playback is requested is staggered.
         ordered.forEach { id ->
-            val player = players[id] ?: return@forEach
-            if (desiredPlaying.contains(id)) {
-                player.playWhenReady = true
-                if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
-                    player.play()
-                }
-            }
+            scheduleStartupPlayback(id)
         }
     }
 
@@ -839,6 +887,9 @@ class PlayerPool(context: Context) {
         decoderRecoveryAttempts.remove(id)
         l3SecondaryFallback.remove(id)
         startupRequestedAtMs.remove(id)
+        startupFirstFrameAtMs.remove(id)
+        startupPlayingAtMs.remove(id)
+        firstFrameRendered.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -856,13 +907,17 @@ class PlayerPool(context: Context) {
         decoderRecoveryAttempts.clear()
         l3SecondaryFallback.clear()
         startupRequestedAtMs.clear()
+        startupFirstFrameAtMs.clear()
+        startupPlayingAtMs.clear()
+        firstFrameRendered.clear()
     }
 
     /** Lightweight runtime diagnostics used to measure startup impact on-device. */
     fun playbackStartupDiagnostics(): Map<String, String> =
-        players.mapValues { (_, player) ->
+        players.mapValues { (id, player) ->
             "state=" + player.playbackState +
                 ",isPlaying=" + player.isPlaying +
+                ",firstFrame=" + firstFrameRendered.contains(id) +
                 ",positionMs=" + player.currentPosition +
                 ",bufferedMs=" + player.bufferedPosition
         }
