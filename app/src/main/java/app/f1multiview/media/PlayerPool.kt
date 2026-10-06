@@ -60,6 +60,9 @@ class PlayerPool(context: Context) {
     private val syncPausedByReference = mutableSetOf<String>()
     private val syncEngine = SyncEngine()
     private var syncMainId: String? = null
+    // Remembers the multiview "play all" intent even while later feeds are still loading.
+    // This prevents a feed that is created after playAll() from remaining paused forever.
+    private var playAllRequested = false
     private val syncRunnable = object : Runnable {
         override fun run() {
             val mainId = syncMainId
@@ -125,7 +128,13 @@ class PlayerPool(context: Context) {
                             sourceRecoveryAttempts.remove(id)
                             decoderRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
+                            if (playAllRequested) desiredPlaying.add(id)
                             if (id in desiredPlaying && !player.isPlaying) player.play()
+                            // A newly-ready follower must join the already-running sync loop
+                            // immediately. Do not require the user to press SYNC ALL again.
+                            syncMainId?.let { mainId ->
+                                if (id != mainId) syncToMainOnce(mainId)
+                            }
                         }
                     }
                 })
@@ -143,6 +152,7 @@ class PlayerPool(context: Context) {
         }
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
+        if (playAllRequested) desiredPlaying.add(stream.id)
         val player = get(stream.id)
 
         if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
@@ -762,6 +772,9 @@ class PlayerPool(context: Context) {
     }
 
     fun playAll() {
+        // Persist the intent so feeds that are still being prepared will also start
+        // automatically when they reach READY.
+        playAllRequested = true
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
         val mainId = audioPlayerId
         val ordered = players.keys.toList()
@@ -787,11 +800,13 @@ class PlayerPool(context: Context) {
     }
 
     fun pauseAll() {
+        playAllRequested = false
         players.keys.forEach { desiredPlaying.remove(it) }
         players.values.forEach { it.pause(); it.playWhenReady = false }
     }
 
     fun stopAll() {
+        playAllRequested = false
         players.keys.forEach { desiredPlaying.remove(it) }
         players.values.forEach { it.stop(); it.playWhenReady = false }
         mainHandler.removeCallbacks(syncRunnable)
