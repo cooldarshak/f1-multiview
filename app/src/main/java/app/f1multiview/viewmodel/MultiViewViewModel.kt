@@ -251,7 +251,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         val layout=if(name=="side") LayoutPreset.SPLIT_2 else if(name=="quad") LayoutPreset.GRID_4 else LayoutPreset.SINGLE
         _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=picked.take(if(layout==LayoutPreset.SPLIT_2)2 else if(layout==LayoutPreset.GRID_4)4 else 1),mainStreamId=picked.firstOrNull())
         persist()
-        picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null}.forEach{viewModelScope.launch{resolveSource(it)}}
+        picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null && it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK}.forEach{viewModelScope.launch{resolveSource(it)}}
     }
     fun setLayout(layout:LayoutPreset){
     val maxFeeds=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
