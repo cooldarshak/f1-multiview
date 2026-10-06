@@ -38,7 +38,8 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.ui.compose.ContentFrame
-import androidx.media3.ui.compose.PlayerSurface
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.ui.PlayerView
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.compose.ui.layout.ContentScale
@@ -60,6 +61,7 @@ import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.media.PlayerPool
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
+import app.f1multiview.media.HdrSurfaceHints
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
 import android.app.Activity
@@ -1168,6 +1170,35 @@ private fun ResizeHandle(
 
 @OptIn(UnstableApi::class)
 @Composable
+private fun F1HdrPlayerSurface(
+    player: androidx.media3.exoplayer.ExoPlayer,
+    modifier: Modifier,
+    source: String
+) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            PlayerView(context).apply {
+                useController = false
+                setKeepContentOnPlayerReset(true)
+                player = player
+                HdrSurfaceHints.apply(videoSurfaceView as? android.view.SurfaceView, source)
+            }
+        },
+        update = { view ->
+            view.player = player
+            val surface = view.videoSurfaceView as? android.view.SurfaceView
+            HdrSurfaceHints.apply(surface, source)
+            val transfer = player.videoFormat?.colorInfo?.colorTransfer
+            if (transfer == C.COLOR_TRANSFER_HLG) {
+                HdrSurfaceHints.applyHlg(surface, source)
+            }
+        }
+    )
+}
+
+@OptIn(UnstableApi::class)
+@Composable
 private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
     val player = remember(stream.id) { pool.get(stream.id) }
     val context = LocalContext.current
@@ -1192,7 +1223,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
     } else modifier
     Card(tileModifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            ContentFrame(player = player, modifier = Modifier.fillMaxSize(), surfaceType = surfaceType, contentScale = ContentScale.Fit, keepContentOnReset = true)
+            F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
@@ -1811,7 +1842,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
-        PlayerSurface(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_SURFACE_VIEW)
+        F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "fullscreen-" + stream.id)
 
         if (!controlsVisible) {
             Surface(
