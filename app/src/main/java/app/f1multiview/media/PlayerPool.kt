@@ -37,6 +37,7 @@ data class VideoDiagnostics(
 )
 
 class PlayerPool(context: Context) {
+    // Phase 2 resource guard: secondary feeds are deliberately constrained before decoder pressure rises.
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
     private val selectedQualities = mutableMapOf<String, Quality>()
