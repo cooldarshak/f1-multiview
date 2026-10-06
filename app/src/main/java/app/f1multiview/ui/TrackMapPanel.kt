@@ -314,8 +314,27 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
             Text("${drivers.size} CARS", color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
         }
         if (drivers.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("WAITING FOR TRACK DATA", color = MapMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            val timingRows = ui.timing.sortedBy { it.position }.take(10)
+            if (timingRows.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("WAITING FOR TRACK DATA", color = MapMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text("F1 did not provide GPS positions for this session yet", color = MapMuted, fontSize = 6.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxSize().padding(5.dp)) {
+                    Text("TRACK POSITION UNAVAILABLE · LIVE TIMING ACTIVE", color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(4.dp))
+                    timingRows.forEach { row ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(row.position.toString().padStart(2, '0'), color = MapWhite, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(18.dp))
+                            Text(row.driver, color = MapWhite, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(34.dp))
+                            Text(row.gap, color = MapMuted, fontSize = 6.sp, modifier = Modifier.weight(1f))
+                            Text(row.lastLap, color = MapWhite, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         } else {
             Surface(
