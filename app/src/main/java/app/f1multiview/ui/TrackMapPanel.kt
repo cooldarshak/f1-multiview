@@ -23,9 +23,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
@@ -40,11 +40,11 @@ import kotlin.math.min
 import kotlin.math.sin
 
 private val MapBg=Color(0xFF07080B)
-private val MapTrack=Color(0xFF454953)
-private val MapTrackEdge=Color(0xFF17191E)
-private val MapWhite=Color(0xFFF5F5F7)
+private val MapTrack=Color(0xFFFF454953)
+private val MapTrackEdge=Color(0xFFFF17191E)
+private val MapWhite=Color(0xFFFFF5F5F7)
 private val MapMuted=Color(0xFF9698A2)
-private val MapRed=Color(0xFFE10600)
+private val MapRed=Color(0xFFFFE10600)
 
 @Composable
 fun TrackMapPanel(ui:UiState,isTv:Boolean){
@@ -77,7 +77,7 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
     ){
         RaceHeader(ui,drivers.size)
         Spacer(Modifier.height(6.dp))
-        Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
             Surface(Modifier.weight(1.65f).fillMaxHeight().focusRequester(mapFocusRequester).focusable(),color=MapBg,shape=RoundedCornerShape(5.dp),border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))){
                 TrackCanvas(geometry=ui.trackGeometry,drivers=drivers,selectedNumber=selected,zoom=zoom,focusSelected=focusSelected,panX=panX,panY=panY,modifier=Modifier.fillMaxSize().padding(5.dp))
             }
@@ -92,22 +92,21 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
             TrackControl("−"){zoom=max(1f,zoom-.25f)}
             TrackControl("+"){zoom=min(4f,zoom+.25f)}
             TrackControl(if(focusSelected)"UNFOCUS" else "FOCUS"){focusSelected=!focusSelected}
-            TrackControl("◀"){panX-=.12f}
-            TrackControl("▶"){panX+=.12f}
-            TrackControl("▲"){panY-=.12f}
-            TrackControl("▼"){panY+=.12f}
+            TrackControl("←"){panX-=.12f}
+            TrackControl("→"){panX+=.12f}
+            TrackControl("↑"){panY-=.12f}
+            TrackControl("↓"){panY+=.12f}
             Spacer(Modifier.weight(1f))
-            Text("D-PAD  DRIVER  •  ▲▼ ZOOM  •  OK FOCUS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=5.dp,vertical=8.dp))
+            Text("D-PAD  DRIVER  ← →  ZOOM ↑ ↓  OK =  OK FOCUS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=5.dp,vertical=8.dp))
         }
     }
 }
 
-@Composable
-private fun RaceHeader(ui:UiState,carCount:Int){
+@Composable private fun RaceHeader(ui:UiState,carCount:Int){
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
         Column(Modifier.weight(1f)){
-            Text(ui.liveSessionInfo.meeting.ifBlank{"FORMULA 1"}.uppercase()+"  ·  "+ui.liveSessionInfo.sessionType.uppercase(),color=MapWhite,fontSize=13.sp,fontWeight=FontWeight.Black)
-            Text(ui.liveSessionInfo.name+"  ·  LAP DATA / LIVE GPS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold)
+            Text(ui.liveSessionInfo.meeting.ifBlank{"FORMULA 1"}.uppercase()+" • "+ui.liveSessionInfo.sessionType.uppercase(),color=MapWhite,fontSize=13.sp,fontWeight=FontWeight.Black)
+            Text(ui.liveSessionInfo.name+"  • LAP DATA / LIVE GPS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold)
         }
         RaceStat("CARS",carCount.toString());RaceStat("STATUS",ui.trackStatus.label);RaceStat("GPS",if(carCount>0)"LIVE" else "WAIT")
     }
@@ -132,7 +131,7 @@ private fun RaceHeader(ui:UiState,carCount:Int){
     var focused by remember{mutableStateOf(false)}
     Surface(onClick=onClick,color=when{selected->MapRed.copy(alpha=.9f);focused->Color.White.copy(alpha=.10f);else->Color.White.copy(alpha=.025f)},shape=RoundedCornerShape(2.dp),modifier=Modifier.fillMaxWidth().focusable().onFocusChanged{focused=it.isFocused}){
         Row(Modifier.fillMaxWidth().padding(horizontal=6.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically){
-            Text(if(d.position>0)d.position.toString() else "—",color=if(selected)MapWhite else MapMuted,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(22.dp))
+            Text(if(d.position>0)d.position.toString() else "•",color=if(selected)MapWhite else MapMuted,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(22.dp))
             Text(d.acronym.uppercase(),color=MapWhite,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(36.dp))
             Box(Modifier.width(4.dp).height(13.dp).background(teamColor(d.teamColor),RoundedCornerShape(1.dp)))
             Spacer(Modifier.width(5.dp))
@@ -161,9 +160,7 @@ private fun RaceHeader(ui:UiState,carCount:Int){
         }
     }
 }
-private fun raceSeverityColor(value:String)=when(value.lowercase()){
-    "red","critical"->Color(0xFFE10600);"yellow","warning"->Color(0xFFD9A400);"green"->Color(0xFF35B968);else->MapMuted
-}
+private fun raceSeverityColor(value:String)=when(value.lowercase()){"red","critical"->Color(0xFFFFE10600);"yellow","warning"->Color(0xFFFFD9A400);"green","info"->Color(0xFF35B968);else->MapMuted}
 
 @Composable private fun TrackCanvas(
     geometry:TrackMapGeometry?,
@@ -182,8 +179,8 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
         if(points.isEmpty()) return@Canvas
 
         val selected=drivers.firstOrNull{it.number==selectedNumber}
-        val cx0=if(focusSelected && selected!=null)selected.x else points.map{it.x}.average()
-        val cy0=if(focusSelected && selected!=null)selected.y else points.map{it.y}.average()
+        val cx0=if(focusSelected && selected!=null) selected.x else points.map{it.x}.average()
+        val cy0=if(focusSelected && selected!=null) selected.y else points.map{it.y}.average()
         val rot=-(geometry?.rotation ?: 0.0)*Math.PI/180.0
         fun transform(p:TrackPoint):TrackPoint{
             val dx=p.x-cx0
@@ -197,7 +194,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
         val minY=transformed.minOf{it.y};val maxY=transformed.maxOf{it.y}
         val span=max(maxX-minX,maxY-minY).coerceAtLeast(1.0)
         val scale=min(size.width,size.height)*.78f/span.toFloat()*zoom
-        val center=Offset(size.width/2f + panX*size.width,size.height/2f + panY*size.height)
+        val center=Offset(size.width/2f+panX*size.width,size.height/2f+panY*size.height)
         fun screen(p:TrackPoint):Offset{
             val t=transform(p)
             return Offset(center.x+t.x.toFloat()*scale,center.y-t.y.toFloat()*scale)
@@ -222,7 +219,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
                         textAlign=Paint.Align.CENTER
                         typeface=android.graphics.Typeface.DEFAULT_BOLD
                     }
-                    drawContext.canvas.nativeCanvas.drawText(c.number.toString()+c.letter,p.x,p.y-10f,paint)
+                    canvas.nativeCanvas.drawText(c.number.toString(),p.x,p.y-10f,paint)
                 }
             }
         }
@@ -232,21 +229,19 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             val color=teamColor(d.teamColor)
             d.trail.takeLast(6).forEachIndexed{index,t->
                 val alpha=(index+1)/10f
-                drawCircle(color.copy(alpha=alpha),radius=2.5f,center=screen(t))
+                drawCircle(color.copy(alpha=alpha),radius=2.5f,center=screen(TrackPoint(t.x,t.y)))
             }
-            if(d.number==selectedNumber){
-                drawCircle(MapWhite,radius=13f,center=p,style=Stroke(width=3f))
-            }
+            if(d.number==selectedNumber) drawCircle(MapWhite,radius=13f,center=p,style=Stroke(width=3f))
             drawCircle(color,radius=8f,center=p)
             drawIntoCanvas{canvas->
                 val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                    this.color=android.graphics.Color.WHITE
+                    color=android.graphics.Color.WHITE
                     textSize=16f
                     textAlign=Paint.Align.CENTER
                     typeface=android.graphics.Typeface.DEFAULT_BOLD
                     setShadowLayer(4f,0f,0f,android.graphics.Color.BLACK)
                 }
-                drawContext.canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-12f,paint)
+                canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-12f,paint)
             }
         }
     }
@@ -254,20 +249,13 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
 
 @Composable private fun TrackDriverButton(d:TrackDriverPosition,selected:Boolean,onClick:()->Unit){
     var focused by remember{mutableStateOf(false)}
-    Surface(onClick=onClick,modifier=Modifier.focusable().onFocusChanged{focused=it.isFocused},
-        shape=RoundedCornerShape(8.dp),color=if(selected)MapRed else Color.White.copy(alpha=.08f),
-        border=if(focused)BorderStroke(2.dp,MapWhite) else null){
-        Column(Modifier.padding(horizontal=9.dp,vertical=6.dp)){
-            Text(d.acronym,color=MapWhite,fontSize=9.sp,fontWeight=FontWeight.Black)
-            Text(if(d.position>0)"P"+d.position else "—",color=MapMuted,fontSize=7.sp)
-        }
+    Surface(onClick=onClick,modifier=Modifier.focusable().onFocusChanged{focused=it.isFocused},shape=RoundedCornerShape(8.dp),color=if(selected)MapRed else Color.White.copy(alpha=.08f),border=if(focused)BorderStroke(2.dp,MapWhite)else null){
+        Column(Modifier.padding(horizontal=9.dp,vertical=6.dp)){Text(d.acronym,color=MapWhite,fontSize=9.sp,fontWeight=FontWeight.Black);Text(if(d.position>0)"P"+d.position else "—",color=MapMuted,fontSize=7.sp)}
     }
 }
 @Composable private fun TrackControl(label:String,onClick:()->Unit){
     var focused by remember{mutableStateOf(false)}
-    Surface(onClick=onClick,modifier=Modifier.focusable().onFocusChanged{focused=it.isFocused},
-        shape=RoundedCornerShape(8.dp),color=Color.White.copy(alpha=.08f),
-        border=if(focused)BorderStroke(2.dp,MapWhite) else null){
+    Surface(onClick=onClick,modifier=Modifier.focusable().onFocusChanged{focused=it.isFocused},shape=RoundedCornerShape(8.dp),color=Color.White.copy(alpha=.08f),border=if(focused)BorderStroke(2.dp,MapWhite)else null){
         Text(label,color=MapWhite,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=8.dp))
     }
 }
@@ -284,7 +272,5 @@ private fun nextDriver(drivers:List<TrackDriverPosition>,selected:String?):Strin
     val i=drivers.indexOfFirst{it.number==selected}
     return drivers[if(i<0||i==drivers.lastIndex)0 else i+1].number
 }
-private fun trackStatusColor(code:Int)=when(code){2->Color(0xFFD9A400);4,6,7->Color(0xFFFF8C00);5->Color(0xFFE10600);else->Color(0xFF2E9D57)}
-private fun teamColor(hex:String):Color=runCatching{
-    Color(android.graphics.Color.parseColor("#"+hex.removePrefix("#").padStart(6,'F')))
-}.getOrDefault(Color.White)
+private fun trackStatusColor(code:Int)=when(code){2->Color(0xFFFFD9A400);4,6,7->Color(0xFFFFF8C000);5->Color(0xFFFFE10600);else->Color(0xFFF2E9D57)}
+private fun teamColor(hex:String):Color=runCatching{Color(android.graphics.Color.parseColor("#"+hex.removePrefix("#").padStart(6,'F')))}.getOrDefault(Color.White)
