@@ -20,6 +20,8 @@ workflows:
         script: |
           chmod +x ./gradlew
           UPDATED_VERSION_CODE=$((1000 + PROJECT_BUILD_NUMBER))
-          ./gradlew assembleDebug             -PversionCode="$UPDATED_VERSION_CODE"             -PversionName="1.1.$UPDATED_VERSION_CODE"
+          ./gradlew testDebugUnitTest assembleDebug \
+            -PversionCode="$UPDATED_VERSION_CODE" \
+            -PversionName="1.1.$UPDATED_VERSION_CODE"
     artifacts:
       - app/build/outputs/apk/debug/*.apk
