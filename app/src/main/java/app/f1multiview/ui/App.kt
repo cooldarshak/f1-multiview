@@ -1209,7 +1209,7 @@ private fun F1HdrPlayerSurface(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
+private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
     val player = remember(stream.id) { pool.get(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1231,7 +1231,15 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
         modifier.clickable { onFocus(stream.id) }.focusable().onFocusChanged { tileFocused = it.isFocused }
             .then(if (tileFocused) Modifier.border(2.dp, White, RoundedCornerShape(10.dp)) else Modifier)
     } else modifier
-    Card(tileModifier.border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.Black)) {
+    Card(
+        tileModifier.border(
+            if (active) 3.dp else 1.dp,
+            if (active) Red else Color.White.copy(alpha = .09f),
+            RoundedCornerShape(14.dp)
+        ),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black)
+    ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
             if (stream.url == null && error == null) {
@@ -1390,7 +1398,16 @@ private fun FullscreenMultiview(
                 }
             }
     ) {
-        CanonicalMultiviewLayout(selected, pool, errors, editSize, { activeFeedId = it; menu = null }, Modifier.fillMaxSize(), SURFACE_TYPE_SURFACE_VIEW)
+        CanonicalMultiviewLayout(
+            selected,
+            pool,
+            errors,
+            editSize,
+            { activeFeedId = it; menu = null },
+            activeId = activeFeedId,
+            modifier = Modifier.fillMaxSize(),
+            surfaceType = SURFACE_TYPE_SURFACE_VIEW
+        )
 
         if (!controlsVisible) {
             // SurfaceView/TextureView can consume touch events underneath Compose.
@@ -1443,7 +1460,7 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.width(5.dp))
                     Control(false, "QUAD") { onPreset("quad") }
                     Spacer(Modifier.width(5.dp))
-                    listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4", LayoutPreset.GRID_6 to "6").forEach { (preset, label) ->
+                    listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4").forEach { (preset, label) ->
                         Control(layout == preset, "LAYOUT " + label) { layout = preset; onLayout(preset) }
                         Spacer(Modifier.width(5.dp))
                     }
@@ -1518,6 +1535,7 @@ private fun CanonicalMultiviewLayout(
     errors: Map<String, String>,
     editSize: Boolean,
     onFocus: (String) -> Unit,
+    activeId: String? = null,
     modifier: Modifier = Modifier,
     surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW
 ) {
@@ -1548,21 +1566,21 @@ private fun CanonicalMultiviewLayout(
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
             selected.size == 1 ->
-                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, surfaceType)
+                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, surfaceType)
+                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, surfaceType)
+                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, surfaceType)
+                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                 }
             selected.size == 4 ->
@@ -1630,19 +1648,19 @@ private fun CanonicalMultiviewLayout(
             else ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, surfaceType)
+                        PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
                     }
                 }
         }
