@@ -39,6 +39,10 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         api.isAuthenticated()
     }
 
+    override suspend fun liveTimingHeaders(): Map<String, String> = buildMap {
+        api.authHeaders()["ascendontoken"]?.let { put("Authorization", "Bearer " + it) }
+    }
+
     override suspend fun signOut() {
         api.clear()
         store.clear()
