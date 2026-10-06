@@ -310,6 +310,134 @@ private fun Hero(ui: UiState, isTv: Boolean, isPortrait: Boolean) {
     }
 }
 
+
+@Composable
+private fun ContinueWatchingSection(
+    entries: List<ContinueWatchingEntry>,
+    isTv: Boolean,
+    compactPhone: Boolean,
+    onResume: (ContinueWatchingEntry) -> Unit,
+    onRemove: (String) -> Unit
+) {
+    val side = if (compactPhone) 12.dp else if (isTv) 28.dp else 18.dp
+    Column(Modifier.fillMaxWidth().padding(top = if (compactPhone) 8.dp else 14.dp)) {
+        SectionHeader("CONTINUE WATCHING", entries.size.toString() + " RESUMABLE", side)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = side, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compactPhone) 10.dp else 14.dp),
+            modifier = Modifier.focusGroup()
+        ) {
+            items(entries, key = { it.contentId }) { entry ->
+                ContinueWatchingCard(
+                    entry = entry,
+                    compactPhone = compactPhone,
+                    isTv = isTv,
+                    onResume = { onResume(entry) },
+                    onRemove = { onRemove(entry.contentId) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueWatchingCard(
+    entry: ContinueWatchingEntry,
+    compactPhone: Boolean,
+    isTv: Boolean,
+    onResume: () -> Unit,
+    onRemove: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val width = if (compactPhone) 245.dp else if (isTv) 310.dp else 275.dp
+    val imageHeight = if (compactPhone) 138.dp else if (isTv) 174.dp else 155.dp
+    val progress = if (entry.durationMs > 0L) {
+        (entry.positionMs.toFloat() / entry.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    Surface(
+        Modifier
+            .width(width)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onResume)
+            .focusable()
+            .onFocusChanged { focused = it.isFocused },
+        shape = RoundedCornerShape(12.dp),
+        color = Surface2,
+        border = BorderStroke(2.dp, if (focused) Red else Color.White.copy(alpha = .07f))
+    ) {
+        Column {
+            Box(Modifier.fillMaxWidth().height(imageHeight)) {
+                F1Artwork(
+                    entry.artworkUrl ?: entry.backgroundArtworkUrl,
+                    entry.title,
+                    Modifier.fillMaxSize(),
+                    ContentScale.Crop,
+                    "continue-" + entry.contentId
+                )
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = .05f), Color.Black.copy(alpha = .82f))
+                        )
+                    )
+                )
+                Surface(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp)
+                        .clickable(onClick = onRemove).focusable(),
+                    color = Color.Black.copy(alpha = .72f),
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
+                ) {
+                    Text("×", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                }
+                Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(10.dp)) {
+                    Text(
+                        "RESUME  " + formatResumeTime(entry.positionMs),
+                        color = White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = Red,
+                        trackColor = Color.White.copy(alpha = .22f)
+                    )
+                }
+            }
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text(
+                    entry.title,
+                    color = White,
+                    fontSize = if (compactPhone) 13.sp else 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    listOfNotNull(entry.series.takeIf { it.isNotBlank() }, entry.stage.takeIf { it.isNotBlank() })
+                        .joinToString(" · ")
+                        .uppercase(),
+                    color = Muted,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun formatResumeTime(ms: Long): String {
+    val total = (ms / 1000L).coerceAtLeast(0L)
+    val h = total / 3600L
+    val m = (total % 3600L) / 60L
+    return if (h > 0) "%d:%02d".format(h, m) else "%02d:%02d".format(m, total % 60L)
+}
+
 @Composable
 private fun Archive(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean) {
     val side = if (compactPhone) 12.dp else if (isTv) 28.dp else 18.dp
