@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -16,6 +18,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -110,7 +113,7 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
         }
         if(drivers.isNotEmpty()){
             Spacer(Modifier.height(8.dp))
-            androidx.compose.foundation.lazy.LazyRow(
+            LazyRow(
                 Modifier.fillMaxWidth().focusGroup(),
                 horizontalArrangement=Arrangement.spacedBy(6.dp)
             ){
