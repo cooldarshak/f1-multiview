@@ -62,6 +62,8 @@ import app.f1multiview.media.PlayerPool
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.HdrSurfaceHints
+import app.f1multiview.media.DebugPresentationSettings
+import app.f1multiview.BuildConfig
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
 import android.app.Activity
@@ -1338,6 +1340,7 @@ private fun FullscreenMultiview(
     val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
     var fullscreenBackFocused by remember { mutableStateOf(false) }
     var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
+    var screenshotMode by remember { mutableStateOf(DebugPresentationSettings.isScreenshotModeEnabled(context)) }
 
     // Fullscreen is an explicit playback action; the inline Pit Wall remains paused until opened.
 
@@ -1489,6 +1492,22 @@ private fun FullscreenMultiview(
                         pool.playAll()
                         val mainId = ui.mainStreamId ?: active?.id
                         if (mainId != null) pool.syncToMain(mainId)
+                    }
+                    if (BuildConfig.DEBUG) {
+                        Spacer(Modifier.width(5.dp))
+                        Control(screenshotMode, if (screenshotMode) "SCREENSHOT ON" else "SCREENSHOT OFF") {
+                            val enabled = !screenshotMode
+                            DebugPresentationSettings.setScreenshotMode(context, enabled)
+                            screenshotMode = enabled
+                            // Recreate the players so the new EGL presentation policy is applied
+                            // immediately. DRM/authentication remain unchanged.
+                            selected.forEach { stream ->
+                                pool.clear(stream.id)
+                                pool.load(stream)
+                            }
+                            pool.playAll()
+                            ui.mainStreamId?.let { pool.syncToMain(it) }
+                        }
                     }
                     Spacer(Modifier.width(5.dp))
                     Control(false, "HIDE") { controlsVisible = false }
