@@ -58,13 +58,14 @@ class PlayerPool(context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
     private val syncPausedByReference = mutableSetOf<String>()
+    private val syncEngine = SyncEngine()
     private var syncMainId: String? = null
     private val syncRunnable = object : Runnable {
         override fun run() {
             val mainId = syncMainId
             if (mainId != null && players.containsKey(mainId)) {
                 syncToMainOnce(mainId)
-                mainHandler.postDelayed(this, 1_000L)
+                mainHandler.postDelayed(this, 500L)
             }
         }
     }
@@ -644,7 +645,7 @@ class PlayerPool(context: Context) {
         activeChannelOffsetsMs = channelOffsetsMs
         mainHandler.removeCallbacks(syncRunnable)
         syncToMainOnce(mainId)
-        mainHandler.postDelayed(syncRunnable, 1_000L)
+        mainHandler.postDelayed(syncRunnable, 500L)
     }
 
     private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
@@ -656,8 +657,10 @@ class PlayerPool(context: Context) {
         val now = android.os.SystemClock.elapsedRealtime()
         val live = main.isCurrentWindowLive
 
-        // The main feed is the reference. If it is buffering while the user still
-        // expects it to play, hold followers instead of repeatedly seeking them.
+        // The reference feed is authoritative. Media3 reports STATE_BUFFERING when the player
+        // cannot immediately continue from the current position, so followers are held rather
+        // than repeatedly seeking/rate-correcting into an unstable reference. This mirrors the
+        // buffering-protection strategy used by F1OpenViewer.
         val mainBuffering = desiredPlaying.contains(mainId) &&
             main.playbackState == Player.STATE_BUFFERING
 
@@ -674,6 +677,7 @@ class PlayerPool(context: Context) {
                 return@forEach
             }
 
+            // Resume only feeds that this sync engine paused. A user-paused feed remains paused.
             if (syncPausedByReference.remove(id) && desiredPlaying.contains(id) && !player.isPlaying) {
                 player.play()
             }
@@ -687,33 +691,49 @@ class PlayerPool(context: Context) {
                 val followerOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
                 if (mainOffset != null && followerOffset != null) followerOffset - mainOffset else null
             } else {
-                // For VOD/replay, the main player's media position is the authoritative
-                // clock. This is deliberately NOT based on each manifest's windowStartTimeMs:
-                // different feed manifests can expose different epoch/window metadata.
                 main.currentPosition + (activeChannelOffsetsMs[id] ?: 0L) - player.currentPosition
             }
 
             val correction = correctionMs ?: return@forEach
-            val absCorrection = kotlin.math.abs(correction)
 
-            if (absCorrection >= 1_500L &&
-                now - (lastLiveSeekMs[id] ?: 0L) >= 5_000L
-            ) {
-                player.setPlaybackSpeed(1f)
-                val target = if (live) {
-                    (player.currentPosition + correction).coerceAtLeast(0L)
-                } else {
-                    main.currentPosition.coerceAtLeast(0L)
+            // VOD uses the tighter 500 ms seek threshold. Live keeps the less disruptive
+            // 1500 ms threshold; ordinary live drift is corrected by playback-rate nudging.
+            val seekThreshold = if (live) 1_500L else syncEngine.hardSeekThresholdMs
+            val decision = syncEngine.decide(
+                deltaMs = correction,
+                canSeek = true,
+                referenceBuffering = false,
+                seekThresholdMs = seekThreshold
+            )
+
+            when (decision.action) {
+                SyncAction.HOLD -> {
+                    player.setPlaybackSpeed(1f)
                 }
-                val duration = player.duration
-                player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                lastLiveSeekMs[id] = now
-            } else if (absCorrection >= 250L) {
-                // Correct only followers. The reference feed is never rate-adjusted.
-                val rate = if (correction > 0L) 1.05f else 0.95f
-                player.setPlaybackSpeed(rate)
-            } else {
-                player.setPlaybackSpeed(1f)
+
+                SyncAction.SEEK -> {
+                    player.setPlaybackSpeed(1f)
+                    val target = if (live) {
+                        (player.currentPosition + correction).coerceAtLeast(0L)
+                    } else {
+                        main.currentPosition.coerceAtLeast(0L)
+                    }
+                    val duration = player.duration
+                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+                    lastLiveSeekMs[id] = now
+                }
+
+                SyncAction.SPEED_UP,
+                SyncAction.SLOW_DOWN -> {
+                    // Only followers are rate-adjusted. The reference feed is never touched.
+                    if (now - (lastLiveSeekMs[id] ?: 0L) >= 250L) {
+                        player.setPlaybackSpeed(decision.playbackSpeed)
+                    }
+                }
+
+                SyncAction.NORMAL -> {
+                    player.setPlaybackSpeed(1f)
+                }
             }
         }
     }
