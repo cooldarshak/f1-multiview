@@ -41,7 +41,7 @@ fun UgisInfoPanel(
     isTv: Boolean,
     onScreenshotModeChanged: (Boolean) -> Unit
 ) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","updates","saved","settings") } ?: "calendar"
+    val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","telemetry","updates","saved","settings") } ?: "calendar"
     BackHandler(enabled = true) { vm.panel(null) }
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
@@ -56,6 +56,7 @@ fun UgisInfoPanel(
             }
             Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 InfoButton(section=="timing","LIVE TIMING"){vm.panel("timing")}
+                InfoButton(section=="telemetry","TELEMETRY"){vm.panel("telemetry")}
                 InfoButton(section=="calendar","CALENDAR"){vm.panel("calendar");vm.loadCalendar()}
                 InfoButton(section=="standings","STANDINGS"){vm.panel("standings");vm.loadStandings()}
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
@@ -65,6 +66,12 @@ fun UgisInfoPanel(
                 InfoButton(false,"RACE MAP"){vm.activateRaceMap()}
                 InfoButton(section=="saved","SAVED VIEWS"){vm.panel("saved")}
                 InfoButton(section=="settings","SETTINGS"){vm.panel("settings")}
+                Row(Modifier.focusGroup(),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically){
+                    Text("SERIES",color=InfoMuted,fontSize=8.sp,fontWeight=FontWeight.Black)
+                    RacingSeries.entries.forEach { series ->
+                        InfoButton(ui.selectedSeries==series.id,series.id){vm.setSeries(series.id)}
+                    }
+                }
                 InfoButton(section=="updates","CHECK UPDATES"){vm.panel("updates");scope.launch{updateManager.check().onSuccess{info->if(info==null)updateMessage="You are up to date." else {updateMessage="Update ${info.versionName} available.";updateManager.downloadAndInstall(info)}}.onFailure{updateMessage=it.message.orEmpty()}}}
             }
             Spacer(Modifier.height(14.dp))
@@ -149,8 +156,10 @@ fun UgisInfoPanel(
                     item {
                         Surface(color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Text("LIVE TIMING",color=InfoWhite,fontWeight=FontWeight.Black)
-                                Spacer(Modifier.weight(1f))
+                                Column(Modifier.weight(1f)){
+                                    Text(if(ui.session?.live==false) "REPLAY TIMING" else "LIVE TIMING",color=InfoWhite,fontWeight=FontWeight.Black)
+                                    Text(ui.liveSessionInfo.name+" · "+ui.liveSessionInfo.sessionType,color=InfoMuted,fontSize=8.sp)
+                                }
                                 Text(ui.timingStatus,color=if(ui.timingStatus=="LIVE") Color(0xFF66E07A) else InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black)
                             }
                         }
@@ -158,6 +167,17 @@ fun UgisInfoPanel(
                     item { InfoRow("WX","Weather","Air "+ui.weather.air+" · Track "+ui.weather.track+" · Humidity "+ui.weather.humidity,"Wind "+ui.weather.wind) }
                     items(ui.timing){r->
                         InfoRow(r.position.toString(),r.driver,"Gap "+r.gap+" · Last "+r.lastLap+" · S1 "+r.sector1+" · S2 "+r.sector2+" · S3 "+r.sector3,""+r.tyre+" · "+r.speed)
+                    }
+                    if(ui.session?.live==false){
+                        item{
+                            Row(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically){
+                                Text("REPLAY OFFSET "+(ui.syncOffsetMs/1000)+"s",color=InfoMuted,fontSize=9.sp)
+                                InfoButton(false,"-1s"){vm.sync(-1000)}
+                                InfoButton(false,"-250ms"){vm.sync(-250)}
+                                InfoButton(false,"+250ms"){vm.sync(250)}
+                                InfoButton(false,"+1s"){vm.sync(1000)}
+                            }
+                        }
                     }
                     if(ui.raceControl.isNotEmpty()){
                         item { Text("RACE CONTROL",color=InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(top=8.dp)) }
@@ -176,6 +196,12 @@ fun UgisInfoPanel(
                                 }
                             }
                         }
+                    }
+                }
+                "telemetry" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    item { InfoRow("SESSION",ui.liveSessionInfo.name,ui.liveSessionInfo.meeting+" · "+ui.liveSessionInfo.country,ui.liveSessionInfo.sessionType) }
+                    items(ui.telemetry){t->
+                        InfoRow(t.driver,"SPEED "+t.speed+" km/h","RPM "+t.rpm+" · GEAR "+t.gear+" · THR "+t.throttle+"% · BRK "+t.brake+"%","LAP "+t.lap+" · "+if(t.drs)"DRS" else "DRS OFF")
                     }
                 }
                 "calendar" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
