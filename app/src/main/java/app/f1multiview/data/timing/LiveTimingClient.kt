@@ -8,17 +8,20 @@ import kotlinx.coroutines.flow.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import android.util.Base64
+import app.f1multiview.model.*
+import java.util.zip.Inflater
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-class LiveTimingClient(private val scope:CoroutineScope){
+class LiveTimingClient(private val scope:CoroutineScope, private val authHeadersProvider:suspend () -> Map<String,String> = { emptyMap() }){
     companion object{
         private const val BASE="https://livetiming.formula1.com"
         private const val NEGOTIATE="$BASE/signalrcore/negotiate?negotiateVersion=1"
         private const val WS="wss://livetiming.formula1.com/signalrcore?id="
         private const val RS='\u001e'
         private const val KEEPALIVE_MS=15000L
-        private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingAppData","TimingStats","CarData","Position","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree","TeamRadio")
+        private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingAppData","TimingStats","CarData.z","Position.z","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree","TeamRadio")
     }
     private val http=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(0,TimeUnit.MILLISECONDS).build()
     private val _rows=MutableStateFlow<List<TimingRow>>(emptyList());val rows: StateFlow<List<TimingRow>> = _rows.asStateFlow()
@@ -31,10 +34,13 @@ class LiveTimingClient(private val scope:CoroutineScope){
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
+    fun restart(){ stop(); start() }
     private fun connect(){scope.launch(Dispatchers.IO){try{
         _status.value="CONNECTING";affinityCookie=fetchAffinityCookie()?:affinityCookie
         val token=negotiate()?:throw IllegalStateException("Timing negotiation returned no connection token")
-        val request=Request.Builder().url(WS+java.net.URLEncoder.encode(token,"UTF-8")).apply{affinityCookie?.let{header("Cookie",it)}}.header("User-Agent","F1MultiView/1.0 Android").build()
+        val requestBuilder=Request.Builder().url(WS+java.net.URLEncoder.encode(token,"UTF-8")).apply{affinityCookie?.let{header("Cookie",it)}}.header("User-Agent","F1MultiView/1.0 Android")
+        runCatching { authHeadersProvider() }.getOrDefault(emptyMap()).forEach { (key,value) -> requestBuilder.header(key,value) }
+        val request=requestBuilder.build()
         socket=http.newWebSocket(request,Listener())
     }catch(_:Throwable){_status.value="RETRYING";scheduleReconnect()}}}
     private fun fetchAffinityCookie():String?{
