@@ -85,7 +85,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
 
     private data class DriverMeta(val name:String,val acronym:String,val team:String,val teamColor:String)
     private data class TimingMeta(val position:Int=0,val speed:Int=0,val lap:Int=0,val inPit:Boolean=false,val stopped:Boolean=false,val retired:Boolean=false)
-    private data class TrackPositionRaw(val x:Double,val y:Double,val z:Double,val trail:List<TrackPoint>=emptyList())
+    private data class TrackPositionRaw(val x:Double,val y:Double,val z:Double,val trail:List<TrackPoint> = emptyList())
 
     private fun publishTrackPositions() {
         val now=System.currentTimeMillis()
