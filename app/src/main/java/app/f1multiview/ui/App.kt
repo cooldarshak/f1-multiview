@@ -1623,6 +1623,123 @@ private fun FullscreenMultiview(
 }
 
 @Composable
+private fun MultiviewFeedTile(
+    stream: StreamSource,
+    ui: UiState,
+    pool: PlayerPool,
+    errors: Map<String, String>,
+    modifier: Modifier,
+    onFocus: (String) -> Unit,
+    active: Boolean,
+    surfaceType: Int
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { isTelevision(context) }
+    val border = if (active) BorderStroke(2.dp, Red) else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+    Box(
+        modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black)
+            .border(border, RoundedCornerShape(4.dp))
+            .clickable { onFocus(stream.id) }.focusable()
+    ) {
+        when (stream.kind) {
+            StreamKind.TIMING -> TimingTelemetryFeed(ui, isTv, Modifier.fillMaxSize())
+            StreamKind.TRACK -> CompactDriverTrackerFeed(ui, isTv, Modifier.fillMaxSize())
+            else -> PlayerTile(
+                stream, pool, errors[stream.id], Modifier.fillMaxSize(), {}, onFocus,
+                active = active, surfaceType = surfaceType
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimingTelemetryFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
+    val rows = ui.timing
+    val lap = rows.maxOfOrNull { it.lap }?.takeIf { it > 0 }
+        ?: ui.telemetry.maxOfOrNull { it.lap }?.takeIf { it > 0 }
+    Column(modifier.fillMaxSize().background(Color(0xFF101114)).padding(if (isTv) 5.dp else 3.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("TIMING / TELEMETRY", color = White, fontSize = if (isTv) 10.sp else 8.sp, fontWeight = FontWeight.Black)
+                Text(
+                    ui.liveSessionInfo.name.ifBlank { "F1 SESSION" }.uppercase() + "  ·  " + ui.timingStatus +
+                        (lap?.let { "  ·  LAP " + it } ?: ""),
+                    color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                )
+            }
+            Text(rows.size.toString() + " DRIVERS", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+        }
+        Row(Modifier.fillMaxWidth().background(Color(0xFF1F2025)).padding(horizontal = 5.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("P", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
+            Text("DRIVER", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+            Text("SPD", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(34.dp))
+            Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(47.dp))
+            Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(47.dp))
+            Text("GAP", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(43.dp))
+            Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(36.dp))
+        }
+        if (rows.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("WAITING FOR TIMING DATA", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                items(rows, key = { it.position }) { row ->
+                    Column(Modifier.fillMaxWidth().background(if (row.position % 2 == 0) Color(0xFF191A1E) else Color.Transparent).padding(horizontal = 5.dp, vertical = 3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(row.position.toString(), color = if (row.position == 1) Red else White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
+                            Text(row.driver.uppercase(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(row.speed, color = White, fontSize = 7.sp, modifier = Modifier.width(34.dp), maxLines = 1)
+                            Text(row.lastLap, color = White, fontSize = 7.sp, modifier = Modifier.width(47.dp), maxLines = 1)
+                            Text(row.bestLap, color = Color(0xFFBBBBBF), fontSize = 7.sp, modifier = Modifier.width(47.dp), maxLines = 1)
+                            Text(row.gap, color = White, fontSize = 7.sp, modifier = Modifier.width(43.dp), maxLines = 1)
+                            Text(tyreLabel(row.tyre), color = tyreColor(row.tyre), fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(36.dp), maxLines = 1)
+                        }
+                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 1.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            SectorCell("S1", row.sector1, row.sector1Status)
+                            SectorCell("S2", row.sector2, row.sector2Status)
+                            SectorCell("S3", row.sector3, row.sector3Status)
+                            Text(if (row.drs) "DRS" else "", color = Color(0xFF5FA8FF), fontSize = 5.5.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 2.dp))
+                            Text(if (row.lap > 0) "L" + row.lap else "", color = Muted, fontSize = 5.5.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectorCell(label: String, value: String, status: String) {
+    Column(Modifier.widthIn(min = 43.dp, max = 62.dp)) {
+        Text(label, color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black)
+        Text(value, color = sectorColor(status), fontSize = 6.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+private fun sectorColor(status: String): Color = when (status.uppercase()) {
+    "PURPLE" -> Color(0xFFD14DFF)
+    "GREEN", "PERSONAL" -> Color(0xFF4CCB68)
+    "YELLOW", "SLOW" -> Color(0xFFFFD54A)
+    else -> Color(0xFFB8B9C0)
+}
+
+private fun tyreLabel(value: String): String = when {
+    value.contains("SOFT", true) -> "SOFT"
+    value.contains("MED", true) || value.contains("MEDIUM", true) -> "MED"
+    value.contains("HARD", true) -> "HARD"
+    value.isBlank() -> "-"
+    else -> value.take(5).uppercase()
+}
+
+private fun tyreColor(value: String): Color = when {
+    value.contains("SOFT", true) -> Color(0xFFE10600)
+    value.contains("MED", true) -> Color(0xFFFFD54A)
+    value.contains("HARD", true) -> Color(0xFFF2F2F2)
+    else -> White
+}
+
+@Composable
 private fun CanonicalMultiviewLayout(
     ui: UiState,
     selected: List<StreamSource>,
