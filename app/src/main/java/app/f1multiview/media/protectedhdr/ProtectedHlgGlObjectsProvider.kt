@@ -20,15 +20,20 @@ import androidx.media3.effect.DefaultGlObjectsProvider
  *
  * Every protected operation has a normal Media3 fallback.
  */
-class ProtectedHlgGlObjectsProvider : GlObjectsProvider {
+class ProtectedHlgGlObjectsProvider(private val context: android.content.Context) : GlObjectsProvider {
     private val delegate = DefaultGlObjectsProvider()
     private val protectedContexts = mutableListOf<EGLContext>()
+
+    private fun screenshotMode(): Boolean = DebugPresentationSettings.isScreenshotModeEnabled(context)
 
     override fun createEglContext(
         display: EGLDisplay,
         openGlVersion: Int,
         configAttributes: IntArray
     ): EGLContext {
+        if (screenshotMode()) {
+            return delegate.createEglContext(display, openGlVersion, configAttributes)
+        }
         val config = chooseProtectedHlgConfig(display, true)
             ?: chooseConfig(display, configAttributes)
             ?: chooseProtectedHlgConfig(display, false)
@@ -68,6 +73,9 @@ class ProtectedHlgGlObjectsProvider : GlObjectsProvider {
         colorTransfer: Int,
         isEncoderInputSurface: Boolean
     ): EGLSurface {
+        if (screenshotMode()) {
+            return delegate.createEglSurface(display, surface, colorTransfer, isEncoderInputSurface)
+        }
         if (isEncoderInputSurface) {
             return delegate.createEglSurface(display, surface, colorTransfer, true)
         }
