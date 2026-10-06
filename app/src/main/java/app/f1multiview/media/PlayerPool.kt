@@ -16,6 +16,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.ExoMediaDrm
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.DummyExoMediaDrm
+import androidx.media3.exoplayer.drm.UnsupportedDrmException
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import android.os.Handler
 import android.os.Looper
@@ -43,6 +47,8 @@ class PlayerPool(context: Context) {
     private val players = linkedMapOf<String, ExoPlayer>()
     private val selectedQualities = mutableMapOf<String, Quality>()
     private val streamKinds = mutableMapOf<String, app.f1multiview.model.StreamKind>()
+    private val streams = mutableMapOf<String, StreamSource>()
+    private val l3SecondaryFallback = mutableSetOf<String>()
     private val decoderRecoveryAttempts = mutableMapOf<String, Int>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -119,12 +125,13 @@ class PlayerPool(context: Context) {
             }
     }
 
-    fun load(stream: StreamSource) {
+    fun load(stream: StreamSource, forceReload: Boolean = false) {
         val url = stream.url ?: return
         streamKinds[stream.id] = stream.kind
+        streams[stream.id] = stream
         val player = get(stream.id)
 
-        if (player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
+        if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
@@ -166,9 +173,31 @@ class PlayerPool(context: Context) {
         val mediaSourceFactory = if (!licenseUrl.isNullOrBlank()) {
             val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
             drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
-            val drmManager = DefaultDrmSessionManager.Builder()
+            val drmBuilder = DefaultDrmSessionManager.Builder()
                 .setMultiSession(false)
-                .build(callback)
+
+            // Targeted fallback for secondary feeds when the device's secure decoder
+            // pool is exhausted. Normal playback remains at the native Widevine level.
+            if (stream.id in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
+                drmBuilder.setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { uuid ->
+                    try {
+                        FrameworkMediaDrm.newInstance(uuid).also { mediaDrm ->
+                            val current = runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrNull()
+                            if (current != "L3") {
+                                runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
+                            }
+                            android.util.Log.i(
+                                "PlayerPool",
+                                "Secondary " + stream.id + ": Widevine security level=" +
+                                    runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown")
+                            )
+                        }
+                    } catch (_: UnsupportedDrmException) {
+                        DummyExoMediaDrm()
+                    }
+                }
+            }
+            val drmManager = drmBuilder.build(callback)
             DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
         } else {
             DefaultMediaSourceFactory(dataSource)
@@ -362,10 +391,16 @@ class PlayerPool(context: Context) {
                     .setMaxVideoSize(target.first, target.second)
                     .setForceHighestSupportedBitrate(false)
             }
-            Quality.AUTO -> builder
-                .setMinVideoSize(0, 0)
-                 .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 854, if (isMain) Int.MAX_VALUE else 480)
-                .setForceHighestSupportedBitrate(false)
+            Quality.AUTO -> {
+                val secondaryMaxHeight = if (!isMain && players.size >= 4) 360 else 480
+                val secondaryMaxWidth = if (!isMain && players.size >= 4) 640 else 854
+                builder.setMinVideoSize(0, 0)
+                    .setMaxVideoSize(
+                        if (isMain) Int.MAX_VALUE else secondaryMaxWidth,
+                        if (isMain) Int.MAX_VALUE else secondaryMaxHeight
+                    )
+                    .setForceHighestSupportedBitrate(false)
+            }
         }
         return builder.build()
     }
@@ -429,6 +464,26 @@ class PlayerPool(context: Context) {
         val isMain = id == audioPlayerId
         val requested = selectedQualities[id] ?: Quality.AUTO
         val attempts = decoderRecoveryAttempts[id] ?: 0
+
+        // A fourth-feed decoder-init failure can be a secure-decoder resource limit,
+        // not a bad stream. Retry the secondary once with Widevine L3 before falling
+        // back through the normal quality recovery ladder.
+        if (!isMain && id !in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
+            l3SecondaryFallback.add(id)
+            decoderRecoveryAttempts[id] = attempts + 1
+            player.stop()
+            player.clearMediaItems()
+            _errors.value = _errors.value + (
+                id to "Secure decoder capacity reached; retrying secondary with Widevine L3"
+            )
+            mainHandler.postDelayed({
+                if (players[id] === player) {
+                    streams[id]?.let { load(it, forceReload = true) }
+                    player.playWhenReady = true
+                }
+            }, 250L)
+            return
+        }
         val recoveryQuality = when {
             requested == Quality.UHD -> Quality.FHD
             requested == Quality.FHD && !isMain -> Quality.HD
@@ -664,7 +719,9 @@ class PlayerPool(context: Context) {
         players.remove(id)?.release()
         selectedQualities.remove(id)
         streamKinds.remove(id)
+        streams.remove(id)
         decoderRecoveryAttempts.remove(id)
+        l3SecondaryFallback.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -678,7 +735,9 @@ class PlayerPool(context: Context) {
         audioPlayerId = null
         selectedQualities.clear()
         streamKinds.clear()
+        streams.clear()
         decoderRecoveryAttempts.clear()
+        l3SecondaryFallback.clear()
     }
 
     fun all(): Collection<ExoPlayer> = players.values
