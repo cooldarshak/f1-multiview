@@ -967,7 +967,7 @@ private fun SessionCard(selected: Boolean, title: String, type: String, artworkU
 private fun PitWall(
     ui: UiState,
     pool: PlayerPool,
-    error: String?,
+    errors: Map<String, String>,
     isTv: Boolean,
     compactPhone: Boolean,
     onFullscreenAll: () -> Unit,
@@ -1627,7 +1627,7 @@ private fun MultiviewFeedTile(
     stream: StreamSource,
     ui: UiState,
     pool: PlayerPool,
-    errors: Map<String, String>,
+    error: String?,
     modifier: Modifier,
     onFocus: (String) -> Unit,
     active: Boolean,
@@ -1645,7 +1645,7 @@ private fun MultiviewFeedTile(
             StreamKind.TIMING -> TimingTelemetryFeed(ui, isTv, Modifier.fillMaxSize())
             StreamKind.TRACK -> CompactDriverTrackerFeed(ui, isTv, Modifier.fillMaxSize())
             else -> PlayerTile(
-                stream, pool, errors[stream.id], Modifier.fillMaxSize(), {}, onFocus,
+                stream, pool, error, Modifier.fillMaxSize(), {}, onFocus,
                 active = active, surfaceType = surfaceType
             )
         }
