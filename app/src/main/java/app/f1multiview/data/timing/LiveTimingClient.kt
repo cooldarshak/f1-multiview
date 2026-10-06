@@ -31,6 +31,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val _teamRadio=MutableStateFlow<List<app.f1multiview.model.TeamRadioItem>>(emptyList());val teamRadio:StateFlow<List<app.f1multiview.model.TeamRadioItem>> = _teamRadio.asStateFlow()
     private val _telemetry=MutableStateFlow<List<app.f1multiview.model.DriverTelemetry>>(emptyList());val telemetry:StateFlow<List<app.f1multiview.model.DriverTelemetry>> = _telemetry.asStateFlow()
     private val _sessionInfo=MutableStateFlow(app.f1multiview.model.LiveSessionInfo());val sessionInfo:StateFlow<app.f1multiview.model.LiveSessionInfo> = _sessionInfo.asStateFlow()
+    private val _trackPositions=MutableStateFlow<List<TrackDriverPosition>>(emptyList())
+    val trackPositions:StateFlow<List<TrackDriverPosition>> = _trackPositions.asStateFlow()
+    private val _trackStatus=MutableStateFlow(TrackStatusInfo())
+    val trackStatus:StateFlow<TrackStatusInfo> = _trackStatus.asStateFlow()
+    private val driverMeta=mutableMapOf<String,DriverMeta>()
+    private val timingMeta=mutableMapOf<String,TimingMeta>()
+    private val positionMeta=mutableMapOf<String,TrackPositionRaw>()
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
