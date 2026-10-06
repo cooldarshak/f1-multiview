@@ -49,6 +49,8 @@ import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
@@ -953,17 +955,17 @@ private fun ResizeHandle(
                     .focusable()
                     .onFocusChanged { focused = it.isFocused }
                     .onKeyEvent { event ->
-                        val delta = when (event.key) {
-                            androidx.compose.ui.input.key.Key.DirectionLeft -> if (orientation == Orientation.Horizontal) -step else null
-                            androidx.compose.ui.input.key.Key.DirectionRight -> if (orientation == Orientation.Horizontal) step else null
-                            androidx.compose.ui.input.key.Key.DirectionUp -> if (orientation == Orientation.Vertical) -step else null
-                            androidx.compose.ui.input.key.Key.DirectionDown -> if (orientation == Orientation.Vertical) step else null
-                            else -> null
+                        if (event.type != KeyEventType.KeyDown) false
+                        else {
+                            val delta = when (event.key) {
+                                Key.DirectionLeft -> if (orientation == Orientation.Horizontal) -step else null
+                                Key.DirectionRight -> if (orientation == Orientation.Horizontal) step else null
+                                Key.DirectionUp -> if (orientation == Orientation.Vertical) -step else null
+                                Key.DirectionDown -> if (orientation == Orientation.Vertical) step else null
+                                else -> null
+                            }
+                            if (delta != null) { onDelta(delta); true } else false
                         }
-                        if (delta != null) {
-                            onDelta(delta)
-                            true
-                        } else false
                     }
             } else Modifier
         )
@@ -1159,6 +1161,12 @@ private fun FullscreenMultiview(
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionCenter && !controlsVisible) {
+                    controlsVisible = true
+                    true
+                } else false
+            }
             .pointerInput(controlsVisible, feedPickerOpen, editSize, menu) {
                 detectTapGestures {
                     if (!feedPickerOpen && !editSize && menu == null) {
@@ -1620,6 +1628,12 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionCenter && !controlsVisible) {
+                    controlsVisible = true
+                    true
+                } else false
+            }
             .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
@@ -1632,6 +1646,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
                     .padding(12.dp)
                     .focusRequester(fullscreenShowControlsFocusRequester)
                     .clickable { controlsVisible = true }
+                    .focusable()
                     .onFocusChanged { fullscreenShowControlsFocused = it.isFocused }
                     .border(2.dp, if (fullscreenShowControlsFocused) White else Color.Transparent, RoundedCornerShape(9.dp)),
                 color = Color.Black.copy(alpha = .78f),
