@@ -61,7 +61,9 @@ data class LiveSessionInfo(
     val meeting: String = "-",
     val country: String = "-",
     val sessionType: String = "-",
-    val status: String = "-"
+    val status: String = "-",
+    val circuitKey: Int? = null,
+    val year: Int? = null
 )
 
 
