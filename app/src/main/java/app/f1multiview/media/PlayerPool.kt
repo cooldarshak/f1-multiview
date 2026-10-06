@@ -285,13 +285,13 @@ class PlayerPool(context: Context) {
 
         if (candidates.isEmpty()) return
 
-        val selected = candidates.sortedWith(
-            compareByDescending<Pair<Pair<androidx.media3.common.TrackGroup, Int>, androidx.media3.common.Format>> { (_, format) ->
+        val selected = candidates.maxWithOrNull(
+            compareBy<Pair<Pair<androidx.media3.common.Tracks.Group, Int>, androidx.media3.common.Format>> { (_, format) ->
                 format.sampleMimeType.equals(MimeTypes.VIDEO_H264, true)
-            }.thenByDescending { (_, format) -> format.height }
-                .thenByDescending { (_, format) -> format.width }
-                .thenByDescending { (_, format) -> format.bitrate }
-        ).firstOrNull() ?: return
+            }.thenBy { (_, format) -> format.height }
+                .thenBy { (_, format) -> format.width }
+                .thenBy { (_, format) -> format.bitrate }
+        ) ?: return
 
         val group = selected.first.first
         val index = selected.first.second
