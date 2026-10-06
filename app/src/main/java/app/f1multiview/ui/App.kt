@@ -126,6 +126,38 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     DisposableEffect(pool, radioPlayer) { onDispose { pool.release(); radioPlayer.release() } }
     val startedFeeds = remember(pool) { mutableStateMapOf<String, Boolean>() }
 
+    LaunchedEffect(ui.session?.id, ui.mainStreamId, ui.session?.live) {
+        val session = ui.session ?: return@LaunchedEffect
+        if (session.live) return@LaunchedEffect
+        while (true) {
+            val mainId = ui.mainStreamId ?: break
+            val player = pool.get(mainId)
+            val position = player.currentPosition.coerceAtLeast(0L)
+            val duration = player.duration.takeIf { it != Player.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
+            if (player.currentMediaItem != null && position >= 10_000L) {
+                vm.saveContinueWatching(session, position, duration, mainId)
+            }
+            delay(5_000L)
+        }
+    }
+
+    LaunchedEffect(ui.pendingResume?.contentId, ui.mainStreamId) {
+        val pending = ui.pendingResume ?: return@LaunchedEffect
+        val mainId = ui.mainStreamId ?: return@LaunchedEffect
+        val player = pool.get(mainId)
+        repeat(40) {
+            if (player.currentMediaItem != null && player.duration > 0L) {
+                val target = pending.positionMs.coerceIn(0L, (player.duration - 15_000L).coerceAtLeast(0L))
+                player.seekTo(target)
+                player.playWhenReady = true
+                vm.clearPendingResume()
+                return@LaunchedEffect
+            }
+            delay(250L)
+        }
+    }
+
+
     LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
@@ -193,6 +225,9 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         Column(Modifier.fillMaxSize()) {
             Header(ui, vm, compactPhone)
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = if (compactPhone) 10.dp else 16.dp)) {
+            if (ui.continueWatching.isNotEmpty()) {
+                item { ContinueWatchingSection(ui.continueWatching, isTv, compactPhone, vm::resumeContinueWatching, vm::removeContinueWatching) }
+            }
             item { Archive(ui, vm, isTv, compactPhone) }
             item { ui.providerError?.let { ErrorBanner(it) } }
             item {
