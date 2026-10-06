@@ -1635,10 +1635,8 @@ private fun MultiviewFeedTile(
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { isTelevision(context) }
-    val border = if (active) BorderStroke(2.dp, Red) else BorderStroke(1.dp, Color.White.copy(alpha = .08f))
     Box(
         modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black)
-            .border(border, RoundedCornerShape(4.dp))
             .clickable { onFocus(stream.id) }.focusable()
     ) {
         when (stream.kind) {
