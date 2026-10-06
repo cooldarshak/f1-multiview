@@ -100,7 +100,7 @@ class PlayerPool(context: Context) {
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         _errors.value = _errors.value + (id to (error.message ?: error.errorCodeName))
-                        if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player)
+                        if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player, error)
                         else recoverFromSourceFailure(id, player)
                     }
 
@@ -505,7 +505,7 @@ class PlayerPool(context: Context) {
         )
     }
 
-    private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
+    private fun recoverFromDecoderFailure(id: String, player: ExoPlayer, error: PlaybackException) {
         val isMain = id == audioPlayerId
         val requested = selectedQualities[id] ?: Quality.AUTO
         val attempts = decoderRecoveryAttempts[id] ?: 0
