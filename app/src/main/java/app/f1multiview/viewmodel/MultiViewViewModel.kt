@@ -288,7 +288,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     _ui.value=_ui.value.copy(layout=targetLayout,selectedStreamIds=current+id,providerError=null)
     persist()
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-    if(source.url==null) resolveSource(source)
+    if(source.url==null && source.kind != StreamKind.TIMING && source.kind != StreamKind.TRACK) resolveSource(source)
 }
     fun activateTracker(){
     _ui.value=_ui.value.copy(selectedPanel="tracker")
@@ -307,6 +307,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
+        if (source.kind == StreamKind.TIMING || source.kind == StreamKind.TRACK) return@launch
         val current=_ui.value.selectedStreamIds
         val maxFeeds=when(_ui.value.layout){
             LayoutPreset.SINGLE->1
