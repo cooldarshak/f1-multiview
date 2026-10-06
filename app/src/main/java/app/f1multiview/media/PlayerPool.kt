@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
@@ -41,6 +42,8 @@ class PlayerPool(context: Context) {
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
     private val selectedQualities = mutableMapOf<String, Quality>()
+    private val streamKinds = mutableMapOf<String, app.f1multiview.model.StreamKind>()
+    private val decoderRecoveryAttempts = mutableMapOf<String, Int>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
@@ -97,7 +100,11 @@ class PlayerPool(context: Context) {
 
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                         val selected = selectedQualities[id] ?: Quality.AUTO
-                        if (selected != Quality.AUTO) applyQuality(player, selected, id == audioPlayerId)
+                        if (selected != Quality.AUTO) {
+                            applyQuality(player, selected, id == audioPlayerId)
+                        } else {
+                            applyAutoResourceBudget(id, player)
+                        }
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -113,6 +120,7 @@ class PlayerPool(context: Context) {
 
     fun load(stream: StreamSource) {
         val url = stream.url ?: return
+        streamKinds[stream.id] = stream.kind
         val player = get(stream.id)
 
         if (player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
