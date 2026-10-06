@@ -103,7 +103,7 @@ private class F1HdrMediaCodecVideoRenderer(
         // surface is actually used instead of being optimized away.
         setVideoEffects(emptyList<Effect>())
         val processor=DefaultVideoFrameProcessor.Factory.Builder()
-            .setGlObjectsProvider(ProtectedHlgGlObjectsProvider())
+            .setGlObjectsProvider(ProtectedHlgGlObjectsProvider(appContext))
             .build()
         return PlaybackVideoGraphWrapper.Builder(context,videoFrameReleaseControl)
             .setEnablePlaylistMode(true)
