@@ -41,3 +41,25 @@ data class ContinueWatchingEntry(
     val meetingNumber: Int? = null,
     val streamId: String? = null
 )
+
+
+enum class RacingSeries(val id: String, val displayName: String) {
+    F1("F1", "Formula 1"),
+    F2("F2", "Formula 2"),
+    F3("F3", "Formula 3"),
+    F1_ACADEMY("F1 Academy", "F1 Academy"),
+    PORSCHE_SUPERCUP("Porsche Supercup", "Porsche Supercup");
+
+    companion object {
+        fun fromId(value: String?): RacingSeries =
+            entries.firstOrNull { it.id.equals(value?.trim(), true) } ?: F1
+    }
+}
+
+data class LiveSessionInfo(
+    val name: String = "-",
+    val meeting: String = "-",
+    val country: String = "-",
+    val sessionType: String = "-",
+    val status: String = "-"
+)
