@@ -580,10 +580,29 @@ class PlayerPool(context: Context) {
     }
 
     fun setMuted(id: String, muted: Boolean) {
-        players[id]?.volume = if (muted) 0f else 1f
+        val target = players[id] ?: return
+
+        if (muted) {
+            target.volume = 0f
+            target.trackSelectionParameters = target.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                .build()
+            return
+        }
+
+        // Multiview has one audible feed at a time. Unmuting a feed also enables
+        // its audio renderer; secondary feeds start with audio disabled by design.
+        players.forEach { (otherId, player) ->
+            val isTarget = otherId == id
+            player.volume = if (isTarget) 1f else 0f
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isTarget)
+                .build()
+        }
     }
 
-    fun isMuted(id: String): Boolean = players[id]?.volume?.let { it <= 0.001f } ?: true
+    fun isMuted(id: String): Boolean =
+        players[id]?.volume?.let { it <= 0.001f } ?: true
 
     /**
      * One-shot synchronization only. We deliberately do not run a continuous
