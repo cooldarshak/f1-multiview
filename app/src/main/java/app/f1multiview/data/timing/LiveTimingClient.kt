@@ -249,7 +249,19 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         }
         if(rows.isNotEmpty()) _teamRadio.value=rows.takeLast(20)
     }
-    private fun sectorValue(lastLap:JSONObject?, line:JSONObject, key:String):Pair<String,String>{\n        val raw=lastLap?.opt(key) ?: line.opt(key)\n        val obj=raw as? JSONObject\n        if(obj!=null){\n            val value=obj.optString("Value").ifBlank{obj.optString("value")}.ifBlank{"-"}\n            val status=when{obj.optBoolean("OverallFastest",false)->"PURPLE";obj.optBoolean("PersonalFastest",false)->"GREEN";else->"YELLOW"}\n            return value to status\n        }\n        val value=raw?.toString()?.takeIf{it.isNotBlank()} ?: "-"\n        return value to "NORMAL"\n    }\n\n    private fun parseTiming(data:JSONObject?){if(data==null)return;val lines=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
+    private fun sectorValue(lastLap:JSONObject?, line:JSONObject, key:String):Pair<String,String>{
+        val raw=lastLap?.opt(key) ?: line.opt(key)
+        val obj=raw as? JSONObject
+        if(obj!=null){
+            val value=obj.optString("Value").ifBlank{obj.optString("value")}.ifBlank{"-"}
+            val status=when{obj.optBoolean("OverallFastest",false)->"PURPLE";obj.optBoolean("PersonalFastest",false)->"GREEN";else->"YELLOW"}
+            return value to status
+        }
+        val value=raw?.toString()?.takeIf{it.isNotBlank()} ?: "-"
+        return value to "NORMAL"
+    }
+
+    private fun parseTiming(data:JSONObject?){if(data==null)return;val lines=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
         while(keys.hasNext()){val number=keys.next();val line=lines.optJSONObject(number)?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("Tla").ifBlank{driverMeta[number]?.acronym}.ifBlank{line.optString("FullName")}.ifBlank{line.optString("RacingNumber")}.ifBlank{"P"+pos};val gap=line.optString("GapToLeader").ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val lastObj=line.optJSONObject("LastLapTime");val bestObj=line.optJSONObject("BestLapTime");val last=lastObj?.optString("Value")?:line.optString("LastLapTime");val best=bestObj?.optString("Value")?:line.optString("BestLapTime");val tyre=bestObj?.optString("Compound")?:line.optString("Compound");val s1=sectorValue(lastObj,line,"Sector1");val s2=sectorValue(lastObj,line,"Sector2");val s3=sectorValue(lastObj,line,"Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val drs=line.optBoolean("DRS",line.optInt("DRS",0)>0);rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0),s1.first,s2.first,s3.first,speed.ifBlank{"-"},drs,best.ifBlank{"-"},line.optInt("Lap",0).takeIf{it>0}?:line.optInt("LapNumber",0),s1.second,s2.second,s3.second)}
         if(rows.isNotEmpty()){
             _rows.value=rows.sortedBy{it.position}
