@@ -10,6 +10,7 @@ import androidx.media3.common.C
 import androidx.media3.common.GlObjectsProvider
 import androidx.media3.common.GlTextureInfo
 import androidx.media3.effect.DefaultGlObjectsProvider
+import app.f1multiview.media.DebugPresentationSettings
 
 /**
  * Protected EGL provider for F1 UHD/HLG.
