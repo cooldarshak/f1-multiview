@@ -77,7 +77,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     val availableIds=allStreams.map { it.id }.toSet()
                     val restored=setup.streamIds.filter { it in availableIds }
                     val savedMain=setup.mainStreamId?.takeIf { it in restored }
-                    val maxFeeds=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
+                    val maxFeeds=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
                     val mainId=savedMain ?: restored.firstOrNull()
                     val selected=(listOfNotNull(mainId)+restored.filterNot { it==mainId }).distinct().take(maxFeeds)
                     _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected,mainStreamId=mainId)
@@ -244,20 +244,28 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null}.forEach{viewModelScope.launch{resolveSource(it)}}
     }
     fun setLayout(layout:LayoutPreset){
-    val maxFeeds=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
+    val maxFeeds=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
     _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=_ui.value.selectedStreamIds.take(maxFeeds))
     persist()
 }
 fun toggleStream(id:String)=viewModelScope.launch{
     val current=_ui.value.selectedStreamIds
-    val maxFeeds=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
+    val maxFeeds=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
     if(id in current){
         if(id == _ui.value.mainStreamId) return@launch
         _ui.value=_ui.value.copy(selectedStreamIds=current.filterNot{it==id})
         persist()
         return@launch
     }
-    if(current.size>=6) return@launch
+    // Five concurrent video decoders crashed on the validated S22 Ultra test.
+    // Four feeds are currently the safe supported ceiling; do not instantiate a
+    // fifth player and risk taking down the whole app.
+    if(current.size>=4){
+        _ui.value=_ui.value.copy(
+            providerError="4 simultaneous video feeds is the current safe limit. The 5th feed was blocked to prevent a decoder crash."
+        )
+        return@launch
+    }
     val needed=current.size+1
     val requiredLayout=when{
         needed<=1->LayoutPreset.SINGLE
@@ -265,7 +273,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
         needed<=4->LayoutPreset.GRID_4
         else->LayoutPreset.GRID_6
     }
-    val currentMax=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6}
+    val currentMax=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
     val targetLayout=if(currentMax<needed)requiredLayout else _ui.value.layout
     _ui.value=_ui.value.copy(layout=targetLayout,selectedStreamIds=current+id,providerError=null)
     persist()
@@ -281,7 +289,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
             LayoutPreset.SINGLE->1
             LayoutPreset.SPLIT_2->2
             LayoutPreset.GRID_4->4
-            LayoutPreset.GRID_6->6
+            LayoutPreset.GRID_6->4
         }
         val oldMain = _ui.value.mainStreamId
         val next = listOf(id) + current.filterNot { it == id || it == oldMain }
@@ -304,7 +312,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
     fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("setup-"+System.currentTimeMillis(),name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
     fun saveNamedSetup(id:String, name:String){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup(id,name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
-    fun loadSavedSetup(setup:SavedSetup){val available=_ui.value.streams.map{it.id}.toSet();val ids=setup.streamIds.filter{it in available};val max=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->6};val main=setup.mainStreamId?.takeIf{it in ids}?:ids.firstOrNull();_ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=listOfNotNull(main)+ids.filterNot{it==main}.take(max-1),mainStreamId=main);persist()}
+    fun loadSavedSetup(setup:SavedSetup){val available=_ui.value.streams.map{it.id}.toSet();val ids=setup.streamIds.filter{it in available};val max=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4};val main=setup.mainStreamId?.takeIf{it in ids}?:ids.firstOrNull();_ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=listOfNotNull(main)+ids.filterNot{it==main}.take(max-1),mainStreamId=main);persist()}
     fun deleteSavedSetup(id:String)=viewModelScope.launch{store.delete(id)}
     fun clearSavedSetup()=viewModelScope.launch{store.clear()}
     override fun onCleared(){timingClient.stop();super.onCleared()}
