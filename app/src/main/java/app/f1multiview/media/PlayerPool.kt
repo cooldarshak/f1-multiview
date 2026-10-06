@@ -849,6 +849,14 @@ class PlayerPool(context: Context) {
         l3SecondaryFallback.clear()
     }
 
+    /** Lightweight runtime diagnostics used to measure startup impact on-device. */
+    fun playbackStartupDiagnostics(): Map<String, String> =
+        players.mapValues { (_, player) ->
+            "state=" + player.playbackState +
+                ",isPlaying=" + player.isPlaying +
+                ",positionMs=" + player.currentPosition +
+                ",bufferedMs=" + player.bufferedPosition
+        }
     fun all(): Collection<ExoPlayer> = players.values
 }
 
