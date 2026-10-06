@@ -191,6 +191,16 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
+    // Continue Watching resumes directly into the fullscreen player once the saved
+    // session has produced a playable stream. The existing pending-resume effect
+    // performs the actual seek/play operation.
+    LaunchedEffect(ui.pendingResume?.contentId, ui.selectedStreamIds) {
+        if (ui.pendingResume != null && ui.selectedStreamIds.isNotEmpty()) {
+            fullscreenMultiview = true
+        }
+    }
+
+
     BackHandler(enabled = fullscreenStreamId != null || fullscreenMultiview) {
         fullscreenStreamId = null
         fullscreenMultiview = false
