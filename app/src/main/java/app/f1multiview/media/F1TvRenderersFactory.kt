@@ -111,11 +111,6 @@ private class F1HdrMediaCodecVideoRenderer(
             .build()
     }
 
-    private fun isF1UhdHlg(format:Format,codecMime:String):Boolean {
-        val d=listOfNotNull(format.id,format.label,format.codecs).joinToString(" ")
-        val hevc=format.sampleMimeType.equals("video/hevc",true)||codecMime.equals("video/hevc",true)||d.contains("hvc",true)||d.contains("HEVC",true)
-        val uhd=format.width>=3000&&format.height>=1600||d.contains("2160",true)||d.contains("UHD",true)
-        val hlg=format.colorInfo?.colorTransfer==C.COLOR_TRANSFER_HLG||d.contains("HLG",true)||d.contains("HDR",true)
-        return hevc&&uhd&&hlg
-    }
+    private fun isF1UhdHlg(format:Format,codecMime:String):Boolean =
+        F1HdrFormatClassifier.isUhdHlg(format, codecMime)
 }
