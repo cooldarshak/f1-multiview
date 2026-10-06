@@ -172,7 +172,14 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
         val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
-        if (ordered.isNotEmpty()) pool.playAll()
+    }
+
+    LaunchedEffect(fullscreenMultiview) {
+        if (fullscreenMultiview && ui.selectedStreamIds.isNotEmpty()) {
+            delay(150L)
+            pool.playAll()
+            ui.mainStreamId?.let { pool.syncToMain(it) }
+        }
     }
 
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
@@ -1265,6 +1272,8 @@ private fun FullscreenMultiview(
     val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
     var fullscreenBackFocused by remember { mutableStateOf(false) }
     var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
+
+    // Fullscreen is an explicit playback action; the inline Pit Wall remains paused until opened.
 
     BackHandler(enabled = true) {
         when {
