@@ -98,7 +98,9 @@ class PlayerPool(context: Context) {
                     player = player,
                     quality = selectedQualities[id] ?: Quality.AUTO,
                     isMain = isMain,
-                    preserveAudioSetting = false
+                    // Keep audio selected for every multiview player. Audible
+                    // routing is controlled by volume in setAudioPlayer/setMuted.
+                    preserveAudioSetting = true
                 )
 
                 player.addListener(object : Player.Listener {
@@ -220,7 +222,9 @@ class PlayerPool(context: Context) {
             player = player,
             quality = selectedQualities[stream.id] ?: Quality.AUTO,
             isMain = isMain,
-            preserveAudioSetting = false
+            // Do not disable secondary audio at load time. All feeds must retain
+            // an initialized audio track so switching the audible feed is instant.
+            preserveAudioSetting = true
         )
 
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
