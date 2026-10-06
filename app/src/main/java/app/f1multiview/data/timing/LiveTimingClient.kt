@@ -114,13 +114,18 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
     private fun parseSessionInfo(data:JSONObject?) {
         if(data == null) return
-        val info = data.optJSONObject("SessionInfo") ?: data
-        _sessionInfo.value = app.f1multiview.model.LiveSessionInfo(
-            name = info.optString("Name").ifBlank { info.optString("MeetingName") }.ifBlank { "-" },
-            meeting = info.optString("MeetingName").ifBlank { info.optString("Meeting").ifBlank { "-" } },
-            country = info.optString("Country").ifBlank { info.optString("Location").ifBlank { "-" } },
-            sessionType = info.optString("Type").ifBlank { info.optString("SessionType").ifBlank { "-" } },
-            status = info.optString("Status").ifBlank { _status.value }
+        val info=data.optJSONObject("SessionInfo") ?: data
+        val meeting=info.optJSONObject("Meeting") ?: JSONObject()
+        val circuit=meeting.optJSONObject("Circuit") ?: JSONObject()
+        val year=info.optString("StartDate").takeIf{it.length>=4}?.take(4)?.toIntOrNull() ?: info.optString("EndDate").takeIf{it.length>=4}?.take(4)?.toIntOrNull()
+        _sessionInfo.value=LiveSessionInfo(
+            name=info.optString("Name").ifBlank{info.optString("MeetingName")}.ifBlank{"-"},
+            meeting=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{"-"},
+            country=info.optString("Country").ifBlank{info.optString("Location")}.ifBlank{"-"},
+            sessionType=info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"},
+            status=info.optString("Status").ifBlank{_status.value},
+            circuitKey=circuit.optInt("Key",0).takeIf{it>0},
+            year=year
         )
     }
 
@@ -131,7 +136,37 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
 
     private fun parsePosition(data:JSONObject?) {
-        parseTelemetryObject(data)
+        if(data == null) return
+        val snapshots=data.optJSONArray("Position")
+        if(snapshots!=null){
+            for(i in 0 until snapshots.length()){
+                val snapshot=snapshots.optJSONObject(i) ?: continue
+                val entries=snapshot.optJSONObject("Entries") ?: continue
+                val keys=entries.keys()
+                while(keys.hasNext()){
+                    val number=keys.next();val p=entries.optJSONObject(number) ?: continue
+                    val x=p.optDouble("X",Double.NaN);val y=p.optDouble("Y",Double.NaN)
+                    if(x.isFinite()&&y.isFinite()) positionMeta[number]=TrackPositionRaw(x,y,p.optDouble("Z",0.0))
+                }
+            }
+        } else {
+            val entries=data.optJSONObject("Entries") ?: data
+            val keys=entries.keys()
+            while(keys.hasNext()){
+                val number=keys.next();val p=entries.optJSONObject(number) ?: continue
+                val x=p.optDouble("X",Double.NaN);val y=p.optDouble("Y",Double.NaN)
+                if(x.isFinite()&&y.isFinite()) positionMeta[number]=TrackPositionRaw(x,y,p.optDouble("Z",0.0))
+            }
+        }
+        publishTrackPositions()
+    }
+
+    private fun parseTrackStatus(data:JSONObject?) {
+        if(data==null) return
+        val root=data.optJSONObject("TrackStatus") ?: data
+        val code=root.optString("Status").toIntOrNull() ?: root.optInt("Status",1)
+        val label=when(code){1->"GREEN";2->"YELLOW";4->"SAFETY CAR";5->"RED";6->"VSC";7->"VSC ENDING";else->"STATUS $code"}
+        _trackStatus.value=TrackStatusInfo(code,label,root.optString("Message"))
     }
 
     private fun parseTelemetryObject(data:JSONObject?) {
@@ -209,6 +244,19 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
     private fun parseTiming(data:JSONObject?){if(data==null)return;val lines=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
         while(keys.hasNext()){val line=lines.optJSONObject(keys.next())?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("RacingNumber").ifBlank{line.optString("FullName")}.ifBlank{line.optString("Tla")}.ifBlank{"P"+pos};val gap=line.optString("GapToLeader").ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val last=line.optJSONObject("LastLapTime")?.optString("Value")?:line.optString("LastLapTime");val tyre=line.optJSONObject("BestLapTime")?.optString("Compound")?:line.optString("Compound");val s1=line.optJSONObject("LastLapTime")?.optString("Sector1")?:line.optString("Sector1");val s2=line.optJSONObject("LastLapTime")?.optString("Sector2")?:line.optString("Sector2");val s3=line.optJSONObject("LastLapTime")?.optString("Sector3")?:line.optString("Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val drs=line.optBoolean("DRS",line.optInt("DRS",0)>0);rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0),s1.ifBlank{"-"},s2.ifBlank{"-"},s3.ifBlank{"-"},speed.ifBlank{"-"},drs)}
-        if(rows.isNotEmpty())_rows.value=rows.sortedBy{it.position}
+        if(rows.isNotEmpty()){
+            _rows.value=rows.sortedBy{it.position}
+            val keys2=lines.keys()
+            while(keys2.hasNext()){
+                val number=keys2.next();val line=lines.optJSONObject(number) ?: continue
+                timingMeta[number]=TimingMeta(
+                    position=line.optString("Position").toIntOrNull()?:0,
+                    speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")}.toIntOrNull()?:0,
+                    lap=line.optInt("Lap",0).takeIf{it>0}?:line.optInt("LapNumber",0),
+                    inPit=line.optBoolean("InPit",false),stopped=line.optBoolean("Stopped",false),retired=line.optBoolean("Retired",false)
+                )
+            }
+            publishTrackPositions()
+        }
     }
 }
