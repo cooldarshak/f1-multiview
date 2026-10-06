@@ -24,3 +24,20 @@ data class Session(
     val backgroundArtworkUrl: String? = null
 )
 data class SavedSetup(val id: String, val name: String, val layout: LayoutPreset, val streamIds: List<String>, val mainStreamId: String? = null)
+
+
+data class ContinueWatchingEntry(
+    val contentId: String,
+    val title: String,
+    val series: String = "F1",
+    val eventPageId: Int,
+    val stage: String = "other",
+    val positionMs: Long,
+    val durationMs: Long = 0L,
+    val updatedAtMs: Long,
+    val artworkUrl: String? = null,
+    val backgroundArtworkUrl: String? = null,
+    val seasonYear: Int? = null,
+    val meetingNumber: Int? = null,
+    val streamId: String? = null
+)
