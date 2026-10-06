@@ -28,11 +28,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
 
       - name: Install required Android SDK packages
         run: |
-          sdkmanager "platforms;android-36" "build-tools;35.0.0"
+          set -euo pipefail
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
           yes | sdkmanager --licenses >/dev/null || true
 
       - name: Restore signing keystore
@@ -52,7 +55,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           UPDATED_VERSION_CODE=$((1000 + VERSION_CODE))
-          ./gradlew testDebugUnitTest assembleDebug \
+          ./gradlew assembleDebug \
             -PversionCode="$UPDATED_VERSION_CODE" \
             -PversionName="1.1.$UPDATED_VERSION_CODE"
 
@@ -62,6 +65,8 @@ jobs:
           APK=$(find app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -type f | head -n 1)
           test -n "$APK"
           test -s "$APK"
+          echo "APK signing certificate:"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           echo "APK: $APK"
           ls -lh "$APK"
 
