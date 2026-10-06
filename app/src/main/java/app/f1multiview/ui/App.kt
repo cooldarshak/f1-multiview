@@ -1526,6 +1526,8 @@ private fun CanonicalMultiviewLayout(
     var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
     var mainX by rememberSaveable { mutableFloatStateOf(.62f) }
     var topX by rememberSaveable { mutableFloatStateOf(.33f) }
+    var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
+    var fourSideH2 by rememberSaveable { mutableFloatStateOf(.34f) }
     var topX2 by rememberSaveable { mutableFloatStateOf(.5f) }
     var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
     var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -1591,31 +1593,34 @@ private fun CanonicalMultiviewLayout(
                             selected[1],
                             pool,
                             errors[selected[1].id],
-                            Modifier.weight(splitY).fillMaxWidth(),
+                            Modifier.weight(fourSideH1).fillMaxWidth(),
                             {},
                             onFocus,
                             surfaceType
                         )
                         ResizeHandle(Orientation.Vertical, editSize) {
-                            splitY = (splitY + it / 900f).coerceIn(.16f, .5f)
+                            val delta = it / 900f
+                            fourSideH1 = (fourSideH1 + delta).coerceIn(.16f, .58f)
+                            fourSideH2 = (fourSideH2 - delta).coerceIn(.16f, .58f)
                         }
                         PlayerTile(
                             selected[2],
                             pool,
                             errors[selected[2].id],
-                            Modifier.weight(splitY).fillMaxWidth(),
+                            Modifier.weight(fourSideH2).fillMaxWidth(),
                             {},
                             onFocus,
                             surfaceType
                         )
                         ResizeHandle(Orientation.Vertical, editSize) {
-                            splitY = (splitY + it / 900f).coerceIn(.16f, .5f)
+                            val delta = it / 900f
+                            fourSideH2 = (fourSideH2 + delta).coerceIn(.16f, .58f)
                         }
                         PlayerTile(
                             selected[3],
                             pool,
                             errors[selected[3].id],
-                            Modifier.weight((1f - 2f * splitY).coerceIn(.16f, .68f)).fillMaxWidth(),
+                            Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
                             {},
                             onFocus,
                             surfaceType
