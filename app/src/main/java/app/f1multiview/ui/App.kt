@@ -1181,7 +1181,7 @@ private fun F1HdrPlayerSurface(
             PlayerView(context).apply {
                 useController = false
                 setKeepContentOnPlayerReset(true)
-                player = player
+                this.player = player
                 HdrSurfaceHints.apply(videoSurfaceView as? android.view.SurfaceView, source)
             }
         },
