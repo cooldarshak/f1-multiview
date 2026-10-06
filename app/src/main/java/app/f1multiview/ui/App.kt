@@ -1564,17 +1564,62 @@ private fun CanonicalMultiviewLayout(
                     }
                 }
             selected.size == 4 ->
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                    Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - topX).fillMaxHeight(), {}, onFocus, surfaceType)
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    // Four-feed layout: the main feed gets the large left pane;
+                    // feeds 2-4 are stacked vertically on the right.
+                    PlayerTile(
+                        selected[0],
+                        pool,
+                        errors[selected[0].id],
+                        Modifier.weight(mainX).fillMaxHeight(),
+                        {},
+                        onFocus,
+                        surfaceType
+                    )
+                    ResizeHandle(
+                        Orientation.Horizontal,
+                        editSize,
+                        firstResizeFocusRequester
+                    ) {
+                        mainX = (mainX + it / 1000f).coerceIn(.45f, .78f)
                     }
-                    ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
-                    Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(1f - bottomX).fillMaxHeight(), {}, onFocus, surfaceType)
+                    Column(
+                        Modifier.weight(1f - mainX).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(gap)
+                    ) {
+                        PlayerTile(
+                            selected[1],
+                            pool,
+                            errors[selected[1].id],
+                            Modifier.weight(splitY).fillMaxWidth(),
+                            {},
+                            onFocus,
+                            surfaceType
+                        )
+                        ResizeHandle(Orientation.Vertical, editSize) {
+                            splitY = (splitY + it / 900f).coerceIn(.16f, .5f)
+                        }
+                        PlayerTile(
+                            selected[2],
+                            pool,
+                            errors[selected[2].id],
+                            Modifier.weight(splitY).fillMaxWidth(),
+                            {},
+                            onFocus,
+                            surfaceType
+                        )
+                        ResizeHandle(Orientation.Vertical, editSize) {
+                            splitY = (splitY + it / 900f).coerceIn(.16f, .5f)
+                        }
+                        PlayerTile(
+                            selected[3],
+                            pool,
+                            errors[selected[3].id],
+                            Modifier.weight((1f - 2f * splitY).coerceIn(.16f, .68f)).fillMaxWidth(),
+                            {},
+                            onFocus,
+                            surfaceType
+                        )
                     }
                 }
             else ->
