@@ -245,7 +245,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         val data=streams.firstOrNull{it.kind==StreamKind.DATA}
         val picked=when(name){
             "side" -> listOfNotNull(world,obc).map{it.id}
-            "quad" -> listOfNotNull(world,obc,tracker,data).map{it.id}
+            "quad" -> listOfNotNull(world,timing,tracker,data).map{it.id}
             else -> listOfNotNull(world).map{it.id}
         }
         val layout=if(name=="side") LayoutPreset.SPLIT_2 else if(name=="quad") LayoutPreset.GRID_4 else LayoutPreset.SINGLE
