@@ -1223,10 +1223,13 @@ private fun ResizeHandle(
 private fun F1HdrPlayerSurface(
     player: androidx.media3.exoplayer.ExoPlayer,
     modifier: Modifier,
-    source: String
+    source: String,
+    protectedContent: Boolean
 ) {
     val context = LocalContext.current
-    val screenshotMode = BuildConfig.DEBUG && DebugPresentationSettings.isScreenshotModeEnabled(context)
+    val screenshotMode = BuildConfig.DEBUG &&
+        DebugPresentationSettings.isScreenshotModeEnabled(context) &&
+        !protectedContent
 
     AndroidView(
         modifier = modifier,
@@ -1302,7 +1305,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
         colors = CardDefaults.cardColors(containerColor = Color.Black)
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
+            F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id, protectedContent = stream.drmLicenseUrl != null)
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
@@ -1380,6 +1383,7 @@ private fun FullscreenMultiview(
     var layout by rememberSaveable { mutableStateOf(ui.layout) }
     var activeFeedId by rememberSaveable { mutableStateOf(ui.mainStreamId ?: selected.firstOrNull()?.id) }
     var menu by rememberSaveable { mutableStateOf<String?>(null) }
+    var timingDockOpen by rememberSaveable { mutableStateOf(false) }
     var trackVersion by remember { mutableIntStateOf(0) }
     var speed by rememberSaveable(activeFeedId) { mutableFloatStateOf(1f) }
     var quality by remember(activeFeedId, pool) {
@@ -1414,6 +1418,15 @@ private fun FullscreenMultiview(
 
     val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
     val activePlayer = active?.let { pool.get(it.id) }
+
+    LaunchedEffect(activePlayer, ui.session?.live) {
+        if (activePlayer != null && ui.session?.live == false) {
+            while (true) {
+                onReplayPosition(activePlayer.currentPosition)
+                delay(500L)
+            }
+        }
+    }
 
     DisposableEffect(activePlayer) {
         if (activePlayer == null) return@DisposableEffect onDispose {}
@@ -1476,6 +1489,14 @@ private fun FullscreenMultiview(
             modifier = Modifier.fillMaxSize(),
             surfaceType = SURFACE_TYPE_SURFACE_VIEW
         )
+
+        if (timingDockOpen) {
+            FullscreenTimingDock(
+                ui = ui,
+                isTv = isTv,
+                onClose = { timingDockOpen = false }
+            )
+        }
 
         if (!controlsVisible) {
             // SurfaceView/TextureView can consume touch events underneath Compose.
@@ -1542,6 +1563,12 @@ private fun FullscreenMultiview(
                         if (mainId != null) pool.syncToMain(mainId)
                     }
                     Spacer(Modifier.width(5.dp))
+                    Control(timingDockOpen, "TIMING") {
+                        timingDockOpen = !timingDockOpen
+                        feedPickerOpen = false
+                        menu = null
+                    }
+                    Spacer(Modifier.width(5.dp))
                     Control(false, "HIDE") { controlsVisible = false }
                 }
                 if (feedPickerOpen) {
@@ -1591,6 +1618,88 @@ private fun FullscreenMultiview(
                     onMute = { pool.setMuted(active.id, !pool.isMuted(active.id)) },
                     onPlayAll = ::playAll, onPauseAll = ::pauseAll, onSeekAll = ::seekAll
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenTimingDock(
+    ui: UiState,
+    isTv: Boolean,
+    onClose: () -> Unit
+) {
+    val rows = ui.timing
+    Box(Modifier.fillMaxSize().zIndex(15f)) {
+        Surface(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .padding(top = if (isTv) 88.dp else 72.dp, bottom = if (isTv) 92.dp else 76.dp, end = 10.dp)
+                .widthIn(min = if (isTv) 330.dp else 290.dp, max = if (isTv) 430.dp else 360.dp))
+                .fillMaxHeight(),
+            color = Color(0xF014151A),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
+        ) {
+            Column(Modifier.fillMaxSize().padding(9.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (ui.session?.live == false) "REPLAY TIMING" else "LIVE TIMING",
+                            color = White, fontSize = 11.sp, fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            ui.liveSessionInfo.name.ifBlank { "F1 SESSION" } + " · " + ui.timingStatus,
+                            color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Surface(
+                        Modifier.clickable(onClick = onClose).focusable(),
+                        color = Surface2, shape = RoundedCornerShape(7.dp)
+                    ) {
+                        Text("CLOSE", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+                    }
+                }
+                Spacer(Modifier.height(7.dp))
+                Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = .055f)).padding(horizontal = 6.dp, vertical = 5.dp)) {
+                    Text("P", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
+                    Text("DRIVER", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                    Text("GAP", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(48.dp))
+                    Text("LAP", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(50.dp))
+                    Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(38.dp))
+                }
+                if (rows.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("WAITING FOR TIMING DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        items(rows) { row ->
+                            Surface(
+                                color = if (row.position % 2 == 0) Color.White.copy(alpha = .035f) else Color.Transparent,
+                                shape = RoundedCornerShape(2.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(row.position.toString(), color = Red, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(row.driver, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                "S1 " + row.sector1 + "  S2 " + row.sector2 + "  S3 " + row.sector3 +
+                                                    if (row.drs) "  DRS" else "",
+                                                color = Muted, fontSize = 5.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Text(row.gap, color = White, fontSize = 7.sp, modifier = Modifier.width(48.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(row.lastLap, color = White, fontSize = 7.sp, modifier = Modifier.width(50.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(row.tyre, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(38.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1992,7 +2101,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
-        F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "fullscreen-" + stream.id)
+        F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "fullscreen-" + stream.id, protectedContent = stream.drmLicenseUrl != null)
 
         if (!controlsVisible) {
             Surface(

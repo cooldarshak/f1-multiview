@@ -107,7 +107,7 @@ fun UgisInfoPanel(
                                 Text("Screenshot Mode",color=InfoWhite,fontWeight=FontWeight.Bold)
                                 Text(
                                     if (BuildConfig.DEBUG)
-                                        "Debug-only: use a screenshot-friendly video surface. HDR/protected presentation is bypassed for testing."
+                                        "Debug-only. Clear/non-DRM test media may use TextureView; protected F1 TV video stays on the secure SurfaceView."
                                     else
                                         "Unavailable in release builds.",
                                     color=InfoMuted,fontSize=10.sp
@@ -125,7 +125,7 @@ fun UgisInfoPanel(
                         }
                     }
                     Text(
-                        "For normal playback keep Screenshot Mode OFF. Android recommends SurfaceView for HDR playback; this debug option intentionally uses a screenshot-friendly path.",
+                        "For F1 TV Widevine playback, Screenshot Mode cannot capture the protected video frame. It will keep playback visible instead of switching the protected feed to a black TextureView.",
                         color=InfoMuted,fontSize=10.sp
                     )
                 }
