@@ -967,7 +967,7 @@ private fun SessionCard(selected: Boolean, title: String, type: String, artworkU
 private fun PitWall(
     ui: UiState,
     pool: PlayerPool,
-    errors: Map<String, String>,
+    error: String?,
     isTv: Boolean,
     compactPhone: Boolean,
     onFullscreenAll: () -> Unit,
