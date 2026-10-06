@@ -41,7 +41,7 @@ fun UgisInfoPanel(
     isTv: Boolean,
     onScreenshotModeChanged: (Boolean) -> Unit
 ) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","telemetry","updates","saved","settings") } ?: "calendar"
+    val section = ui.selectedPanel?.takeIf { it in setOf("timing","tracker","shows","calendar","standings","results","radio","telemetry","updates","saved","settings") } ?: "calendar"
     BackHandler(enabled = true) { vm.panel(null) }
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
@@ -62,8 +62,8 @@ fun UgisInfoPanel(
                 InfoButton(section=="results","RESULTS"){vm.panel("results");vm.loadResults()}
                 InfoButton(section=="shows","SHOWS & DOCS"){vm.panel("shows");vm.loadShowsDocs()}
                 InfoButton(section=="radio","RADIO"){vm.panel("radio")}
-                InfoButton(false,"TRACKER"){vm.activateTracker()}
-                InfoButton(false,"RACE MAP"){vm.activateRaceMap()}
+                InfoButton(section=="tracker","TRACKER"){vm.activateTracker()}
+                InfoButton(section=="tracker","RACE MAP"){vm.activateRaceMap()}
                 InfoButton(section=="saved","SAVED VIEWS"){vm.panel("saved")}
                 InfoButton(section=="settings","SETTINGS"){vm.panel("settings")}
                 Row(Modifier.focusGroup(),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically){
@@ -152,6 +152,7 @@ fun UgisInfoPanel(
                 }
             }
             when(section) {
+                "tracker" -> TrackMapPanel(ui=ui,isTv=isTv)
                 "timing" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     item {
                         Surface(color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth()) {
