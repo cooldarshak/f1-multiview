@@ -6,6 +6,7 @@ import android.opengl.EGLContext
 import android.opengl.EGLDisplay
 import android.opengl.EGLSurface
 import android.util.Log
+import androidx.media3.common.C
 import androidx.media3.common.GlObjectsProvider
 import androidx.media3.common.GlTextureInfo
 import androidx.media3.effect.DefaultGlObjectsProvider
@@ -71,11 +72,18 @@ class ProtectedHlgGlObjectsProvider : GlObjectsProvider {
             return delegate.createEglSurface(display, surface, colorTransfer, true)
         }
 
+        // This provider is installed on the video graph, but the graph is also
+        // used for SDR/FHD playback. Only request the protected BT.2020 HLG
+        // surface when Media3 explicitly tells us the transfer is HLG.
+        if (colorTransfer != C.COLOR_TRANSFER_HLG) {
+            return delegate.createEglSurface(display, surface, colorTransfer, false)
+        }
+
         val config = chooseProtectedHlgConfig(display, true)
             ?: chooseProtectedHlgConfig(display, false)
 
         if (config == null) {
-            Log.w(TAG, "No protected HLG EGL window config; falling back to Media3 surface")
+            Log.w(TAG, "No protected HLG EGL window config; falling back to Media3 HLG surface")
             return delegate.createEglSurface(display, surface, colorTransfer, false)
         }
 
