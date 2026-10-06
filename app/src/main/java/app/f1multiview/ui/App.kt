@@ -49,9 +49,6 @@ import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
@@ -1162,12 +1159,6 @@ private fun FullscreenMultiview(
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
-            .onKeyEvent { event: KeyEvent ->
-                if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER && !controlsVisible) {
-                    controlsVisible = true
-                    true
-                } else false
-            }
             .pointerInput(controlsVisible, feedPickerOpen, editSize, menu) {
                 detectTapGestures {
                     if (!feedPickerOpen && !editSize && menu == null) {
@@ -1629,12 +1620,6 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .fillMaxSize()
             .background(Color.Black)
             .focusable()
-            .onKeyEvent { event: KeyEvent ->
-                if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER && !controlsVisible) {
-                    controlsVisible = true
-                    true
-                } else false
-            }
             .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
