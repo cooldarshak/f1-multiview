@@ -132,7 +132,7 @@ class PlayerPool(context: Context) {
                             sourceRecoveryAttempts.remove(id)
                             decoderRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
-                            startupRequestedAtMs.remove(id)?.let { startedAt ->
+                            startupRequestedAtMs[id]?.let { startedAt ->
                                 val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
                                 Log.i("PlayerPool", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
                             }
@@ -140,7 +140,14 @@ class PlayerPool(context: Context) {
                             if (id in desiredPlaying) {
                                 // READY means Media3 can play immediately, but it does not mean
                                 // the first video frame has reached the surface yet.
-                                scheduleStartupPlayback(id)
+                                if (playAllRequested) {
+                                    scheduleStartupPlayback(id)
+                                } else if (!player.isPlaying) {
+                                    // Preserve direct/user-initiated play(id) behavior outside
+                                    // the multiview startup scheduler.
+                                    player.playWhenReady = true
+                                    player.play()
+                                }
                             }
                         }
 
@@ -148,7 +155,7 @@ class PlayerPool(context: Context) {
                             val firstFrameAt = android.os.SystemClock.elapsedRealtime()
                             firstFrameRendered.add(id)
                             startupFirstFrameAtMs[id] = firstFrameAt
-                            startupRequestedAtMs[id]?.let { requestedAt ->
+                            startupRequestedAtMs.remove(id)?.let { requestedAt ->
                                 Log.i("PlayerPool", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
                             }
                             val referenceId = syncMainId
