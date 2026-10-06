@@ -165,12 +165,17 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
-        pool.retain(selectedIds)
-        val ordered = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
-        val mainId = ui.mainStreamId ?: ordered.firstOrNull()?.id
+        val videoSelectedIds = ui.selectedStreamIds.filter { id ->
+            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK)
+        }.toSet()
+        pool.retain(videoSelectedIds)
+        val ordered = ui.selectedStreamIds.mapNotNull { id ->
+            ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK) }
+        }
+        val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
-        // PlayerPool owns decoder/resource protection. Do not serialize feed preparation
-        // here: every selected feed should enter Media3 immediately.
+        // Timing and Driver Tracker are native data feeds, not video decoders.
+        // Only real video feeds enter PlayerPool.
         ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
                 pool.load(stream)
@@ -1089,6 +1094,7 @@ private fun PitWall(
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
         CanonicalMultiviewLayout(
+            ui,
             selected,
             pool,
             errors,
@@ -1384,7 +1390,6 @@ private fun FullscreenMultiview(
     var layout by rememberSaveable { mutableStateOf(ui.layout) }
     var activeFeedId by rememberSaveable { mutableStateOf(ui.mainStreamId ?: selected.firstOrNull()?.id) }
     var menu by rememberSaveable { mutableStateOf<String?>(null) }
-    var timingDockOpen by rememberSaveable { mutableStateOf(false) }
     var trackVersion by remember { mutableIntStateOf(0) }
     var speed by rememberSaveable(activeFeedId) { mutableFloatStateOf(1f) }
     var quality by remember(activeFeedId, pool) {
@@ -1491,14 +1496,6 @@ private fun FullscreenMultiview(
             surfaceType = SURFACE_TYPE_SURFACE_VIEW
         )
 
-        if (timingDockOpen) {
-            FullscreenTimingDock(
-                ui = ui,
-                isTv = isTv,
-                onClose = { timingDockOpen = false }
-            )
-        }
-
         if (!controlsVisible) {
             // SurfaceView/TextureView can consume touch events underneath Compose.
             // Keep a transparent Compose hit target over the whole fullscreen area so
@@ -1564,12 +1561,6 @@ private fun FullscreenMultiview(
                         if (mainId != null) pool.syncToMain(mainId)
                     }
                     Spacer(Modifier.width(5.dp))
-                    Control(timingDockOpen, "TIMING") {
-                        timingDockOpen = !timingDockOpen
-                        feedPickerOpen = false
-                        menu = null
-                    }
-                    Spacer(Modifier.width(5.dp))
                     Control(false, "HIDE") { controlsVisible = false }
                 }
                 if (feedPickerOpen) {
@@ -1625,89 +1616,8 @@ private fun FullscreenMultiview(
 }
 
 @Composable
-private fun FullscreenTimingDock(
-    ui: UiState,
-    isTv: Boolean,
-    onClose: () -> Unit
-) {
-    val rows = ui.timing
-    Box(Modifier.fillMaxSize().zIndex(15f)) {
-        Surface(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .padding(top = if (isTv) 88.dp else 72.dp, bottom = if (isTv) 92.dp else 76.dp, end = 10.dp)
-                .widthIn(min = if (isTv) 330.dp else 290.dp, max = if (isTv) 430.dp else 360.dp)
-                .fillMaxHeight(),
-            color = Color(0xF014151A),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
-        ) {
-            Column(Modifier.fillMaxSize().padding(9.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            if (ui.session?.live == false) "REPLAY TIMING" else "LIVE TIMING",
-                            color = White, fontSize = 11.sp, fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            ui.liveSessionInfo.name.ifBlank { "F1 SESSION" } + " · " + ui.timingStatus,
-                            color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Surface(
-                        Modifier.clickable(onClick = onClose).focusable(),
-                        color = Surface2, shape = RoundedCornerShape(7.dp)
-                    ) {
-                        Text("CLOSE", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
-                    }
-                }
-                Spacer(Modifier.height(7.dp))
-                Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = .055f)).padding(horizontal = 6.dp, vertical = 5.dp)) {
-                    Text("P", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
-                    Text("DRIVER", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                    Text("GAP", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(48.dp))
-                    Text("LAP", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(50.dp))
-                    Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(38.dp))
-                }
-                if (rows.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("WAITING FOR TIMING DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        items(rows) { row ->
-                            Surface(
-                                color = if (row.position % 2 == 0) Color.White.copy(alpha = .035f) else Color.Transparent,
-                                shape = RoundedCornerShape(2.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(row.position.toString(), color = Red, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(row.driver, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(
-                                                "S1 " + row.sector1 + "  S2 " + row.sector2 + "  S3 " + row.sector3 +
-                                                    if (row.drs) "  DRS" else "",
-                                                color = Muted, fontSize = 5.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Text(row.gap, color = White, fontSize = 7.sp, modifier = Modifier.width(48.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(row.lastLap, color = White, fontSize = 7.sp, modifier = Modifier.width(50.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(row.tyre, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(38.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun CanonicalMultiviewLayout(
+    ui: UiState,
     selected: List<StreamSource>,
     pool: PlayerPool,
     errors: Map<String, String>,
@@ -1744,29 +1654,30 @@ private fun CanonicalMultiviewLayout(
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
             selected.size == 1 ->
-                PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.fillMaxSize(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[1], pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                 }
             selected.size == 4 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     // Four-feed layout: the main feed gets the large left pane;
                     // feeds 2-4 are stacked vertically on the right.
-                    PlayerTile(
+                    MultiviewFeedTile(
                         selected[0],
+                        ui,
                         pool,
                         errors[selected[0].id],
                         Modifier.weight(mainX).fillMaxHeight(),
@@ -1786,8 +1697,9 @@ private fun CanonicalMultiviewLayout(
                         Modifier.weight(1f - mainX).fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(gap)
                     ) {
-                        PlayerTile(
-                            selected[1],
+                        MultiviewFeedTile(
+                        selected[1],
+                        ui,
                             pool,
                             errors[selected[1].id],
                             Modifier.weight(fourSideH1).fillMaxWidth(),
@@ -1801,8 +1713,9 @@ private fun CanonicalMultiviewLayout(
                             fourSideH1 = (fourSideH1 + delta).coerceIn(.16f, .58f)
                             fourSideH2 = (fourSideH2 - delta).coerceIn(.16f, .58f)
                         }
-                        PlayerTile(
-                            selected[2],
+                        MultiviewFeedTile(
+                        selected[2],
+                        ui,
                             pool,
                             errors[selected[2].id],
                             Modifier.weight(fourSideH2).fillMaxWidth(),
@@ -1815,8 +1728,9 @@ private fun CanonicalMultiviewLayout(
                             val delta = it / 900f
                             fourSideH2 = (fourSideH2 + delta).coerceIn(.16f, .58f)
                         }
-                        PlayerTile(
-                            selected[3],
+                        MultiviewFeedTile(
+                        selected[3],
+                        ui,
                             pool,
                             errors[selected[3].id],
                             Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
@@ -1830,19 +1744,19 @@ private fun CanonicalMultiviewLayout(
             else ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[0], pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), {}, onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        PlayerTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[3], pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), {}, onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        PlayerTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[4], pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), {}, onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        PlayerTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[5], pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), {}, onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
                     }
                 }
         }
