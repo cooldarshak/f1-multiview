@@ -150,8 +150,9 @@ class PlayerPool(context: Context) {
                                 }
                             }
                         }
+                    }
 
-                        override fun onRenderedFirstFrame() {
+                    override fun onRenderedFirstFrame() {
                             val firstFrameAt = android.os.SystemClock.elapsedRealtime()
                             firstFrameRendered.add(id)
                             startupFirstFrameAtMs[id] = firstFrameAt
