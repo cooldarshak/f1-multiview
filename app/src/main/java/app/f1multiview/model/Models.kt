@@ -63,3 +63,47 @@ data class LiveSessionInfo(
     val sessionType: String = "-",
     val status: String = "-"
 )
+
+
+data class TrackDriverPosition(
+    val number: String,
+    val name: String = "-",
+    val acronym: String = "-",
+    val team: String = "-",
+    val teamColor: String = "FFFFFF",
+    val x: Double,
+    val y: Double,
+    val z: Double = 0.0,
+    val position: Int = 0,
+    val speed: Int = 0,
+    val lap: Int = 0,
+    val inPit: Boolean = false,
+    val stopped: Boolean = false,
+    val retired: Boolean = false,
+    val updatedAtMs: Long = 0L,
+    val trail: List<TrackPoint> = emptyList()
+)
+
+data class TrackPoint(val x: Double, val y: Double)
+
+data class TrackStatusInfo(
+    val code: Int = 1,
+    val label: String = "GREEN",
+    val message: String = ""
+)
+
+data class TrackCorner(
+    val number: Int,
+    val letter: String = "",
+    val x: Double,
+    val y: Double,
+    val distance: Double = 0.0,
+    val angle: Double = 0.0
+)
+
+data class TrackMapGeometry(
+    val circuitKey: Int,
+    val year: Int,
+    val rotation: Double = 0.0,
+    val corners: List<TrackCorner> = emptyList()
+)
