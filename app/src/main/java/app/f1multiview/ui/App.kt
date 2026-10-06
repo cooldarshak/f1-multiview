@@ -923,7 +923,7 @@ private fun PitWall(
     onToggleStream: (String) -> Unit,
     onSetMainStream: (String) -> Unit
 ) {
-    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -944,7 +944,7 @@ private fun PitWall(
         Box(Modifier.width(5.dp).height(28.dp).background(Red, RoundedCornerShape(3.dp)))
         Text("LIVE PIT WALL", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 14.dp))
         Spacer(Modifier.weight(1f))
-        Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + "/6", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+        Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Surface(
             Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
@@ -1006,7 +1006,7 @@ private fun PitWall(
         Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(170.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
             Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
                 Text("CHOOSE YOUR FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
-                Text("Choose up to 6 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
         return
@@ -1302,7 +1302,7 @@ private fun FullscreenMultiview(
     onLayout: (LayoutPreset) -> Unit,
     onPreset: (String) -> Unit
 ) {
-    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(6)
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
