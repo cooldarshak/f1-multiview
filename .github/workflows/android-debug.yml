@@ -45,10 +45,11 @@ jobs:
           set -euo pipefail
           test -n "$KEYSTORE_BASE64"
           mkdir -p "${CM_KEYSTORE_PATH%/*}"
-          CLEAN_BASE64=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]')
+          CLEAN_BASE64=$(printf '%s' "$KEYSTORE_BASE64" | tr -cd 'A-Za-z0-9+/=')
           test -n "$CLEAN_BASE64"
-          printf '%s' "$CLEAN_BASE64" | base64 --decode > "$CM_KEYSTORE_PATH"
+          printf '%s' "$CLEAN_BASE64" | base64 --decode --ignore-garbage > "$CM_KEYSTORE_PATH"
           test -s "$CM_KEYSTORE_PATH"
+          keytool -list -keystore "$CM_KEYSTORE_PATH" -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" >/dev/null
 
       - name: Assemble signed debug APK
         env:
