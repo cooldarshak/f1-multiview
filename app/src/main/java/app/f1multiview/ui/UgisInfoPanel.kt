@@ -31,7 +31,11 @@ import app.f1multiview.viewmodel.UiState
 private val InfoWhite = Color(0xFFF5F5F7)
 private val InfoMuted = Color(0xFF9698A2)
 private val InfoRed = Color(0xFFE10600)
-private val InfoSurface = Color(0xFF14151B)
+private val InfoSurface = Color(0xFF101116)
+private val InfoSurface2 = Color(0xFF17181E)
+private val InfoLine = Color(0xFF292B33)
+private val InfoGreen = Color(0xFF58D68D)
+private val InfoYellow = Color(0xFFE4C24A)
 
 @Composable
 fun UgisInfoPanel(
@@ -48,13 +52,13 @@ fun UgisInfoPanel(
     val updateManager=remember(context){AppUpdateManager(context)}
     var updateMessage by remember{mutableStateOf("")}
     Surface(Modifier.fillMaxSize(),color=Color.Black.copy(alpha=.96f)) {
-        Column(Modifier.fillMaxSize().padding(if(isTv) 28.dp else 18.dp)) {
+        Column(Modifier.fillMaxSize().padding(if(isTv) 18.dp else 12.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
-                Text("F1 INFO",color=InfoWhite,fontSize=22.sp,fontWeight=FontWeight.ExtraBold)
+                Column { Text("F1  ·  RACE CONTROL",color=InfoWhite,fontSize=18.sp,fontWeight=FontWeight.Black); Text(ui.liveSessionInfo.name+"  ·  "+ui.liveSessionInfo.sessionType,color=InfoMuted,fontSize=8.sp) }
                 Spacer(Modifier.weight(1f))
                 TextButton({vm.panel(null)}) { Text("CLOSE",color=InfoWhite,fontWeight=FontWeight.Bold) }
             }
-            Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().focusGroup().background(InfoSurface2).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                 InfoButton(section=="timing","LIVE TIMING"){vm.panel("timing")}
                 InfoButton(section=="telemetry","TELEMETRY"){vm.panel("telemetry")}
                 InfoButton(section=="calendar","CALENDAR"){vm.panel("calendar");vm.loadCalendar()}
@@ -74,7 +78,7 @@ fun UgisInfoPanel(
                 }
                 InfoButton(section=="updates","CHECK UPDATES"){vm.panel("updates");scope.launch{updateManager.check().onSuccess{info->if(info==null)updateMessage="You are up to date." else {updateMessage="Update ${info.versionName} available.";updateManager.downloadAndInstall(info)}}.onFailure{updateMessage=it.message.orEmpty()}}}
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
             if(section=="saved"){
                 var name by remember{mutableStateOf("Race View")}
                 Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
@@ -167,7 +171,7 @@ fun UgisInfoPanel(
                     }
                     item { InfoRow("WX","Weather","Air "+ui.weather.air+" · Track "+ui.weather.track+" · Humidity "+ui.weather.humidity,"Wind "+ui.weather.wind) }
                     items(ui.timing){r->
-                        InfoRow(r.position.toString(),r.driver,"Gap "+r.gap+" · Last "+r.lastLap+" · S1 "+r.sector1+" · S2 "+r.sector2+" · S3 "+r.sector3,""+r.tyre+" · "+r.speed)
+                        F1TimingRow(r)
                     }
                     if(ui.session?.live==false){
                         item{
@@ -236,6 +240,22 @@ fun UgisInfoPanel(
         Text(label,color=InfoWhite,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=14.dp,vertical=9.dp))
     }
 }
+@Composable private fun F1TimingRow(r:TimingRow){
+    Surface(color=if(r.position%2==0) InfoSurface else InfoSurface2,shape=RoundedCornerShape(1.dp),modifier=Modifier.fillMaxWidth()){
+        Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically){
+            Text(r.position.toString(),color=InfoRed,fontWeight=FontWeight.Black,fontSize=10.sp,modifier=Modifier.width(34.dp))
+            Column(Modifier.weight(1f)){
+                Text(r.driver,color=InfoWhite,fontWeight=FontWeight.Bold,fontSize=11.sp)
+                Text("P"+r.position+"  ·  "+r.speed+" km/h",color=InfoMuted,fontSize=7.sp)
+            }
+            Text(r.gap,color=InfoWhite,fontSize=9.sp,modifier=Modifier.width(72.dp))
+            Text(r.lastLap,color=InfoWhite,fontSize=9.sp,modifier=Modifier.width(72.dp))
+            Text("S1 "+r.sector1+"  S2 "+r.sector2+"  S3 "+r.sector3,color=InfoWhite.copy(alpha=.82f),fontSize=8.sp,modifier=Modifier.width(220.dp))
+            Text(r.tyre,color=if(r.tyre.contains("S",true)) InfoRed else if(r.tyre.contains("M",true)) InfoYellow else InfoWhite,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(58.dp))
+        }
+    }
+}
+
 @Composable private fun InfoRow(pos:String,title:String,sub:String,meta:String){
     Surface(color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth()){
         Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
