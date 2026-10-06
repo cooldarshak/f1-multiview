@@ -14,6 +14,7 @@ import app.f1multiview.data.ContinueWatchingStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
 import app.f1multiview.data.timing.LiveTimingClient
 import app.f1multiview.data.timing.ReplayTimingClient
+import app.f1multiview.data.timing.TrackMapClient
 import app.f1multiview.model.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -40,6 +41,7 @@ data class UiState(
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
     val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(),
+    val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
     val pendingResume: ContinueWatchingEntry? = null
@@ -48,7 +50,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
      private val continueStore=ContinueWatchingStore(application)
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
-    private val timingClient=LiveTimingClient(viewModelScope)
+    private val trackMapClient=TrackMapClient()
+    private val timingClient=LiveTimingClient(viewModelScope){ provider.liveTimingHeaders() }
     private val replayTimingClient=ReplayTimingClient()
     private val featureClient=UgisFeatureClient(application)
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
@@ -63,7 +66,9 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.teamRadio.collect{items->_ui.value=_ui.value.copy(teamRadio=items)}}
         viewModelScope.launch{timingClient.telemetry.collect{items->if(items.isNotEmpty())_ui.value=_ui.value.copy(telemetry=items)}}
         viewModelScope.launch{timingClient.sessionInfo.collect{info->_ui.value=_ui.value.copy(liveSessionInfo=info)}}
-        viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
+        viewModelScope.launch{timingClient.trackPositions.collect{positions->_ui.value=_ui.value.copy(trackPositions=positions)}}
+        viewModelScope.launch{timingClient.trackStatus.collect{status->_ui.value=_ui.value.copy(trackStatus=status)}}
+        viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
         }
@@ -87,8 +92,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             }
         }
     }
-    fun signInWithSessionToken(token:String)=viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signInWithSessionToken(token).fold({ _ui.value=_ui.value.copy(auth=AuthState.SignedIn);loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Browser sign-in failed"),providerError=it.message)})}
-    fun signIn(username:String,password:String){if(username.isBlank()||password.isBlank())return;viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signIn(ProviderCredentials(username.trim(),password)).fold({_ui.value=_ui.value.copy(auth=AuthState.SignedIn);loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Sign-in failed"),providerError=it.message)})}}
+    fun signInWithSessionToken(token:String)=viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signInWithSessionToken(token).fold({ _ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Browser sign-in failed"),providerError=it.message)})}
+    fun signIn(username:String,password:String){if(username.isBlank()||password.isBlank())return;viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signIn(ProviderCredentials(username.trim(),password)).fold({_ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Sign-in failed"),providerError=it.message)})}}
     fun signOut()=viewModelScope.launch{provider.signOut();_ui.value=UiState(auth=AuthState.SignedOut)}
     private suspend fun loadSessions(){provider.sessions().fold({sessions->val first=sessions.firstOrNull();_ui.value=_ui.value.copy(auth=AuthState.SignedIn,sessions=sessions,session=first);if(first!=null)loadStreams(first)},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Unable to load F1 TV sessions"),providerError=it.message)})}
     fun loadVodSeasons()=viewModelScope.launch{provider.vodSeasons().onSuccess{seasons->val selected=seasons.firstOrNull();_ui.value=_ui.value.copy(vodSeasons=seasons,selectedSeason=selected);if(selected!=null)loadVodEvents(selected)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
@@ -285,8 +290,21 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null) resolveSource(source)
 }
-    fun activateTracker(){ val id=_ui.value.streams.firstOrNull{it.kind==StreamKind.TRACK}?.id ?: return; setMainStream(id) }
-    fun activateRaceMap(){ val id=_ui.value.streams.firstOrNull{it.kind==StreamKind.DATA}?.id ?: _ui.value.streams.firstOrNull{it.kind==StreamKind.TRACK}?.id ?: return; setMainStream(id) }
+    fun activateTracker(){
+    _ui.value=_ui.value.copy(selectedPanel="tracker")
+    loadTrackMapGeometry()
+}
+fun activateRaceMap(){
+    _ui.value=_ui.value.copy(selectedPanel="tracker")
+    loadTrackMapGeometry()
+}
+fun loadTrackMapGeometry()=viewModelScope.launch{
+    val info=_ui.value.liveSessionInfo
+    val key=info.circuitKey ?: return@launch
+    val year=info.year ?: java.time.Year.now().value
+    trackMapClient.load(key,year).onSuccess{geometry->_ui.value=_ui.value.copy(trackGeometry=geometry,providerError=null)}
+        .onFailure{_ui.value=_ui.value.copy(providerError="Track map geometry unavailable: "+(it.message?:"unknown error"))}
+}
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
         val current=_ui.value.selectedStreamIds
