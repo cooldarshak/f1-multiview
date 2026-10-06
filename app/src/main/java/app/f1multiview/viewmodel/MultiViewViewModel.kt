@@ -65,6 +65,11 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
         }
+        viewModelScope.launch {
+            continueStore.entries.collect { entries ->
+                _ui.value = _ui.value.copy(continueWatching = entries)
+            }
+        }
         viewModelScope.launch{
             store.setup.collect{setup->
                 if(setup!=null&&setup.streamIds.isNotEmpty()&&_ui.value.streams.isNotEmpty()){
