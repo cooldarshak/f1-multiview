@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import app.f1multiview.model.*
 import app.f1multiview.media.RadioPlayer
+import app.f1multiview.media.DebugPresentationSettings
+import app.f1multiview.BuildConfig
 import app.f1multiview.core.update.AppUpdateManager
 import kotlinx.coroutines.launch
 import app.f1multiview.viewmodel.MultiViewViewModel
@@ -32,8 +34,14 @@ private val InfoRed = Color(0xFFE10600)
 private val InfoSurface = Color(0xFF14151B)
 
 @Composable
-fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer, isTv: Boolean) {
-    val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","updates","saved") } ?: "calendar"
+fun UgisInfoPanel(
+    ui: UiState,
+    vm: MultiViewViewModel,
+    radioPlayer: RadioPlayer,
+    isTv: Boolean,
+    onScreenshotModeChanged: (Boolean) -> Unit
+) {
+    val section = ui.selectedPanel?.takeIf { it in setOf("timing","shows","calendar","standings","results","radio","updates","saved","settings") } ?: "calendar"
     BackHandler(enabled = true) { vm.panel(null) }
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
@@ -56,6 +64,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                 InfoButton(false,"TRACKER"){vm.activateTracker()}
                 InfoButton(false,"RACE MAP"){vm.activateRaceMap()}
                 InfoButton(section=="saved","SAVED VIEWS"){vm.panel("saved")}
+                InfoButton(section=="settings","SETTINGS"){vm.panel("settings")}
                 InfoButton(section=="updates","CHECK UPDATES"){vm.panel("updates");scope.launch{updateManager.check().onSuccess{info->if(info==null)updateMessage="You are up to date." else {updateMessage="Update ${info.versionName} available.";updateManager.downloadAndInstall(info)}}.onFailure{updateMessage=it.message.orEmpty()}}}
             }
             Spacer(Modifier.height(14.dp))
@@ -75,6 +84,39 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                             }
                         }
                     }
+                }
+            }
+            if(section=="settings"){
+                var screenshotMode by remember { mutableStateOf(DebugPresentationSettings.isScreenshotModeEnabled(context)) }
+                Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
+                    Text("PLAYBACK SETTINGS",color=InfoWhite,fontSize=14.sp,fontWeight=FontWeight.ExtraBold)
+                    Surface(color=InfoSurface,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth()){
+                        Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+                            Column(Modifier.weight(1f)){
+                                Text("Screenshot Mode",color=InfoWhite,fontWeight=FontWeight.Bold)
+                                Text(
+                                    if (BuildConfig.DEBUG)
+                                        "Debug-only: use a screenshot-friendly video surface. HDR/protected presentation is bypassed for testing."
+                                    else
+                                        "Unavailable in release builds.",
+                                    color=InfoMuted,fontSize=10.sp
+                                )
+                            }
+                            if(BuildConfig.DEBUG){
+                                Switch(
+                                    checked=screenshotMode,
+                                    onCheckedChange={
+                                        screenshotMode=it
+                                        onScreenshotModeChanged(it)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "For normal playback keep Screenshot Mode OFF. Android recommends SurfaceView for HDR playback; this debug option intentionally uses a screenshot-friendly path.",
+                        color=InfoMuted,fontSize=10.sp
+                    )
                 }
             }
             if(section=="updates"){
@@ -152,6 +194,7 @@ fun UgisInfoPanel(ui: UiState, vm: MultiViewViewModel, radioPlayer: RadioPlayer,
                         }
                     }
                 }
+                "settings" -> {}
                 else -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     items(ui.results){r-> InfoRow(r.position,r.name,r.constructor+" · "+r.status,r.points+" pts")}
                 }
