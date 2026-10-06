@@ -20,10 +20,16 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.effect.DefaultVideoFrameProcessor
 import androidx.media3.effect.SingleInputVideoGraph
 import app.f1multiview.media.protectedhdr.ProtectedHlgGlObjectsProvider
+import app.f1multiview.media.protectedhdr.ProtectedHdrCapabilitiesProbe
 
 class F1TvRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
     private val appContext=context.applicationContext
-    init { setEnableDecoderFallback(true) }
+    init {
+        setEnableDecoderFallback(true)
+        // Diagnostics only; do not gate playback on extension strings because some
+        // TV firmware implements protected HDR without advertising every extension.
+        ProtectedHdrCapabilitiesProbe.probe()
+    }
 
     private fun needsSynchronousCodecQueueing(): Boolean {
         val identity=listOf(Build.BRAND,Build.MANUFACTURER,Build.MODEL,Build.DEVICE,Build.PRODUCT).joinToString(" ").lowercase()
