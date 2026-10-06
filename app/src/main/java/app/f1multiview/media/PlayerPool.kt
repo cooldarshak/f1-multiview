@@ -57,6 +57,7 @@ class PlayerPool(context: Context) {
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
+    private val startupRequestedAtMs = mutableMapOf<String, Long>()
     private val syncPausedByReference = mutableSetOf<String>()
     private val syncEngine = SyncEngine()
     private var syncMainId: String? = null
@@ -128,6 +129,10 @@ class PlayerPool(context: Context) {
                             sourceRecoveryAttempts.remove(id)
                             decoderRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
+                            startupRequestedAtMs.remove(id)?.let { startedAt ->
+                                val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+                                Log.i("PlayerPool", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
+                            }
                             if (playAllRequested) desiredPlaying.add(id)
                             if (id in desiredPlaying && !player.isPlaying) player.play()
                             // A newly-ready follower must join the already-running sync loop
@@ -238,6 +243,8 @@ class PlayerPool(context: Context) {
             preserveAudioSetting = true
         )
 
+        startupRequestedAtMs[stream.id] = android.os.SystemClock.elapsedRealtime()
+        Log.i("PlayerPool", "STARTUP_LOAD id=${stream.id} players=${players.size} main=${stream.id == audioPlayerId}")
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
@@ -831,6 +838,7 @@ class PlayerPool(context: Context) {
         streams.remove(id)
         decoderRecoveryAttempts.remove(id)
         l3SecondaryFallback.remove(id)
+        startupRequestedAtMs.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -847,6 +855,7 @@ class PlayerPool(context: Context) {
         streams.clear()
         decoderRecoveryAttempts.clear()
         l3SecondaryFallback.clear()
+        startupRequestedAtMs.clear()
     }
 
     /** Lightweight runtime diagnostics used to measure startup impact on-device. */
