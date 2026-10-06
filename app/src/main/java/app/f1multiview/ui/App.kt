@@ -1376,6 +1376,7 @@ private fun FullscreenMultiview(
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     val context = LocalContext.current
+    val isTv = remember(context) { isTelevision(context) }
     val displayHdr = displaySupportsHdr(context)
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
     var feedPickerOpen by rememberSaveable { mutableStateOf(false) }
@@ -1635,7 +1636,7 @@ private fun FullscreenTimingDock(
             Modifier
                 .align(Alignment.CenterEnd)
                 .padding(top = if (isTv) 88.dp else 72.dp, bottom = if (isTv) 92.dp else 76.dp, end = 10.dp)
-                .widthIn(min = if (isTv) 330.dp else 290.dp, max = if (isTv) 430.dp else 360.dp))
+                .widthIn(min = if (isTv) 330.dp else 290.dp, max = if (isTv) 430.dp else 360.dp)
                 .fillMaxHeight(),
             color = Color(0xF014151A),
             shape = RoundedCornerShape(12.dp),
