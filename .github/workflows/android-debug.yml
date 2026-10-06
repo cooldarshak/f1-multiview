@@ -45,7 +45,9 @@ jobs:
           set -euo pipefail
           test -n "$KEYSTORE_BASE64"
           mkdir -p "${CM_KEYSTORE_PATH%/*}"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$CM_KEYSTORE_PATH"
+          CLEAN_BASE64=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]')
+          test -n "$CLEAN_BASE64"
+          printf '%s' "$CLEAN_BASE64" | base64 --decode > "$CM_KEYSTORE_PATH"
           test -s "$CM_KEYSTORE_PATH"
 
       - name: Assemble signed debug APK
