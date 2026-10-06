@@ -40,8 +40,25 @@ class ReplayTimingClient {
     }
     fun rowsAt(videoPositionMs:Long):List<TimingRow> {
         val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
-        return snapshots.lastOrNull{it.offsetMs<=target}?.rows.orEmpty()
+        if(snapshots.isEmpty()) return emptyList()
+        var lo=0
+        var hi=snapshots.lastIndex
+        var best=-1
+        while(lo<=hi){
+            val mid=(lo+hi) ushr 1
+            if(snapshots[mid].offsetMs<=target){best=mid;lo=mid+1}else hi=mid-1
+        }
+        return if(best>=0) snapshots[best].rows else emptyList()
     }
+
+    fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs }
+
+    fun nudge(deltaMs:Long){ syncOffsetMs += deltaMs }
+
+    fun calibratedOffset(videoPositionMs:Long, timingPositionMs:Long):Long =
+        (timingPositionMs-videoPositionMs).coerceIn(-300_000L,300_000L)
+
+    fun snapshotCount():Int = snapshots.size
     fun isLoaded()=snapshots.isNotEmpty()
     fun sync():ReplaySyncData=syncData
     private fun parse(text:String):List<ReplayTimingSnapshot> {
