@@ -580,36 +580,29 @@ class PlayerPool(context: Context) {
         audioPlayerId = id
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
+            // Audio selection must remain enabled on every feed. We switch the
+            // audible feed with volume only; disabling/re-enabling the renderer
+            // caused a secondary feed to remain silent after switching from main.
             player.volume = if (isMain) 1f else 0f
-            player.trackSelectionParameters = buildQualityParameters(
-                player = player,
-                quality = selectedQualities[pid] ?: Quality.AUTO,
-                isMain = isMain,
-                preserveAudioSetting = false
-            )
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
         }
     }
 
     fun setMuted(id: String, muted: Boolean) {
-        val target = players[id] ?: return
+        if (players[id] == null) return
 
-        if (muted) {
-            target.volume = 0f
-            target.trackSelectionParameters = target.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                .build()
-            return
-        }
-
-        // Multiview has one audible feed at a time. Unmuting a feed also enables
-        // its audio renderer; secondary feeds start with audio disabled by design.
+        // Keep audio tracks selected on all multiview players and use volume as
+        // the sole mute/audible-feed switch. This avoids tearing down a secondary
+        // audio renderer when the user moves audio from MAIN to another feed.
         players.forEach { (otherId, player) ->
-            val isTarget = otherId == id
-            player.volume = if (isTarget) 1f else 0f
+            player.volume = if (!muted && otherId == id) 1f else 0f
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isTarget)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 .build()
         }
+        if (!muted) audioPlayerId = id
     }
 
     fun isMuted(id: String): Boolean =
