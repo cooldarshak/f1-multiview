@@ -1805,7 +1805,6 @@ private fun CanonicalMultiviewLayout(
                         pool,
                         errors[selected[0].id],
                         Modifier.weight(mainX).fillMaxHeight(),
-                        {},
                         onFocus,
                         active = activeId == selected[0].id,
                         surfaceType = surfaceType
@@ -1827,7 +1826,6 @@ private fun CanonicalMultiviewLayout(
                             pool,
                             errors[selected[1].id],
                             Modifier.weight(fourSideH1).fillMaxWidth(),
-                            {},
                             onFocus,
                             active = activeId == selected[1].id,
                             surfaceType = surfaceType
@@ -1843,7 +1841,6 @@ private fun CanonicalMultiviewLayout(
                             pool,
                             errors[selected[2].id],
                             Modifier.weight(fourSideH2).fillMaxWidth(),
-                            {},
                             onFocus,
                             active = activeId == selected[2].id,
                             surfaceType = surfaceType
@@ -1858,7 +1855,6 @@ private fun CanonicalMultiviewLayout(
                             pool,
                             errors[selected[3].id],
                             Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
-                            {},
                             onFocus,
                             active = activeId == selected[3].id,
                             surfaceType = surfaceType
