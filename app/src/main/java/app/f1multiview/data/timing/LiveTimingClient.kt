@@ -26,6 +26,8 @@ class LiveTimingClient(private val scope:CoroutineScope){
     private val _raceControl=MutableStateFlow<List<RaceControlEvent>>(emptyList());val raceControl:StateFlow<List<RaceControlEvent>> = _raceControl.asStateFlow()
     private val _weather=MutableStateFlow(TimingWeather());val weather:StateFlow<TimingWeather> = _weather.asStateFlow()
     private val _teamRadio=MutableStateFlow<List<app.f1multiview.model.TeamRadioItem>>(emptyList());val teamRadio:StateFlow<List<app.f1multiview.model.TeamRadioItem>> = _teamRadio.asStateFlow()
+    private val _telemetry=MutableStateFlow<List<app.f1multiview.model.DriverTelemetry>>(emptyList());val telemetry:StateFlow<List<app.f1multiview.model.DriverTelemetry>> = _telemetry.asStateFlow()
+    private val _sessionInfo=MutableStateFlow(app.f1multiview.model.LiveSessionInfo());val sessionInfo:StateFlow<app.f1multiview.model.LiveSessionInfo> = _sessionInfo.asStateFlow()
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
@@ -50,12 +52,73 @@ class LiveTimingClient(private val scope:CoroutineScope){
             val json=runCatching{JSONObject(frame)}.getOrNull()?:return@forEach
             if(json.optString("error").isNotBlank()){_status.value="ERROR";ws.close(1002,json.optString("error"));return@forEach}
             if(_status.value=="HANDSHAKING"){_status.value="LIVE";val subscribe=JSONObject().put("type",1).put("invocationId","1").put("target","Subscribe").put("arguments",org.json.JSONArray().put(FEEDS.toTypedArray()));ws.send(subscribe.toString()+RS);keepAlive?.cancel();keepAlive=scope.launch{while(isActive){delay(KEEPALIVE_MS);if(socket===ws)ws.send(JSONObject().put("type",6).toString()+RS)}}}
-            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=args.optJSONObject(1);when(feed){"TimingData"->parseTiming(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"TeamRadio"->parseTeamRadio(data)}}}
-            if(json.optInt("type")==3){val result=json.optJSONObject("result")?:return@forEach;val it=result.keys();while(it.hasNext()){val feed=it.next();val data=result.optJSONObject(feed);when(feed){"TimingData"->parseTiming(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"TeamRadio"->parseTeamRadio(data)}}}
+            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=args.optJSONObject(1);when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData"->parseCarData(data);"Position"->parsePosition(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"TeamRadio"->parseTeamRadio(data)}}}
+            if(json.optInt("type")==3){val result=json.optJSONObject("result")?:return@forEach;val it=result.keys();while(it.hasNext()){val feed=it.next();val data=result.optJSONObject(feed);when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData"->parseCarData(data);"Position"->parsePosition(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"TeamRadio"->parseTeamRadio(data)}}}
         }}
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;_status.value="RETRYING";scheduleReconnect()}
         override fun onClosed(ws:WebSocket,code:Int,reason:String){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"}
     }
+    private fun parseDriverList(data:JSONObject?) {
+        // DriverList is intentionally parsed defensively. It is used as enrichment for
+        // TimingData rather than being required for the timing table to function.
+        if(data == null) return
+    }
+
+    private fun parseSessionInfo(data:JSONObject?) {
+        if(data == null) return
+        val info = data.optJSONObject("SessionInfo") ?: data
+        _sessionInfo.value = app.f1multiview.model.LiveSessionInfo(
+            name = info.optString("Name").ifBlank { info.optString("MeetingName") }.ifBlank { "-" },
+            meeting = info.optString("MeetingName").ifBlank { info.optString("Meeting").ifBlank { "-" } },
+            country = info.optString("Country").ifBlank { info.optString("Location").ifBlank { "-" } },
+            sessionType = info.optString("Type").ifBlank { info.optString("SessionType").ifBlank { "-" } },
+            status = info.optString("Status").ifBlank { _status.value }
+        )
+    }
+
+    private fun parseCarData(data:JSONObject?) {
+        // CarData formats have changed over time. Accept the common per-driver object
+        // representation without making the live timing connection dependent on it.
+        parseTelemetryObject(data)
+    }
+
+    private fun parsePosition(data:JSONObject?) {
+        parseTelemetryObject(data)
+    }
+
+    private fun parseTelemetryObject(data:JSONObject?) {
+        if(data == null) return
+        val source = data.optJSONObject("Entries") ?: data.optJSONObject("Cars") ?: data.optJSONObject("Lines") ?: data
+        val out = mutableListOf<app.f1multiview.model.DriverTelemetry>()
+        val keys = source.keys()
+        while(keys.hasNext()) {
+            val key = keys.next()
+            val x = source.optJSONObject(key) ?: continue
+            val speed = number(x, "Speed", "SpeedKmh", "Kmh")
+            val rpm = number(x, "RPM", "Rpm")
+            val gear = number(x, "Gear")
+            val throttle = number(x, "Throttle")
+            val brake = number(x, "Brake")
+            val drs = x.optBoolean("DRS", x.optInt("DRS", 0) > 0)
+            val lap = number(x, "Lap", "LapNumber")
+            val driver = x.optString("RacingNumber").ifBlank { x.optString("Driver").ifBlank { key } }
+            if(driver.isBlank()) continue
+            out += app.f1multiview.model.DriverTelemetry(driver, speed, rpm, gear, throttle, brake, drs, lap, x.optString("LapTime").ifBlank { "-" })
+        }
+        if(out.isNotEmpty()) _telemetry.value = out.sortedBy { it.driver }
+    }
+
+    private fun number(x:JSONObject, vararg keys:String):Int {
+        for(key in keys) {
+            val raw = x.opt(key)
+            when(raw) {
+                is Number -> return raw.toInt()
+                is String -> raw.toIntOrNull()?.let { return it }
+            }
+        }
+        return 0
+    }
+
     private fun parseRaceControl(data:JSONObject?) {
         val messages=data?.optJSONObject("Messages")?:data?.optJSONObject("messages")?:return
         val out=mutableListOf<RaceControlEvent>()
@@ -97,7 +160,7 @@ class LiveTimingClient(private val scope:CoroutineScope){
         if(rows.isNotEmpty()) _teamRadio.value=rows.takeLast(20)
     }
     private fun parseTiming(data:JSONObject?){if(data==null)return;val lines=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
-        while(keys.hasNext()){val line=lines.optJSONObject(keys.next())?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("RacingNumber").ifBlank{line.optString("FullName")}.ifBlank{line.optString("Tla")}.ifBlank{"P"+pos};val gap=line.optString("GapToLeader").ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val last=line.optJSONObject("LastLapTime")?.optString("Value")?:line.optString("LastLapTime");val tyre=line.optJSONObject("BestLapTime")?.optString("Compound")?:line.optString("Compound");rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0))}
+        while(keys.hasNext()){val line=lines.optJSONObject(keys.next())?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("RacingNumber").ifBlank{line.optString("FullName")}.ifBlank{line.optString("Tla")}.ifBlank{"P"+pos};val gap=line.optString("GapToLeader").ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val last=line.optJSONObject("LastLapTime")?.optString("Value")?:line.optString("LastLapTime");val tyre=line.optJSONObject("BestLapTime")?.optString("Compound")?:line.optString("Compound");val s1=line.optJSONObject("LastLapTime")?.optString("Sector1")?:line.optString("Sector1");val s2=line.optJSONObject("LastLapTime")?.optString("Sector2")?:line.optString("Sector2");val s3=line.optJSONObject("LastLapTime")?.optString("Sector3")?:line.optString("Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val drs=line.optBoolean("DRS",line.optInt("DRS",0)>0);rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0),s1.ifBlank{"-"},s2.ifBlank{"-"},s3.ifBlank{"-"},speed.ifBlank{"-"},drs)}
         if(rows.isNotEmpty())_rows.value=rows.sortedBy{it.position}
     }
 }
