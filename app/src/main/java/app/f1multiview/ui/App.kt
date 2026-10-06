@@ -179,15 +179,28 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     LaunchedEffect(fullscreenMultiview) {
         if (fullscreenMultiview && ui.selectedStreamIds.isNotEmpty()) {
             delay(150L)
+            // Establish the reference clock before all followers are necessarily READY.
+            // PlayerPool will automatically attach each later-ready feed to this clock.
+            val mainId = ui.mainStreamId ?: ui.selectedStreamIds.firstOrNull()
+            if (mainId != null) {
+                pool.syncToMain(mainId)
+            }
             pool.playAll()
-            ui.mainStreamId?.let { pool.syncToMain(it) }
         }
     }
 
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
-            delay(1_500L)
-            ui.mainStreamId?.let { mainId -> pool.syncToMain(mainId, ui.streams.associate { it.id to (it.channelId?.let { cid -> ui.replayChannelDiffs[cid] } ?: 0L) }) }
+            // Do not wait 1.5s for a one-shot sync. The PlayerPool continuously watches
+            // the reference and newly-ready feeds now join automatically.
+            ui.mainStreamId?.let { mainId ->
+                pool.syncToMain(
+                    mainId,
+                    ui.streams.associate {
+                        it.id to (it.channelId?.let { cid -> ui.replayChannelDiffs[cid] } ?: 0L)
+                    }
+                )
+            }
         }
     }
 
