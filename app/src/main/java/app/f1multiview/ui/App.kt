@@ -270,7 +270,28 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             }
         }
         }
-        if (ui.selectedPanel != null) UgisInfoPanel(ui, vm, radioPlayer, isTv)
+        if (ui.selectedPanel != null) {
+            UgisInfoPanel(
+                ui = ui,
+                vm = vm,
+                radioPlayer = radioPlayer,
+                isTv = isTv,
+                onScreenshotModeChanged = { enabled ->
+                    if (BuildConfig.DEBUG) {
+                        DebugPresentationSettings.setScreenshotMode(context, enabled)
+                        ui.selectedStreamIds
+                            .mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
+                            .take(4)
+                            .forEach { stream ->
+                                pool.clear(stream.id)
+                                pool.load(stream)
+                            }
+                        pool.playAll()
+                        ui.mainStreamId?.let { pool.syncToMain(it) }
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -318,6 +339,9 @@ private fun Header(ui: UiState, vm: MultiViewViewModel, compactPhone: Boolean) {
         }
         TextButton({ vm.panel(if (ui.selectedPanel == "info") null else "info") }, contentPadding = PaddingValues(horizontal = if (compactPhone) 4.dp else 8.dp)) {
             Text("INFO", color = White, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
+        }
+        TextButton({ vm.panel(if (ui.selectedPanel == "settings") null else "settings") }, contentPadding = PaddingValues(horizontal = if (compactPhone) 4.dp else 8.dp)) {
+            Text("SETTINGS", color = White, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
         }
         TextButton({ vm.signOut() }, contentPadding = PaddingValues(horizontal = if (compactPhone) 4.dp else 8.dp)) {
             Text("SIGN OUT", color = White, fontSize = if (compactPhone) 8.sp else 10.sp, fontWeight = FontWeight.Bold)
@@ -1201,23 +1225,44 @@ private fun F1HdrPlayerSurface(
     modifier: Modifier,
     source: String
 ) {
+    val context = LocalContext.current
+    val screenshotMode = BuildConfig.DEBUG && DebugPresentationSettings.isScreenshotModeEnabled(context)
+
     AndroidView(
         modifier = modifier,
-        factory = { context ->
-            PlayerView(context).apply {
-                useController = false
-                setKeepContentOnPlayerReset(true)
-                this.player = player
-                HdrSurfaceHints.apply(videoSurfaceView as? android.view.SurfaceView, source)
+        factory = { viewContext ->
+            android.widget.FrameLayout(viewContext).apply {
+                val layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                if (screenshotMode) {
+                    // Debug-only SDR screenshot path. TextureView is composited into the
+                    // app window, while normal playback remains SurfaceView for HDR support.
+                    val texture = android.view.TextureView(viewContext)
+                    addView(texture, layoutParams)
+                    player.setVideoTextureView(texture)
+                } else {
+                    val surface = android.view.SurfaceView(viewContext)
+                    addView(surface, layoutParams)
+                    player.setVideoSurfaceView(surface)
+                    HdrSurfaceHints.apply(surface, source)
+                    if (player.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
+                        HdrSurfaceHints.applyHlg(surface, source)
+                    }
+                }
             }
         },
-        update = { view ->
-            view.player = player
-            val surface = view.videoSurfaceView as? android.view.SurfaceView
-            HdrSurfaceHints.apply(surface, source)
-            val transfer = player.videoFormat?.colorInfo?.colorTransfer
-            if (transfer == C.COLOR_TRANSFER_HLG) {
-                HdrSurfaceHints.applyHlg(surface, source)
+        update = { container ->
+            when (val child = container.getChildAt(0)) {
+                is android.view.TextureView -> player.setVideoTextureView(child)
+                is android.view.SurfaceView -> {
+                    player.setVideoSurfaceView(child)
+                    HdrSurfaceHints.apply(child, source)
+                    if (player.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
+                        HdrSurfaceHints.applyHlg(child, source)
+                    }
+                }
             }
         }
     )
@@ -1337,8 +1382,6 @@ private fun FullscreenMultiview(
     val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
     var fullscreenBackFocused by remember { mutableStateOf(false) }
     var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
-    var screenshotMode by remember { mutableStateOf(DebugPresentationSettings.isScreenshotModeEnabled(context)) }
-
     // Fullscreen is an explicit playback action; the inline Pit Wall remains paused until opened.
 
     BackHandler(enabled = true) {
@@ -1489,22 +1532,6 @@ private fun FullscreenMultiview(
                         pool.playAll()
                         val mainId = ui.mainStreamId ?: active?.id
                         if (mainId != null) pool.syncToMain(mainId)
-                    }
-                    if (BuildConfig.DEBUG) {
-                        Spacer(Modifier.width(5.dp))
-                        Control(screenshotMode, if (screenshotMode) "SCREENSHOT ON" else "SCREENSHOT OFF") {
-                            val enabled = !screenshotMode
-                            DebugPresentationSettings.setScreenshotMode(context, enabled)
-                            screenshotMode = enabled
-                            // Recreate the players so the new EGL presentation policy is applied
-                            // immediately. DRM/authentication remain unchanged.
-                            selected.forEach { stream ->
-                                pool.clear(stream.id)
-                                pool.load(stream)
-                            }
-                            pool.playAll()
-                            ui.mainStreamId?.let { pool.syncToMain(it) }
-                        }
                     }
                     Spacer(Modifier.width(5.dp))
                     Control(false, "HIDE") { controlsVisible = false }
