@@ -17,10 +17,10 @@ object DemoRepository {
         StreamSource("track","TRACK MAP",StreamKind.TRACK)
     )
     fun telemetry()=listOf(
-        DriverTelemetry("VER",311,11780,8,98,0,true,42,"1:21.441"),
-        DriverTelemetry("LEC",307,11440,8,95,0,true,42,"1:21.883"),
-        DriverTelemetry("HAM",304,11210,8,91,4,false,42,"1:22.104"),
-        DriverTelemetry("NOR",309,11650,8,97,0,true,42,"1:21.700")
+        DriverTelemetry("VER",311,11780,8,98,0,42,"1:21.441"),
+        DriverTelemetry("LEC",307,11440,8,95,0,42,"1:21.883"),
+        DriverTelemetry("HAM",304,11210,8,91,4,42,"1:22.104"),
+        DriverTelemetry("NOR",309,11650,8,97,0,42,"1:21.700")
     )
     fun timing()=listOf(
         TimingRow(1,"VER","LEADER","1:21.441","MED",1),
@@ -30,7 +30,7 @@ object DemoRepository {
         TimingRow(5,"PIA","+11.201","1:22.302","MED",1)
     )
     fun raceControl()=listOf(
-        RaceControlEvent("42:18","DRS ENABLED","INFO"),
+        RaceControlEvent("42:18","OVERTAKE MODE ENABLED","INFO"),
         RaceControlEvent("41:52","Track limits under investigation: CAR 44","WARN"),
         RaceControlEvent("40:11","Yellow flag cleared","INFO"),
         RaceControlEvent("38:09","CAR 18 PIT LANE SPEEDING","WARN")

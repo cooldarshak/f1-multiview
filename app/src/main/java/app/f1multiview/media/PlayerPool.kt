@@ -2,11 +2,13 @@ package app.f1multiview.media
 
 import android.content.Context
 import android.content.res.Configuration
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
@@ -15,6 +17,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.DummyExoMediaDrm
+import androidx.media3.exoplayer.drm.UnsupportedDrmException
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import android.os.Handler
 import android.os.Looper
@@ -37,20 +42,37 @@ data class VideoDiagnostics(
 )
 
 class PlayerPool(context: Context) {
+    // Four simultaneous video feeds are the validated safe ceiling on the current
+    // target device. Keep this guard here as well as in the ViewModel so an accidental
+    // caller cannot instantiate a fifth decoder and crash the process.
+    private val maxVideoFeeds = 4
+    // Phase 2 resource guard: secondary feeds are deliberately constrained before decoder pressure rises.
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
     private val selectedQualities = mutableMapOf<String, Quality>()
+    private val streamKinds = mutableMapOf<String, app.f1multiview.model.StreamKind>()
+    private val streams = mutableMapOf<String, StreamSource>()
+    private val l3SecondaryFallback = mutableSetOf<String>()
+    private val decoderRecoveryAttempts = mutableMapOf<String, Int>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastLiveSeekMs = mutableMapOf<String, Long>()
+    private val startupRequestedAtMs = mutableMapOf<String, Long>()
+    private val startupFirstFrameAtMs = mutableMapOf<String, Long>()
+    private val startupPlayingAtMs = mutableMapOf<String, Long>()
+    private val firstFrameRendered = mutableSetOf<String>()
     private val syncPausedByReference = mutableSetOf<String>()
+    private val syncEngine = SyncEngine()
     private var syncMainId: String? = null
+    // Remembers the multiview "play all" intent even while later feeds are still loading.
+    // This prevents a feed that is created after playAll() from remaining paused forever.
+    private var playAllRequested = false
     private val syncRunnable = object : Runnable {
         override fun run() {
             val mainId = syncMainId
             if (mainId != null && players.containsKey(mainId)) {
                 syncToMainOnce(mainId)
-                mainHandler.postDelayed(this, 1_000L)
+                mainHandler.postDelayed(this, 500L)
             }
         }
     }
@@ -84,37 +106,94 @@ class PlayerPool(context: Context) {
                     player = player,
                     quality = selectedQualities[id] ?: Quality.AUTO,
                     isMain = isMain,
-                    preserveAudioSetting = false
+                    // Keep audio selected for every multiview player. Audible
+                    // routing is controlled by volume in setAudioPlayer/setMuted.
+                    preserveAudioSetting = true
                 )
 
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         _errors.value = _errors.value + (id to (error.message ?: error.errorCodeName))
-                        if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player)
+                        if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player, error)
                         else recoverFromSourceFailure(id, player)
                     }
 
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                         val selected = selectedQualities[id] ?: Quality.AUTO
-                        if (selected != Quality.AUTO) applyQuality(player, selected, id == audioPlayerId)
+                        if (selected != Quality.AUTO) {
+                            applyQuality(player, selected, id == audioPlayerId)
+                        } else {
+                            applyAutoResourceBudget(id, player)
+                        }
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) {
                             sourceRecoveryAttempts.remove(id)
+                            decoderRecoveryAttempts.remove(id)
                             _errors.value = _errors.value - id
-                            if (id in desiredPlaying && !player.isPlaying) player.play()
+                            startupRequestedAtMs[id]?.let { startedAt ->
+                                val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+                                Log.i("PlayerPool", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
+                            }
+                            if (playAllRequested) desiredPlaying.add(id)
+                            if (id in desiredPlaying) {
+                                // READY means Media3 can play immediately, but it does not mean
+                                // the first video frame has reached the surface yet.
+                                if (playAllRequested) {
+                                    scheduleStartupPlayback(id)
+                                } else if (!player.isPlaying) {
+                                    // Preserve direct/user-initiated play(id) behavior outside
+                                    // the multiview startup scheduler.
+                                    player.playWhenReady = true
+                                    player.play()
+                                }
+                            }
                         }
                     }
-                })
+
+                    override fun onRenderedFirstFrame() {
+                            val firstFrameAt = android.os.SystemClock.elapsedRealtime()
+                            firstFrameRendered.add(id)
+                            startupFirstFrameAtMs[id] = firstFrameAt
+                            startupRequestedAtMs[id]?.let { requestedAt ->
+                                Log.i("PlayerPool", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
+                            }
+                            val referenceId = syncMainId
+                            if (referenceId != null && referenceId != id && firstFrameRendered.contains(referenceId)) {
+                                syncToMainOnce(referenceId)
+                            }
+                        }
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (isPlaying && id !in startupPlayingAtMs) {
+                                val playingAt = android.os.SystemClock.elapsedRealtime()
+                                startupPlayingAtMs[id] = playingAt
+                                startupRequestedAtMs.remove(id)?.let { requestedAt ->
+                                    Log.i("PlayerPool", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
+                                }
+                            }
+                        }
+                    }
+                )
             }
     }
 
-    fun load(stream: StreamSource) {
+    fun load(stream: StreamSource, forceReload: Boolean = false) {
         val url = stream.url ?: return
+        if (!forceReload && stream.id !in players && players.size >= maxVideoFeeds) {
+            _errors.value = _errors.value + (
+                stream.id to "4 simultaneous video feeds is the safe limit; 5th feed blocked to prevent decoder crash"
+            )
+            Log.w("PlayerPool", "Blocked feed " + stream.id + ": maxVideoFeeds=" + maxVideoFeeds)
+            return
+        }
+        streamKinds[stream.id] = stream.kind
+        streams[stream.id] = stream
+        if (playAllRequested) desiredPlaying.add(stream.id)
         val player = get(stream.id)
 
-        if (player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
+        if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
@@ -156,9 +235,31 @@ class PlayerPool(context: Context) {
         val mediaSourceFactory = if (!licenseUrl.isNullOrBlank()) {
             val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
             drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
-            val drmManager = DefaultDrmSessionManager.Builder()
+            val drmBuilder = DefaultDrmSessionManager.Builder()
                 .setMultiSession(false)
-                .build(callback)
+
+            // Targeted fallback for secondary feeds when the device's secure decoder
+            // pool is exhausted. Normal playback remains at the native Widevine level.
+            if (stream.id in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
+                drmBuilder.setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { uuid ->
+                    try {
+                        FrameworkMediaDrm.newInstance(uuid).also { mediaDrm ->
+                            val current = runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrNull()
+                            if (current != "L3") {
+                                runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
+                            }
+                            android.util.Log.i(
+                                "PlayerPool",
+                                "Secondary " + stream.id + ": Widevine security level=" +
+                                    runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown")
+                            )
+                        }
+                    } catch (_: UnsupportedDrmException) {
+                        DummyExoMediaDrm()
+                    }
+                }
+            }
+            val drmManager = drmBuilder.build(callback)
             DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
         } else {
             DefaultMediaSourceFactory(dataSource)
@@ -170,9 +271,16 @@ class PlayerPool(context: Context) {
             player = player,
             quality = selectedQualities[stream.id] ?: Quality.AUTO,
             isMain = isMain,
-            preserveAudioSetting = false
+            // Do not disable secondary audio at load time. All feeds must retain
+            // an initialized audio track so switching the audible feed is instant.
+            preserveAudioSetting = true
         )
 
+        startupRequestedAtMs[stream.id] = android.os.SystemClock.elapsedRealtime()
+        startupFirstFrameAtMs.remove(stream.id)
+        startupPlayingAtMs.remove(stream.id)
+        firstFrameRendered.remove(stream.id)
+        Log.i("PlayerPool", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
@@ -250,11 +358,55 @@ class PlayerPool(context: Context) {
             .flatMap { group ->
                 (0 until group.length).mapNotNull { index ->
                     val format = group.getTrackFormat(index)
-                    if (format.width > 0 && format.height > 0 && group.isTrackSupported(index, true)) format.width to format.height else null
+                    if (format.width > 0 && format.height > 0 && (group.getTrackSupport(index) == C.FORMAT_HANDLED || group.getTrackSupport(index) == C.FORMAT_EXCEEDS_CAPABILITIES)) format.width to format.height else null
                 }
             }
             .distinct()
             .sortedByDescending { it.second }
+    }
+
+    private fun applyAutoResourceBudget(id: String, player: ExoPlayer) {
+        if (id == audioPlayerId) return
+
+        val maxHeight = if (players.size >= 4) 360 else 480
+        val maxWidth = if (maxHeight <= 360) 640 else 854
+
+        val candidates = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group ->
+                (0 until group.length).map { index ->
+                    Triple(group, index, group.getTrackFormat(index))
+                }
+            }
+            .filter { (_, _, format) -> format.width > 0 && format.height > 0 }
+            .filter { (_, _, format) -> format.height <= maxHeight && format.width <= maxWidth }
+            .filter { (group, index, _) ->
+                val support = group.getTrackSupport(index)
+                support == C.FORMAT_HANDLED || support == C.FORMAT_EXCEEDS_CAPABILITIES
+            }
+
+        if (candidates.isEmpty()) return
+
+        val selected = candidates.sortedWith(
+            compareByDescending<Triple<androidx.media3.common.Tracks.Group, Int, androidx.media3.common.Format>> { (_, _, format) ->
+                format.sampleMimeType.equals(MimeTypes.VIDEO_H264, true)
+            }.thenByDescending { (_, _, format) -> format.height }
+                .thenByDescending { (_, _, format) -> format.width }
+                .thenByDescending { (_, _, format) -> format.bitrate }
+        ).firstOrNull() ?: return
+
+        val group = selected.first
+        val index = selected.second
+        val alreadySelected = player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .any { g -> (0 until g.length).any { i -> g === group && i == index && g.isTrackSelected(i) } }
+
+        if (!alreadySelected) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setMaxVideoSize(maxWidth, maxHeight)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+                .build()
+        }
     }
 
     private fun applyQuality(player: ExoPlayer, quality: Quality, isMain: Boolean) {
@@ -308,10 +460,16 @@ class PlayerPool(context: Context) {
                     .setMaxVideoSize(target.first, target.second)
                     .setForceHighestSupportedBitrate(false)
             }
-            Quality.AUTO -> builder
-                .setMinVideoSize(0, 0)
-                 .setMaxVideoSize(if (isMain) Int.MAX_VALUE else 854, if (isMain) Int.MAX_VALUE else 480)
-                .setForceHighestSupportedBitrate(false)
+            Quality.AUTO -> {
+                val secondaryMaxHeight = if (!isMain && players.size >= 4) 360 else 480
+                val secondaryMaxWidth = if (!isMain && players.size >= 4) 640 else 854
+                builder.setMinVideoSize(0, 0)
+                    .setMaxVideoSize(
+                        if (isMain) Int.MAX_VALUE else secondaryMaxWidth,
+                        if (isMain) Int.MAX_VALUE else secondaryMaxHeight
+                    )
+                    .setForceHighestSupportedBitrate(false)
+            }
         }
         return builder.build()
     }
@@ -371,45 +529,142 @@ class PlayerPool(context: Context) {
         })
     }
 
-    private fun recoverFromDecoderFailure(id: String, player: ExoPlayer) {
+    private fun isLikelySecureDecoderCapacityFailure(id: String, error: PlaybackException): Boolean {
+        val stream = streams[id]
+        val secureCandidate = id != audioPlayerId &&
+            players.size >= 4 &&
+            stream?.drmLicenseUrl?.isNullOrBlank() == false
+        if (!secureCandidate) return false
+
+        val evidence = buildList {
+            add(error.message.orEmpty())
+            add(error.errorCodeName)
+            var cause: Throwable? = error.cause
+            repeat(8) {
+                if (cause == null) return@repeat
+                add(cause?.javaClass?.name.orEmpty())
+                add(cause?.message.orEmpty())
+                cause = cause?.cause
+            }
+        }.joinToString(" | ").lowercase()
+
+        val resourceEvidence = listOf(
+            "resourcebusyexception",
+            "insufficient resource",
+            "insufficientresources",
+            "resource busy",
+            "too many",
+            "resource exhausted",
+            "resource limit",
+            "secure decoder",
+            "securedecoder",
+            "omx.error.insufficientresources",
+            "error_insufficient_resources"
+        ).any(evidence::contains)
+
+        Log.w(
+            "PlayerPool",
+            "Decoder failure id=$id players=${players.size} drm=true capacityEvidence=$resourceEvidence " +
+                "code=${error.errorCodeName} message=${error.message}"
+        )
+        return resourceEvidence || (
+            players.size >= 4 &&
+            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED &&
+            evidence.contains("mediacodec")
+        )
+    }
+
+    private fun recoverFromDecoderFailure(id: String, player: ExoPlayer, error: PlaybackException) {
         val isMain = id == audioPlayerId
         val requested = selectedQualities[id] ?: Quality.AUTO
+        val attempts = decoderRecoveryAttempts[id] ?: 0
+
+        // Only attempt the L3 fallback for a secondary DRM stream when the failure
+        // has evidence consistent with secure-decoder/resource exhaustion. Do not
+        // downgrade every decoder error: a bad codec/manifest must follow the normal
+        // recovery ladder instead.
+        val capacityFailure = isLikelySecureDecoderCapacityFailure(id, error)
+        if (!isMain && capacityFailure && id !in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
+            l3SecondaryFallback.add(id)
+            decoderRecoveryAttempts[id] = attempts + 1
+            player.stop()
+            player.clearMediaItems()
+            _errors.value = _errors.value + (
+                id to "Secondary secure decoder capacity suspected; retrying with Widevine L3"
+            )
+            mainHandler.postDelayed({
+                if (players[id] === player) {
+                    streams[id]?.let { load(it, forceReload = true) }
+                    player.playWhenReady = true
+                }
+            }, 250L)
+            return
+        }
         val recoveryQuality = when {
             requested == Quality.UHD -> Quality.FHD
             requested == Quality.FHD && !isMain -> Quality.HD
+            requested == Quality.HD && !isMain -> Quality.SD
+            requested == Quality.AUTO && !isMain -> Quality.SD
+            requested == Quality.AUTO && isMain -> Quality.FHD
             else -> requested
         }
+
+        decoderRecoveryAttempts[id] = attempts + 1
         if (recoveryQuality != requested) selectedQualities[id] = recoveryQuality
+
+        player.stop()
         player.trackSelectionParameters = buildQualityParameters(
             player = player,
             quality = recoveryQuality,
             isMain = isMain,
             preserveAudioSetting = true
         )
-        player.prepare()
-        player.playWhenReady = true
-        _errors.value = _errors.value + (id to "Decoder failed; retrying at " + recoveryQuality.name)
+        mainHandler.postDelayed({
+            if (players[id] === player) {
+                player.prepare()
+                player.playWhenReady = true
+            }
+        }, 250L)
+
+        val message = if (!isMain && requested == Quality.AUTO) {
+            "Decoder capacity reached; retrying secondary at " + recoveryQuality.name
+        } else {
+            "Decoder failed; retrying at " + recoveryQuality.name
+        }
+        _errors.value = _errors.value + (id to message)
     }
 
     fun setAudioPlayer(id: String?) {
         audioPlayerId = id
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
+            // Audio selection must remain enabled on every feed. We switch the
+            // audible feed with volume only; disabling/re-enabling the renderer
+            // caused a secondary feed to remain silent after switching from main.
             player.volume = if (isMain) 1f else 0f
-            player.trackSelectionParameters = buildQualityParameters(
-                player = player,
-                quality = selectedQualities[pid] ?: Quality.AUTO,
-                isMain = isMain,
-                preserveAudioSetting = false
-            )
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
         }
     }
 
     fun setMuted(id: String, muted: Boolean) {
-        players[id]?.volume = if (muted) 0f else 1f
+        if (players[id] == null) return
+
+        // Keep audio tracks selected on all multiview players and use volume as
+        // the sole mute/audible-feed switch. This avoids tearing down a secondary
+        // audio renderer when the user moves audio from MAIN to another feed.
+        players.forEach { (otherId, player) ->
+            player.volume = if (!muted && otherId == id) 1f else 0f
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
+        }
+        if (!muted) audioPlayerId = id
     }
 
-    fun isMuted(id: String): Boolean = players[id]?.volume?.let { it <= 0.001f } ?: true
+    fun isMuted(id: String): Boolean =
+        players[id]?.volume?.let { it <= 0.001f } ?: true
 
     /**
      * One-shot synchronization only. We deliberately do not run a continuous
@@ -443,25 +698,29 @@ class PlayerPool(context: Context) {
         activeChannelOffsetsMs = channelOffsetsMs
         mainHandler.removeCallbacks(syncRunnable)
         syncToMainOnce(mainId)
-        mainHandler.postDelayed(syncRunnable, 1_000L)
+        mainHandler.postDelayed(syncRunnable, 500L)
     }
 
     private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
 
     private fun syncToMainOnce(mainId: String) {
         val main = players[mainId] ?: return
+        if (!firstFrameRendered.contains(mainId)) return
         if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
 
         val now = android.os.SystemClock.elapsedRealtime()
         val live = main.isCurrentWindowLive
 
-        // The main feed is the reference. If it is buffering while the user still
-        // expects it to play, hold followers instead of repeatedly seeking them.
+        // The reference feed is authoritative. Media3 reports STATE_BUFFERING when the player
+        // cannot immediately continue from the current position, so followers are held rather
+        // than repeatedly seeking/rate-correcting into an unstable reference. This mirrors the
+        // buffering-protection strategy used by F1OpenViewer.
         val mainBuffering = desiredPlaying.contains(mainId) &&
             main.playbackState == Player.STATE_BUFFERING
 
         players.forEach { (id, player) ->
             if (id == mainId) return@forEach
+            if (!firstFrameRendered.contains(id)) return@forEach
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
 
             if (mainBuffering) {
@@ -473,6 +732,7 @@ class PlayerPool(context: Context) {
                 return@forEach
             }
 
+            // Resume only feeds that this sync engine paused. A user-paused feed remains paused.
             if (syncPausedByReference.remove(id) && desiredPlaying.contains(id) && !player.isPlaying) {
                 player.play()
             }
@@ -486,33 +746,49 @@ class PlayerPool(context: Context) {
                 val followerOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
                 if (mainOffset != null && followerOffset != null) followerOffset - mainOffset else null
             } else {
-                // For VOD/replay, the main player's media position is the authoritative
-                // clock. This is deliberately NOT based on each manifest's windowStartTimeMs:
-                // different feed manifests can expose different epoch/window metadata.
                 main.currentPosition + (activeChannelOffsetsMs[id] ?: 0L) - player.currentPosition
             }
 
             val correction = correctionMs ?: return@forEach
-            val absCorrection = kotlin.math.abs(correction)
 
-            if (absCorrection >= 1_500L &&
-                now - (lastLiveSeekMs[id] ?: 0L) >= 5_000L
-            ) {
-                player.setPlaybackSpeed(1f)
-                val target = if (live) {
-                    (player.currentPosition + correction).coerceAtLeast(0L)
-                } else {
-                    main.currentPosition.coerceAtLeast(0L)
+            // VOD uses the tighter 500 ms seek threshold. Live keeps the less disruptive
+            // 1500 ms threshold; ordinary live drift is corrected by playback-rate nudging.
+            val seekThreshold = if (live) 1_500L else syncEngine.hardSeekThresholdMs
+            val decision = syncEngine.decide(
+                deltaMs = correction,
+                canSeek = true,
+                referenceBuffering = false,
+                seekThresholdMs = seekThreshold
+            )
+
+            when (decision.action) {
+                SyncAction.HOLD -> {
+                    player.setPlaybackSpeed(1f)
                 }
-                val duration = player.duration
-                player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                lastLiveSeekMs[id] = now
-            } else if (absCorrection >= 250L) {
-                // Correct only followers. The reference feed is never rate-adjusted.
-                val rate = if (correction > 0L) 1.05f else 0.95f
-                player.setPlaybackSpeed(rate)
-            } else {
-                player.setPlaybackSpeed(1f)
+
+                SyncAction.SEEK -> {
+                    player.setPlaybackSpeed(1f)
+                    val target = if (live) {
+                        (player.currentPosition + correction).coerceAtLeast(0L)
+                    } else {
+                        main.currentPosition.coerceAtLeast(0L)
+                    }
+                    val duration = player.duration
+                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+                    lastLiveSeekMs[id] = now
+                }
+
+                SyncAction.SPEED_UP,
+                SyncAction.SLOW_DOWN -> {
+                    // Only followers are rate-adjusted. The reference feed is never touched.
+                    if (now - (lastLiveSeekMs[id] ?: 0L) >= 250L) {
+                        player.setPlaybackSpeed(decision.playbackSpeed)
+                    }
+                }
+
+                SyncAction.NORMAL -> {
+                    player.setPlaybackSpeed(1f)
+                }
             }
         }
     }
@@ -540,37 +816,49 @@ class PlayerPool(context: Context) {
         get(id).pause()
     }
 
+    /**
+     * Start every prepared multiview feed immediately.
+     *
+     * There is no artificial startup delay. Media3/decoder initialization is allowed to
+     * determine when each feed can actually render. Startup timing and first-frame metrics
+     * provide the evidence needed if the device later proves that resource back-pressure
+     * is required.
+     */
+    private fun scheduleStartupPlayback(id: String) {
+        if (!playAllRequested || id !in desiredPlaying) return
+        val player = players[id] ?: return
+        if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
+            player.playWhenReady = true
+            player.play()
+            Log.i(
+                "PlayerPool",
+                "STARTUP_PLAY id=" + id + " immediate=true players=" + players.size
+            )
+        }
+    }
+
     fun playAll() {
+        // Persist the intent so feeds that are still being prepared will also start
+        // automatically when they reach READY.
+        playAllRequested = true
         if (audioPlayerId == null) setAudioPlayer(players.keys.firstOrNull())
-        val mainId = audioPlayerId
         val ordered = players.keys.toList()
         ordered.forEach { desiredPlaying.add(it) }
-        // Start the reference feed first, then stagger secondary decoders. Starting
-        // multiple DRM/4K pipelines on the same frame can overwhelm TV hardware.
-        ordered.forEachIndexed { index, id ->
-            val player = players[id] ?: return@forEachIndexed
-            val delayMs = when {
-                id == mainId -> 0L
-                index == 0 -> 150L
-                else -> 250L * index
-            }
-            mainHandler.postDelayed({
-                if (players[id] === player && desiredPlaying.contains(id)) {
-                    player.playWhenReady = true
-                    if (player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
-                        player.play()
-                    }
-                }
-            }, delayMs)
+        // Do not artificially delay any feed. Prepared players are allowed to start
+        // immediately; decoder/resource behavior is measured rather than assumed.
+        ordered.forEach { id ->
+            scheduleStartupPlayback(id)
         }
     }
 
     fun pauseAll() {
+        playAllRequested = false
         players.keys.forEach { desiredPlaying.remove(it) }
         players.values.forEach { it.pause(); it.playWhenReady = false }
     }
 
     fun stopAll() {
+        playAllRequested = false
         players.keys.forEach { desiredPlaying.remove(it) }
         players.values.forEach { it.stop(); it.playWhenReady = false }
         mainHandler.removeCallbacks(syncRunnable)
@@ -591,6 +879,14 @@ class PlayerPool(context: Context) {
         desiredPlaying.remove(id)
         players.remove(id)?.release()
         selectedQualities.remove(id)
+        streamKinds.remove(id)
+        streams.remove(id)
+        decoderRecoveryAttempts.remove(id)
+        l3SecondaryFallback.remove(id)
+        startupRequestedAtMs.remove(id)
+        startupFirstFrameAtMs.remove(id)
+        startupPlayingAtMs.remove(id)
+        firstFrameRendered.remove(id)
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
@@ -603,8 +899,25 @@ class PlayerPool(context: Context) {
         desiredPlaying.clear()
         audioPlayerId = null
         selectedQualities.clear()
+        streamKinds.clear()
+        streams.clear()
+        decoderRecoveryAttempts.clear()
+        l3SecondaryFallback.clear()
+        startupRequestedAtMs.clear()
+        startupFirstFrameAtMs.clear()
+        startupPlayingAtMs.clear()
+        firstFrameRendered.clear()
     }
 
+    /** Lightweight runtime diagnostics used to measure startup impact on-device. */
+    fun playbackStartupDiagnostics(): Map<String, String> =
+        players.mapValues { (id, player) ->
+            "state=" + player.playbackState +
+                ",isPlaying=" + player.isPlaying +
+                ",firstFrame=" + firstFrameRendered.contains(id) +
+                ",positionMs=" + player.currentPosition +
+                ",bufferedMs=" + player.bufferedPosition
+        }
     fun all(): Collection<ExoPlayer> = players.values
 }
 

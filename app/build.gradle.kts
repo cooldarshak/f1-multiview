@@ -3,6 +3,21 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+val ciKeystorePath = System.getenv("CM_KEYSTORE_PATH")
+val ciKeystorePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+val ciKeyAlias = System.getenv("CM_KEY_ALIAS")
+val ciKeyPassword = System.getenv("CM_KEY_PASSWORD")
+val ciSigningConfigured =
+    !ciKeystorePath.isNullOrBlank() &&
+    !ciKeystorePassword.isNullOrBlank() &&
+    !ciKeyAlias.isNullOrBlank() &&
+    !ciKeyPassword.isNullOrBlank()
+val buildVersionCode =
+    providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+        ?: (System.getenv("CM_VERSION_CODE")?.toIntOrNull() ?: 102)
+val buildVersionName =
+    providers.gradleProperty("versionName").orNull
+        ?: ("1.1." + (System.getenv("CM_VERSION_CODE")?.takeLast(6) ?: buildVersionCode.toString()))
 android {
     namespace="app.f1multiview"
     compileSdk=36
@@ -10,8 +25,8 @@ android {
         applicationId="app.f1multiview"
         minSdk=26
         targetSdk=35
-        versionCode=(System.getenv("CM_VERSION_CODE")?.toIntOrNull() ?: 102)
-        versionName="1.1." + (System.getenv("CM_VERSION_CODE")?.takeLast(6) ?: "102")
+        versionCode=buildVersionCode
+        versionName=buildVersionName
     }
     buildFeatures { compose=true; buildConfig=true }
     compileOptions {
@@ -23,24 +38,35 @@ android {
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     signingConfigs {
+        create("codemagicTest") {
+            if (ciSigningConfigured) {
+                storeFile = file(ciKeystorePath!!)
+                storePassword = ciKeystorePassword
+                keyAlias = ciKeyAlias
+                keyPassword = ciKeyPassword
+            }
+        }
         create("release") {
-            val keystorePath = System.getenv("CM_KEYSTORE_PATH")
-            val keystorePassword = System.getenv("CM_KEYSTORE_PASSWORD")
-            val keyAliasValue = System.getenv("CM_KEY_ALIAS")
-            val keyPasswordValue = System.getenv("CM_KEY_PASSWORD")
-            if (!keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() && !keyAliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()) {
-                storeFile = file(keystorePath)
-                storePassword = keystorePassword
-                keyAlias = keyAliasValue
-                keyPassword = keyPasswordValue
+            if (ciSigningConfigured) {
+                storeFile = file(ciKeystorePath!!)
+                storePassword = ciKeystorePassword
+                keyAlias = ciKeyAlias
+                keyPassword = ciKeyPassword
             }
         }
     }
-    buildTypes { getByName("release") {
-        if (signingConfigs.getByName("release").storeFile != null) {
-            signingConfig = signingConfigs.getByName("release")
+    buildTypes {
+        getByName("debug") {
+            if (ciSigningConfigured) {
+                signingConfig = signingConfigs.getByName("codemagicTest")
+            }
         }
-    } }
+        getByName("release") {
+            if (ciSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
@@ -64,4 +90,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
 }

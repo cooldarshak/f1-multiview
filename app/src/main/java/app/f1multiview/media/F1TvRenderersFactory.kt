@@ -20,10 +20,16 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.effect.DefaultVideoFrameProcessor
 import androidx.media3.effect.SingleInputVideoGraph
 import app.f1multiview.media.protectedhdr.ProtectedHlgGlObjectsProvider
+import app.f1multiview.media.protectedhdr.ProtectedHdrCapabilitiesProbe
 
 class F1TvRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
     private val appContext=context.applicationContext
-    init { setEnableDecoderFallback(true) }
+    init {
+        setEnableDecoderFallback(true)
+        // Diagnostics only; do not gate playback on extension strings because some
+        // TV firmware implements protected HDR without advertising every extension.
+        ProtectedHdrCapabilitiesProbe.probe()
+    }
 
     private fun needsSynchronousCodecQueueing(): Boolean {
         val identity=listOf(Build.BRAND,Build.MANUFACTURER,Build.MODEL,Build.DEVICE,Build.PRODUCT).joinToString(" ").lowercase()
@@ -71,21 +77,33 @@ private class F1HdrMediaCodecVideoRenderer(
     ):MediaFormat {
         val mf=super.getMediaFormat(format,codecMimeType,codecMaxValues,codecOperatingRate,deviceNeedsNoPostProcessWorkaround,tunnelingAudioSessionId)
         if(isF1UhdHlg(format,codecMimeType)) {
+            // Mirror the reference Android TV path: preserve source frame rate and
+            // avoid an injected operating-rate hint for the 4K HLG path.
             mf.setInteger("priority",0)
             if(format.frameRate>0f) mf.setFloat("frame-rate",format.frameRate)
             mf.setInteger("rotation-degrees",0)
+            Log.i("F1TvRenderersFactory",
+                "Protected UHD/HLG MediaCodec format: " + format.width + "x" + format.height +
+                    " fps=" + format.frameRate + " mime=" + format.sampleMimeType)
         }
         return mf
     }
 
     override fun getCodecOperatingRateV23(operatingRate:Float,format:Format,streamFormats:Array<Format>):Float {
-        return if(isF1UhdHlg(format,format.sampleMimeType.orEmpty())) -1f
-        else super.getCodecOperatingRateV23(operatingRate,format,streamFormats)
+        // Keep the protected UHD/HLG path free of a Media3 operating-rate override.
+        return if(isF1UhdHlg(format,format.sampleMimeType.orEmpty())) {
+            Log.i("F1TvRenderersFactory",
+                "Suppressing codec operating-rate for protected UHD/HLG " + format.width + "x" + format.height)
+            -1f
+        } else super.getCodecOperatingRateV23(operatingRate,format,streamFormats)
     }
 
     override fun createPlaybackVideoGraphWrapper(context:Context,videoFrameReleaseControl:VideoFrameReleaseControl):PlaybackVideoGraphWrapper {
+        // Force the VideoSink/GL path to stay alive so the protected EGL output
+        // surface is actually used instead of being optimized away.
+        setVideoEffects(emptyList<Effect>())
         val processor=DefaultVideoFrameProcessor.Factory.Builder()
-            .setGlObjectsProvider(ProtectedHlgGlObjectsProvider())
+            .setGlObjectsProvider(ProtectedHlgGlObjectsProvider(context))
             .build()
         return PlaybackVideoGraphWrapper.Builder(context,videoFrameReleaseControl)
             .setEnablePlaylistMode(true)
@@ -93,11 +111,6 @@ private class F1HdrMediaCodecVideoRenderer(
             .build()
     }
 
-    private fun isF1UhdHlg(format:Format,codecMime:String):Boolean {
-        val d=listOfNotNull(format.id,format.label,format.codecs).joinToString(" ")
-        val hevc=format.sampleMimeType.equals("video/hevc",true)||codecMime.equals("video/hevc",true)||d.contains("hvc",true)||d.contains("HEVC",true)
-        val uhd=format.width>=3000&&format.height>=1600||d.contains("2160",true)||d.contains("UHD",true)
-        val hlg=format.colorInfo?.colorTransfer==C.COLOR_TRANSFER_HLG||d.contains("HLG",true)||d.contains("HDR",true)
-        return hevc&&uhd&&hlg
-    }
+    private fun isF1UhdHlg(format:Format,codecMime:String):Boolean =
+        F1HdrFormatClassifier.isUhdHlg(format, codecMime)
 }

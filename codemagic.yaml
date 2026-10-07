@@ -10,12 +10,18 @@ workflows:
           include: true
         - pattern: feature/android-tv-remote
           include: true
+    environment:
+      android_signing:
+        - f1_multiview_test
     scripts:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
-      - name: Assemble debug APK
+      - name: Assemble signed debug APK
         script: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          UPDATED_VERSION_CODE=$((1000 + PROJECT_BUILD_NUMBER))
+          ./gradlew testDebugUnitTest assembleDebug \
+            -PversionCode="$UPDATED_VERSION_CODE" \
+            -PversionName="1.1.$UPDATED_VERSION_CODE"
     artifacts:
       - app/build/outputs/apk/debug/*.apk
