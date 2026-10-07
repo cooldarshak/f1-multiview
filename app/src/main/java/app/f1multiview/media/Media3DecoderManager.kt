@@ -506,14 +506,7 @@ class Media3DecoderManager(context: Context) {
             }, 250L)
             return
         }
-        val recoveryQuality = when {
-            requested == Quality.UHD -> Quality.FHD
-            requested == Quality.FHD && !isMain -> Quality.HD
-            requested == Quality.HD && !isMain -> Quality.SD
-            requested == Quality.AUTO && !isMain -> Quality.SD
-            requested == Quality.AUTO && isMain -> Quality.FHD
-            else -> requested
-        }
+        val recoveryQuality = qualityManager.recoveryQuality(requested, isMain)
 
         decoderRecoveryAttempts[id] = attempts + 1
         if (recoveryQuality != requested) selectedQualities[id] = recoveryQuality
