@@ -170,11 +170,11 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         val videoSelectedIds = ui.selectedStreamIds.filter { id ->
-            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK, StreamKind.F1_DASH)
+            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
         }.toSet()
         pool.retain(videoSelectedIds)
         val ordered = ui.selectedStreamIds.mapNotNull { id ->
-            ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK, StreamKind.F1_DASH) }
+            ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
         }
         val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
@@ -202,7 +202,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     LaunchedEffect(ui.selectedStreamIds, ui.liveSessionInfo.circuitKey) {
-        if (ui.selectedStreamIds.any { id -> ui.streams.firstOrNull { it.id == id }?.kind == StreamKind.TRACK }) {
+        if (ui.selectedStreamIds.any { id -> ui.streams.firstOrNull { it.id == id }?.kind == StreamKind.TRACK_MAP }) {
             vm.loadTrackMapGeometry()
         }
     }
@@ -1644,9 +1644,8 @@ private fun MultiviewFeedTile(
             .clickable { onFocus(stream.id) }.focusable()
     ) {
         when (stream.kind) {
-            StreamKind.F1_DASH -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
-            StreamKind.TIMING -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
-            StreamKind.TRACK -> TrackMapPanel(ui, isTv)
+            StreamKind.TRACK_MAP -> TrackMapPanel(ui, isTv)
+            StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
             else -> PlayerTile(
                 stream, pool, error, Modifier.fillMaxSize(), {}, onFocus,
                 active = active, surfaceType = surfaceType
