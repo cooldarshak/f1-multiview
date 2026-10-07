@@ -21,7 +21,7 @@ class MultiviewRenderCoordinatorTest {
     fun protectedContentAlwaysUsesSecureSurface() {
         val coordinator = MultiviewRenderCoordinator()
         assertEquals(
-            MultiviewRenderCoordinator.RenderPath.SECURE_SURFACE,
+            MultiviewRenderCoordinator.RenderPath.SURFACE_VIEW,
             coordinator.pathFor(feed("protected", "https://license.test"), screenshotMode = true)
         )
         assertFalse(coordinator.bind(feed("protected", "https://license.test"), "test", true).let {
