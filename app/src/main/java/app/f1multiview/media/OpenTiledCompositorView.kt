@@ -161,7 +161,8 @@ class OpenTiledCompositorView(
     }
 
     fun releaseOutput() {
-        queueEvent { renderer.releaseOutput() }
+        val releaseListener = listener
+        queueEvent { renderer.releaseOutput(releaseListener) }
     }
 
     private inner class Renderer : GLSurfaceView.Renderer {
@@ -334,13 +335,13 @@ class OpenTiledCompositorView(
             sourceVideoHeight = height
         }
 
-        fun releaseOutput() {
+        fun releaseOutput(releaseListener: Listener?) {
             surfaceTexture?.setOnFrameAvailableListener(null)
+            releaseListener?.onOutputSurfaceReleased()
             outputSurface?.release()
             outputSurface = null
             surfaceTexture?.release()
             surfaceTexture = null
-            listener?.onOutputSurfaceReleased()
         }
 
         private fun floatBuffer(values: FloatArray): FloatBuffer =
