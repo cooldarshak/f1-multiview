@@ -1,0 +1,132 @@
+package app.f1multiview.media
+
+import android.content.Context
+import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.flow.StateFlow
+import app.f1multiview.core.playback.Quality
+import app.f1multiview.model.StreamSource
+
+/**
+ * Single ownership boundary for all multiview media state.
+ *
+ * The UI talks to this engine, not directly to a collection of players. The current
+ * Media3 backend is intentionally kept behind DecoderManager so the decoder/resource
+ * strategy can be replaced without changing the Compose layer.
+ */
+class UnifiedMultiviewEngine(context: Context) {
+    private val decoderManager = DecoderManager(context)
+    private val feedRegistry = FeedRegistry()
+    private val playbackClock = PlaybackClock()
+
+    val errors: StateFlow<Map<String, String>> = decoderManager.errors
+
+    fun get(id: String): ExoPlayer = decoderManager.get(id)
+
+    fun load(stream: StreamSource, forceReload: Boolean = false) {
+        feedRegistry.put(stream)
+        decoderManager.load(stream, forceReload)
+    }
+
+    fun retain(ids: Set<String>) {
+        feedRegistry.retain(ids)
+        decoderManager.retain(ids)
+    }
+
+    fun clear(id: String) {
+        feedRegistry.remove(id)
+        playbackClock.onFeedRemoved(id)
+        decoderManager.clear(id)
+    }
+
+    fun setQuality(id: String, quality: Quality) = decoderManager.setQuality(id, quality)
+    fun setQuality(quality: Quality) = decoderManager.setQuality(quality)
+    fun getQuality(id: String): Quality = decoderManager.getQuality(id)
+    fun availableVideoResolutions(id: String): List<Pair<Int, Int>> = decoderManager.availableVideoResolutions(id)
+    fun availableVideoResolutionsForQualityMenu(id: String): List<Pair<Int, Int>> =
+        decoderManager.availableVideoResolutionsForQualityMenu(id)
+    fun currentVideoDiagnostics(id: String): VideoDiagnostics? = decoderManager.currentVideoDiagnostics(id)
+    fun qualityAvailable(id: String, quality: Quality): Boolean = decoderManager.qualityAvailable(id, quality)
+
+    fun setAudioPlayer(id: String?) {
+        playbackClock.setReference(id)
+        decoderManager.setAudioPlayer(id)
+    }
+
+    fun setMuted(id: String, muted: Boolean) = decoderManager.setMuted(id, muted)
+    fun isMuted(id: String): Boolean = decoderManager.isMuted(id)
+
+    fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
+
+    fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
+        playbackClock.setReference(mainId)
+        decoderManager.syncToMain(mainId, channelOffsetsMs)
+    }
+
+    fun play(id: String) = decoderManager.play(id)
+    fun pause(id: String) = decoderManager.pause(id)
+    fun playAll() = decoderManager.playAll()
+    fun pauseAll() = decoderManager.pauseAll()
+    fun stopAll() = decoderManager.stopAll()
+
+    fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
+
+    fun release() {
+        playbackClock.clear()
+        feedRegistry.clear()
+        decoderManager.release()
+    }
+
+    /** Temporary rendering bridge while SurfaceManager is introduced in the next phase. */
+    @Deprecated("Use the engine-owned rendering surface bridge; retained during incremental migration")
+    fun playerForRendering(id: String): ExoPlayer = decoderManager.get(id)
+}
+
+/** Decoder/resource ownership boundary. Media3 is the first backend implementation. */
+private class DecoderManager(context: Context) {
+    private val backend = PlayerPool(context)
+
+    val errors: StateFlow<Map<String, String>> = backend.errors
+
+    fun get(id: String): ExoPlayer = backend.get(id)
+    fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
+    fun retain(ids: Set<String>) = backend.retain(ids)
+    fun clear(id: String) = backend.clear(id)
+    fun setQuality(id: String, quality: Quality) = backend.setQuality(id, quality)
+    fun setQuality(quality: Quality) = backend.setQuality(quality)
+    fun getQuality(id: String): Quality = backend.getQuality(id)
+    fun availableVideoResolutions(id: String) = backend.availableVideoResolutions(id)
+    fun availableVideoResolutionsForQualityMenu(id: String) = backend.availableVideoResolutionsForQualityMenu(id)
+    fun currentVideoDiagnostics(id: String) = backend.currentVideoDiagnostics(id)
+    fun qualityAvailable(id: String, quality: Quality) = backend.qualityAvailable(id, quality)
+    fun setAudioPlayer(id: String?) = backend.setAudioPlayer(id)
+    fun setMuted(id: String, muted: Boolean) = backend.setMuted(id, muted)
+    fun isMuted(id: String) = backend.isMuted(id)
+    fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) = backend.syncToMain(mainId, channelOffsetsMs)
+    fun play(id: String) = backend.play(id)
+    fun pause(id: String) = backend.pause(id)
+    fun playAll() = backend.playAll()
+    fun pauseAll() = backend.pauseAll()
+    fun stopAll() = backend.stopAll()
+    fun playbackStartupDiagnostics() = backend.playbackStartupDiagnostics()
+    fun release() = backend.release()
+}
+
+/** Logical feed registry. A feed is intentionally not equivalent to a decoder. */
+private class FeedRegistry {
+    private val feeds = linkedMapOf<String, StreamSource>()
+
+    fun put(stream: StreamSource) { feeds[stream.id] = stream }
+    fun remove(id: String) { feeds.remove(id) }
+    fun retain(ids: Set<String>) { feeds.keys.filterNot(ids::contains).toList().forEach(feeds::remove) }
+    fun clear() { feeds.clear() }
+}
+
+/** Central reference-clock state. Decoder scheduling remains a backend concern for now. */
+private class PlaybackClock {
+    var referenceFeedId: String? = null
+        private set
+
+    fun setReference(id: String?) { referenceFeedId = id }
+    fun onFeedRemoved(id: String) { if (referenceFeedId == id) referenceFeedId = null }
+    fun clear() { referenceFeedId = null }
+}

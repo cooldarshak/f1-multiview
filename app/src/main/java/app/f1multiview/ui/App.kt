@@ -63,7 +63,7 @@ import androidx.media3.common.util.UnstableApi
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
 import app.f1multiview.core.playback.VodEvent
-import app.f1multiview.media.PlayerPool
+import app.f1multiview.media.UnifiedMultiviewEngine
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.HdrSurfaceHints
@@ -125,7 +125,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val isPortrait = configuration.screenHeightDp > configuration.screenWidthDp
     val compactPhone = !isTv && configuration.screenWidthDp < 600
 
-    val pool = remember(context) { PlayerPool(context) }
+    val pool = remember(context) { UnifiedMultiviewEngine(context) }
     LaunchedEffect(context) { HdrPresentationDiagnostics.log(context, "multiview-enter") }
     val radioPlayer = remember(context) { RadioPlayer(context) }
     val errors by pool.errors.collectAsState()
@@ -180,7 +180,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
         // Timing and Driver Tracker are native data feeds, not video decoders.
-        // Only real video feeds enter PlayerPool.
+        // Only real video feeds enter UnifiedMultiviewEngine.
         ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
                 pool.load(stream)
@@ -193,7 +193,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         if (fullscreenMultiview && ui.selectedStreamIds.isNotEmpty()) {
             delay(150L)
             // Establish the reference clock before all followers are necessarily READY.
-            // PlayerPool will automatically attach each later-ready feed to this clock.
+            // UnifiedMultiviewEngine will automatically attach each later-ready feed to this clock.
             val mainId = ui.mainStreamId ?: ui.selectedStreamIds.firstOrNull()
             if (mainId != null) {
                 pool.syncToMain(mainId)
@@ -210,7 +210,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
 
     LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
         if (ui.selectedStreamIds.size > 1) {
-            // Do not wait 1.5s for a one-shot sync. The PlayerPool continuously watches
+            // Do not wait 1.5s for a one-shot sync. The UnifiedMultiviewEngine continuously watches
             // the reference and newly-ready feeds now join automatically.
             ui.mainStreamId?.let { mainId ->
                 pool.syncToMain(
@@ -941,7 +941,7 @@ private fun SessionCard(selected: Boolean, title: String, type: String, artworkU
 @Composable
 private fun PitWall(
     ui: UiState,
-    pool: PlayerPool,
+    pool: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     isTv: Boolean,
     compactPhone: Boolean,
@@ -1086,7 +1086,7 @@ private fun PitWall(
     }
 }
 @Composable
-private fun ResizableCompactWall(selected: List<StreamSource>, pool: PlayerPool, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
+private fun ResizableCompactWall(selected: List<StreamSource>, pool: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
     var splitY by rememberSaveable { mutableFloatStateOf(.55f) }
     val gap=7.dp
@@ -1116,7 +1116,7 @@ private fun ResizableCompactWall(selected: List<StreamSource>, pool: PlayerPool,
     }
 }
 @Composable
-private fun ResizableSplitWall(selected:List<StreamSource>,pool:PlayerPool,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
+private fun ResizableSplitWall(selected:List<StreamSource>,pool:UnifiedMultiviewEngine,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
     if(selected.size<2)return
     var split by rememberSaveable { mutableFloatStateOf(.5f) }
     Row(Modifier.fillMaxWidth().height(360.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){
@@ -1126,7 +1126,7 @@ private fun ResizableSplitWall(selected:List<StreamSource>,pool:PlayerPool,error
     }
 }
 @Composable
-private fun ResizableDesktopWall(selected:List<StreamSource>,pool:PlayerPool,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
+private fun ResizableDesktopWall(selected:List<StreamSource>,pool:UnifiedMultiviewEngine,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
     var mainWeight by rememberSaveable { mutableFloatStateOf(.62f) }
     var h1 by rememberSaveable { mutableFloatStateOf(.34f) }
     var h2 by rememberSaveable { mutableFloatStateOf(.33f) }
@@ -1260,7 +1260,7 @@ private fun F1HdrPlayerSurface(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
+private fun PlayerTile(stream: StreamSource, pool: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
     val player = remember(stream.id) { pool.get(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1352,7 +1352,7 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
 @Composable
 private fun FullscreenFeedRail(
     ui: UiState,
-    pool: PlayerPool,
+    pool: UnifiedMultiviewEngine,
     vm: MultiViewViewModel,
     activeId: String,
     onSwitchStream: (String) -> Unit,
@@ -1474,7 +1474,7 @@ private val HomeFeedRed = Color(0xFFE10600)
 @Composable
 private fun FullscreenMultiview(
     ui: UiState,
-    pool: PlayerPool,
+    pool: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     onClose: () -> Unit,
     onReplayPosition: (Long) -> Unit,
@@ -1723,7 +1723,7 @@ private fun FullscreenMultiview(
 private fun MultiviewFeedTile(
     stream: StreamSource,
     ui: UiState,
-    pool: PlayerPool,
+    pool: UnifiedMultiviewEngine,
     error: String?,
     modifier: Modifier,
     onFocus: (String) -> Unit,
@@ -2116,7 +2116,7 @@ private fun tyreColor(value: String): Color = when {
 private fun CanonicalMultiviewLayout(
     ui: UiState,
     selected: List<StreamSource>,
-    pool: PlayerPool,
+    pool: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     editSize: Boolean,
     onFocus: (String) -> Unit,
@@ -2260,7 +2260,7 @@ private fun CanonicalMultiviewLayout(
 private fun FullscreenFeedControls(
     stream: StreamSource,
     player: androidx.media3.exoplayer.ExoPlayer,
-    pool: PlayerPool,
+    pool: UnifiedMultiviewEngine,
     audioTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
     textTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
     speed: Float,
@@ -2403,7 +2403,7 @@ private fun FullscreenFeedControls(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool, error: String?, vm: MultiViewViewModel, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
+private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMultiviewEngine, error: String?, vm: MultiViewViewModel, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
