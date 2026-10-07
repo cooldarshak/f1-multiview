@@ -130,7 +130,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         val meeting=info.optJSONObject("Meeting") ?: JSONObject()
         val circuit=meeting.optJSONObject("Circuit") ?: JSONObject()
         val year=info.optString("StartDate").takeIf{it.length>=4}?.take(4)?.toIntOrNull() ?: info.optString("EndDate").takeIf{it.length>=4}?.take(4)?.toIntOrNull()
-        val countryObj=meeting.optJSONObject("Country") ?: JSONObject()\n        _sessionInfo.value=LiveSessionInfo(
+        val countryObj=meeting.optJSONObject("Country") ?: JSONObject()
+        _sessionInfo.value=LiveSessionInfo(
             name=info.optString("Name").ifBlank{info.optString("MeetingName")}.ifBlank{"-"},
             meeting=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{"-"},
             country=countryObj.optString("Name").ifBlank{countryObj.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{info.optString("Location")}.ifBlank{"-"},
