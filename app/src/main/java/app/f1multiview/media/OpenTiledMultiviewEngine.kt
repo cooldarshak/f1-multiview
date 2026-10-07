@@ -64,7 +64,8 @@ class OpenTiledMultiviewEngine(
     private var decoderPlan: OpenTiledDecoderPlan? = null
     private var sourceVideoWidth = 0
     private var sourceVideoHeight = 0
-    private val qualityManager = QualityManager()\n    private val mseController = OpenTiledMseController()
+    private val qualityManager = QualityManager()
+    private val mseController = OpenTiledMseController()
     private val _state = MutableStateFlow(State())
     private var compositorPlayerListener: Player.Listener? = null
     val state: StateFlow<State> = _state.asStateFlow()
@@ -186,22 +187,17 @@ class OpenTiledMultiviewEngine(
      */
     fun correctClock(referencePositionMs: Long, nowMs: Long = SystemClock.elapsedRealtime()): Long {
         val p = player ?: return 0L
-        val drift = referencePositionMs - p.currentPosition
-        val absDrift = abs(drift)
-        when {
-            absDrift >= 250L -> {
-                p.seekTo(referencePositionMs.coerceAtLeast(0L))
+        when (val action = mseController.reconcile(referencePositionMs, p.currentPosition)) {
+            is OpenTiledMseAction.Seek -> {
+                p.seekTo(action.positionMs)
                 p.playbackParameters = PlaybackParameters(1f)
             }
-            absDrift >= 35L -> {
-                val correction = (drift / 1200f).coerceIn(-0.04f, 0.04f)
-                p.playbackParameters = PlaybackParameters(1f + correction)
+            is OpenTiledMseAction.SetPlaybackRate -> {
+                p.playbackParameters = PlaybackParameters(action.rate)
             }
-            else -> {
-                p.playbackParameters = PlaybackParameters(1f)
-            }
+            else -> Unit
         }
-        publish(drift = drift)
+        publish(drift = mseController.state.driftMs)
         return nowMs
     }
 
@@ -308,6 +304,10 @@ class OpenTiledMultiviewEngine(
         session = null
         source = null
         referenceFeedId = null
+        decoderPlan = null
+        sourceVideoWidth = 0
+        sourceVideoHeight = 0
+        mseController.reset(0L)
         _state.value = State()
     }
 
