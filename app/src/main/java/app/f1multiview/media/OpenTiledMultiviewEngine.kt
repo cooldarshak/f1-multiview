@@ -62,6 +62,7 @@ class OpenTiledMultiviewEngine(
     private var referenceFeedId: String? = null
     private val qualityManager = QualityManager()
     private val _state = MutableStateFlow(State())
+    private var compositorPlayerListener: Player.Listener? = null
     val state: StateFlow<State> = _state.asStateFlow()
 
     fun canHandle(tme: TmePlayback): Boolean =
@@ -282,6 +283,8 @@ class OpenTiledMultiviewEngine(
     }
 
     fun release() {
+        compositorPlayerListener?.let { listener -> player?.removeListener(listener) }
+        compositorPlayerListener = null
         player?.release()
         player = null
         session = null
