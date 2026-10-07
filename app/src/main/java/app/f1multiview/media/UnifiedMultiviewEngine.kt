@@ -154,20 +154,22 @@ class UnifiedMultiviewEngine(context: Context) {
         // This prevents a later feed resolution from silently replacing the
         // multiview session definition.
         val reference = streams.firstOrNull { it.id == referenceId }
+        var openTiledPrepared = false
         reference
             ?.tmeJson
             ?.let(TiledMultiviewSessionParser::parse)
             ?.let { tme ->
                 val source = reference ?: return@let
                 if (openTiledBackend.canHandle(tme, source)) {
-                    val prepared = openTiledBackend.prepare(tme, source, referenceId)
-                    if (prepared) {
+                    openTiledPrepared = openTiledBackend.prepare(tme, source, referenceId)
+                    if (openTiledPrepared) {
                         selectedMultiviewBackend = openTiledBackend
                         _backendStatus.value = selectedMultiviewBackend.status
                         TiledMultiviewSessionParser.parse(source.tmeJson)
-                        ?.also { tiledMultiviewController.configure(it) }
+                            ?.also { tiledMultiviewController.configure(it) }
                     } else {
                         selectedMultiviewBackend = media3FallbackBackend
+                        _backendStatus.value = selectedMultiviewBackend.status
                     }
                 } else {
                     selectedMultiviewBackend = media3FallbackBackend
@@ -175,6 +177,12 @@ class UnifiedMultiviewEngine(context: Context) {
                     configureTiledMultiview(tme.toModel())
                 }
             }
+
+        // A genuine single-source tiled session owns the only physical video player.
+        // Do not preload, allocate, suspend, or reactivate the independent-feed
+        // decoder manager after the open tiled backend has been selected.
+        if (openTiledPrepared) return
+
         if (referenceId != null) setAudioPlayer(referenceId)
 
         // Warm logical feed sources before decoder scheduling. This is the key feed-rail
