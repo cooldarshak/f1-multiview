@@ -315,9 +315,7 @@ class OpenTiledCompositorView(
         fun setSession(value: TiledMultiviewSession) {
             session = value
             if (selected.isEmpty()) {
-                selected = value.feeds.map { feed ->
-                    feed.uuid ?: feed.channelId?.toString() ?: "feed-${feed.index}"
-                }
+                selected = value.feedIds
             }
         }
 
