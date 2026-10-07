@@ -64,7 +64,6 @@ import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
 import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.media.UnifiedMultiviewEngine
-import app.f1multiview.media.OpenTiledSecureSurfaceView
 import app.f1multiview.media.EnginePlayerHandle
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
@@ -1112,40 +1111,26 @@ private fun OpenTiledMultiviewWall(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
-    if (protectedSource) {
-        val view = remember(engine) { OpenTiledSecureSurfaceView(context) }
-        LaunchedEffect(view, feedIds) {
-            engine.selectOpenTiledFeeds(feedIds)
-            view.focusFeed(feedIds.singleOrNull())
-        }
-        DisposableEffect(view, engine) {
-            engine.attachOpenTiledSecureView(view)
-            onDispose { engine.detachOpenTiledSecureView(view) }
-        }
-        AndroidView(
-            modifier = modifier.clip(RoundedCornerShape(14.dp)),
-            factory = { view },
-            update = {
-                engine.selectOpenTiledFeeds(feedIds)
-                view.focusFeed(feedIds.singleOrNull())
-            }
-        )
-    } else {
-        val view = remember(engine) { engine.openTiledView(context) }
-        LaunchedEffect(view, feedIds) {
-            engine.selectOpenTiledFeeds(feedIds)
-        }
-        DisposableEffect(view, engine) {
-            engine.attachOpenTiledView(view)
-            onDispose { engine.detachOpenTiledView(view) }
-        }
-        AndroidView(
-            modifier = modifier.clip(RoundedCornerShape(14.dp)),
-            factory = { view },
-            update = { engine.selectOpenTiledFeeds(feedIds) }
-        )
+    val view = remember(engine, protectedSource) {
+        engine.openTiledView(context, protectedOutput = protectedSource)
     }
+
+    LaunchedEffect(view, feedIds) {
+        engine.selectOpenTiledFeeds(feedIds)
+    }
+
+    DisposableEffect(view, engine) {
+        engine.attachOpenTiledView(view)
+        onDispose {
+            engine.detachOpenTiledView(view)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier.clip(RoundedCornerShape(14.dp)),
+        factory = { view },
+        update = { engine.selectOpenTiledFeeds(feedIds) }
+    )
 }
 @Composable
 private fun ResizableCompactWall(selected: List<StreamSource>, engine: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
