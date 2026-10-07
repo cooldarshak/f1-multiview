@@ -12,22 +12,16 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 
-/**
- * UI-safe playback handle.
- *
- * Compose never owns an ExoPlayer instance. All playback, decoder, DRM and surface
- * operations remain owned by UnifiedMultiviewEngine; this handle is only a stable
- * per-feed control/observation facade.
- *
- * A logical feed may temporarily have no physical decoder lease. In that state the
- * handle remains valid and exposes safe idle/default values instead of crashing the UI.
- */
 class EnginePlayerHandle internal constructor(
     private val engine: UnifiedMultiviewEngine,
     val id: String
 ) {
     private val player: ExoPlayer?
-        get() = engine.backendPlayerOrNull(id)
+        get() = try {
+            engine.backendPlayer(id)
+        } catch (_: IllegalStateException) {
+            null
+        }
 
     val currentPosition: Long get() = player?.currentPosition ?: 0L
     val duration: Long get() = player?.duration ?: C.TIME_UNSET
@@ -54,24 +48,31 @@ class EnginePlayerHandle internal constructor(
         get() = player?.videoScalingMode ?: C.VIDEO_SCALING_MODE_SCALE_TO_FIT
         set(value) { player?.videoScalingMode = value }
 
-    fun play() = engine.play(id)
-    fun pause() = engine.pause(id)
-    fun prepare() = engine.prepare(id)
-    fun seekTo(positionMs: Long) = engine.seekTo(id, positionMs)
-    fun seekToDefaultPosition() = engine.seekToDefaultPosition(id)
-    fun setPlaybackParameters(parameters: PlaybackParameters) = engine.setPlaybackParameters(id, parameters)
-    fun setPlaybackSpeed(speed: Float) = engine.setPlaybackSpeed(id, speed)
-
-    fun addListener(listener: Player.Listener) {
-        player?.addListener(listener)
+    fun play() { if (player != null) engine.play(id) }
+    fun pause() { if (player != null) engine.pause(id) }
+    fun prepare() { if (player != null) engine.prepare(id) }
+    fun seekTo(positionMs: Long) { if (player != null) engine.seekTo(id, positionMs) }
+    fun seekToDefaultPosition() { if (player != null) engine.seekToDefaultPosition(id) }
+    fun setPlaybackParameters(parameters: PlaybackParameters) {
+        if (player != null) engine.setPlaybackParameters(id, parameters)
+    }
+    fun setPlaybackSpeed(speed: Float) {
+        if (player != null) engine.setPlaybackSpeed(id, speed)
     }
 
-    fun removeListener(listener: Player.Listener) {
-        player?.removeListener(listener)
-    }
+    fun addListener(listener: Player.Listener) { player?.addListener(listener) }
+    fun removeListener(listener: Player.Listener) { player?.removeListener(listener) }
 
-    fun setVideoSurfaceView(surfaceView: SurfaceView) = engine.attachSurfaceView(id, surfaceView)
-    fun clearVideoSurfaceView(surfaceView: SurfaceView) = engine.detachSurfaceView(id, surfaceView)
-    fun setVideoTextureView(textureView: TextureView) = engine.attachTextureView(id, textureView)
-    fun clearVideoTextureView(textureView: TextureView) = engine.detachTextureView(id, textureView)
+    fun setVideoSurfaceView(surfaceView: SurfaceView) {
+        if (player != null) engine.attachSurfaceView(id, surfaceView)
+    }
+    fun clearVideoSurfaceView(surfaceView: SurfaceView) {
+        if (player != null) engine.detachSurfaceView(id, surfaceView)
+    }
+    fun setVideoTextureView(textureView: TextureView) {
+        if (player != null) engine.attachTextureView(id, textureView)
+    }
+    fun clearVideoTextureView(textureView: TextureView) {
+        if (player != null) engine.detachTextureView(id, textureView)
+    }
 }
