@@ -110,7 +110,7 @@ fun UgisInfoPanel(
                                 Text("Screenshot Mode",color=InfoWhite,fontWeight=FontWeight.Bold)
                                 Text(
                                     if (BuildConfig.DEBUG)
-                                        "Debug-only. Clear/non-DRM test media may use TextureView; protected F1 TV video stays on the secure SurfaceView."
+                                        "Debug-only. Replaces video pixels with a screenshot-safe placeholder. F1 TV Widevine playback remains on the secure SurfaceView."
                                     else
                                         "Unavailable in release builds.",
                                     color=InfoMuted,fontSize=10.sp
@@ -128,7 +128,7 @@ fun UgisInfoPanel(
                         }
                     }
                     Text(
-                        "For F1 TV Widevine playback, Screenshot Mode cannot capture the protected video frame. It will keep playback visible instead of switching the protected feed to a black TextureView.",
+                        "Screenshot Mode does not disable DRM, change the decoder, or reload playback. It masks video pixels so the surrounding UI, controls, focus states and layout can be captured.",
                         color=InfoMuted,fontSize=10.sp
                     )
                     Spacer(Modifier.height(4.dp))
