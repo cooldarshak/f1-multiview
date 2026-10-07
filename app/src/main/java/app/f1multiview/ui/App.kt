@@ -170,7 +170,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }.toSet()
         pool.retain(videoSelectedIds)
         val ordered = ui.selectedStreamIds.mapNotNull { id ->
-            ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK) }
+            ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK, StreamKind.F1_DASH) }
         }
         val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
         pool.setAudioPlayer(mainId)
@@ -1068,7 +1068,7 @@ private fun PitWall(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (ui.session?.live == true && ui.streams.any { it.kind == StreamKind.TRACK }) {
-            Control(false, "MAP") {
+            Control(false, "TRACKER") {
                 val tracker = ui.streams.firstOrNull { it.kind == StreamKind.TRACK }
                 if (tracker != null) onSetMainStream(tracker.id)
             }
@@ -1429,7 +1429,7 @@ private fun FullscreenMultiview(
     }
 
     val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
-    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }?.let { pool.get(it.id) }
+    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { pool.get(it.id) }
 
     LaunchedEffect(activePlayer, ui.session?.live) {
         if (activePlayer != null && ui.session?.live == false) {
@@ -1461,9 +1461,9 @@ private fun FullscreenMultiview(
         } ?: emptyList()
     }
 
-    fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }.forEach { pool.play(it.id) }
-    fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }.forEach { pool.pause(it.id) }
-    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK }.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
+    fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { pool.play(it.id) }
+    fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { pool.pause(it.id) }
+    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
     LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
         if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
