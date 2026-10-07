@@ -137,7 +137,7 @@ class F1TvApiClient {
         val license=firstString(result,"laURL","laUrl","licenseUrl","licenseURL")
         val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken")
         val streamType=firstString(result,"streamType");val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0}
-        val playToken=extractPlayToken(manifest);val playApiVersion=firstString(result,"playApiVersion","playAPIVersion")
+        val playToken=extractPlayToken(manifest.orEmpty());val playApiVersion=firstString(result,"playApiVersion","playAPIVersion")
         val platform=firstString(result,"platform")?:requestedPlatform;val drmType=firstString(result,"drmType")
         val channelViewMode=firstString(result,"channelViewMode","channelViewModeOverride")
         return PlaybackResponse(manifest.orEmpty(),license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType,tmeJson,channelViewMode)
