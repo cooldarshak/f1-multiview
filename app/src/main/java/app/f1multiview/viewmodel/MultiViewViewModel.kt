@@ -245,7 +245,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         val obc=streams.firstOrNull{it.kind==StreamKind.ONBOARD}
         val tracker=streams.firstOrNull{it.kind==StreamKind.TRACK}
         val data=streams.firstOrNull{it.kind==StreamKind.DATA}
-        val f1Dash=streams.firstOrNull{it.kind==StreamKind.F1_DASH}
+        val f1Dash=streams.firstOrNull{it.kind==StreamKind.F1_DASH} ?: streams.firstOrNull{it.kind==StreamKind.F1_DASH_DATA}
         val picked=when(name){
             "side" -> listOfNotNull(world,obc).map{it.id}
             "quad" -> listOfNotNull(world,tracker,data,f1Dash).map{it.id}
@@ -254,7 +254,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         val layout=if(name=="side") LayoutPreset.SPLIT_2 else if(name=="quad") LayoutPreset.GRID_4 else LayoutPreset.SINGLE
         _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=picked.take(if(layout==LayoutPreset.SPLIT_2)2 else if(layout==LayoutPreset.GRID_4)4 else 1),mainStreamId=picked.firstOrNull())
         persist()
-        picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null && it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH}.forEach{viewModelScope.launch{resolveSource(it)}}
+        picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null && it.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)}.forEach{viewModelScope.launch{resolveSource(it)}}
     }
     fun setLayout(layout:LayoutPreset){
     val maxFeeds=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
@@ -291,7 +291,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     _ui.value=_ui.value.copy(layout=targetLayout,selectedStreamIds=current+id,providerError=null)
     persist()
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-    if(source.url==null && source.kind != StreamKind.TIMING && source.kind != StreamKind.TRACK && source.kind != StreamKind.F1_DASH) resolveSource(source)
+    if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) resolveSource(source)
 }
     fun activateTracker(){
     _ui.value=_ui.value.copy(selectedPanel="tracker")
@@ -310,7 +310,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-        if (source.kind == StreamKind.TIMING || source.kind == StreamKind.TRACK || source.kind == StreamKind.F1_DASH) return@launch
+        if (source.kind == StreamKind.TRACK_MAP || source.kind == StreamKind.F1_DASH_DATA) return@launch
         val current=_ui.value.selectedStreamIds
         val maxFeeds=when(_ui.value.layout){
             LayoutPreset.SINGLE->1
