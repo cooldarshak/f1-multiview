@@ -33,7 +33,10 @@ class TiledMultiviewController {
 
     fun configure(session: TiledMultiviewSession) {
         val existingIds = state.slots.map { it.feedId }.filter { it in session.feedIds }
-        val selected = if (existingIds.isNotEmpty()) existingIds else session.feedIds.take(4)
+        // This is logical TME state, not physical decoder allocation.
+        // Keep every feed addressable here. The active playback backend decides
+        // how many physical resources can actually render at once.
+        val selected = if (existingIds.isNotEmpty()) existingIds else session.feedIds
         state = state.copy(
             session = session,
             slots = uniformGrid(selected),
