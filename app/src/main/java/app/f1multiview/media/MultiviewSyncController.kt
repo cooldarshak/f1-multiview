@@ -30,7 +30,7 @@ class MultiviewSyncController(
         override fun run() {
             if (!running) return
             synchronizeOnce()
-            handler.postDelayed(this, 250L)
+            handler.postDelayed(this, 100L)
         }
     }
 
@@ -131,7 +131,7 @@ class MultiviewSyncController(
                 reference.currentPosition + (channelOffsetsMs[id] ?: 0L) - follower.currentPosition
             } ?: return@forEach
 
-            val threshold = if (live) 1_500L else policy.hardSeekThresholdMs
+            val threshold = if (live) 500L else policy.hardSeekThresholdMs
             val decision = policy.decide(delta, canSeek = true, seekThresholdMs = threshold)
             when (decision.action) {
                 SyncAction.HOLD, SyncAction.NORMAL -> follower.setPlaybackSpeed(1f)
@@ -147,7 +147,7 @@ class MultiviewSyncController(
                     lastCorrectionSeekMs[id] = now
                 }
                 SyncAction.SPEED_UP, SyncAction.SLOW_DOWN -> {
-                    if (now - (lastCorrectionSeekMs[id] ?: 0L) >= 250L) {
+                    if (now - (lastCorrectionSeekMs[id] ?: 0L) >= 100L) {
                         follower.setPlaybackSpeed(decision.playbackSpeed)
                     }
                 }
