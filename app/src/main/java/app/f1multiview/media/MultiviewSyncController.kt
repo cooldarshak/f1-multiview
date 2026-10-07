@@ -15,8 +15,7 @@ import kotlin.math.max
  */
 class MultiviewSyncController(
     private val players: () -> Map<String, Player>,
-    private val desiredPlaying: () -> Set<String>,
-    private val onReferenceRemoved: (String) -> Unit = {}
+    private val desiredPlaying: () -> Set<String>
 ) {
     private val policy = SyncEngine()
     private val handler = Handler(Looper.getMainLooper())
@@ -69,7 +68,6 @@ class MultiviewSyncController(
     fun onFeedRemoved(id: String) {
         if (referenceId == id) {
             referenceId = null
-            onReferenceRemoved(id)
         }
         pausedByReference.remove(id)
         lastCorrectionSeekMs.remove(id)
@@ -134,9 +132,10 @@ class MultiviewSyncController(
             } ?: return@forEach
 
             val threshold = if (live) 1_500L else policy.hardSeekThresholdMs
-            when (val decision = policy.decide(delta, canSeek = true, seekThresholdMs = threshold)) {
-                SyncDecision(SyncAction.HOLD, 1f) -> follower.setPlaybackSpeed(1f)
-                SyncDecision(SyncAction.SEEK, 1f) -> {
+            val decision = policy.decide(delta, canSeek = true, seekThresholdMs = threshold)
+            when (decision.action) {
+                SyncAction.HOLD, SyncAction.NORMAL -> follower.setPlaybackSpeed(1f)
+                SyncAction.SEEK -> {
                     follower.setPlaybackSpeed(1f)
                     val target = if (live) {
                         max(0L, follower.currentPosition + delta)
@@ -147,14 +146,10 @@ class MultiviewSyncController(
                     follower.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
                     lastCorrectionSeekMs[id] = now
                 }
-                else -> when (decision.action) {
-                    SyncAction.SPEED_UP, SyncAction.SLOW_DOWN -> {
-                        if (now - (lastCorrectionSeekMs[id] ?: 0L) >= 250L) {
-                            follower.setPlaybackSpeed(decision.playbackSpeed)
-                        }
+                SyncAction.SPEED_UP, SyncAction.SLOW_DOWN -> {
+                    if (now - (lastCorrectionSeekMs[id] ?: 0L) >= 250L) {
+                        follower.setPlaybackSpeed(decision.playbackSpeed)
                     }
-                    SyncAction.NORMAL, SyncAction.HOLD -> follower.setPlaybackSpeed(1f)
-                    SyncAction.SEEK -> Unit
                 }
             }
         }
