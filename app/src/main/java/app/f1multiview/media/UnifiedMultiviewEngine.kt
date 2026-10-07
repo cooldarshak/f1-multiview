@@ -225,8 +225,20 @@ class UnifiedMultiviewEngine(context: Context) {
         return targetIds
     }
 
-    fun setQuality(id: String, quality: Quality) = decoderManager.setQuality(id, quality)
-    fun setQuality(quality: Quality) = decoderManager.setQuality(quality)
+    fun setQuality(id: String, quality: Quality) {
+        if (isOpenTiledActive()) openTiledEngine.setQuality(quality)
+        else decoderManager.setQuality(id, quality)
+    }
+    fun setQuality(quality: Quality) {
+        if (isOpenTiledActive()) openTiledEngine.setQuality(quality)
+        else decoderManager.setQuality(quality)
+    }
+    fun setTiledAudioLanguage(language: String?) {
+        if (isOpenTiledActive()) openTiledEngine.selectAudioLanguage(language)
+    }
+    fun setTiledSubtitleLanguage(language: String?) {
+        if (isOpenTiledActive()) openTiledEngine.selectSubtitleLanguage(language)
+    }
     fun getQuality(id: String): Quality = decoderManager.getQuality(id)
     fun availableVideoResolutions(id: String): List<Pair<Int, Int>> = decoderManager.availableVideoResolutions(id)
     fun availableVideoResolutionsForQualityMenu(id: String): List<Pair<Int, Int>> =
