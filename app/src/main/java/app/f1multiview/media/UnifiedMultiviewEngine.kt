@@ -67,6 +67,11 @@ class UnifiedMultiviewEngine(context: Context) {
      */
     fun multiviewBackendStatus(): MultiviewBackendStatus = selectedMultiviewBackend.status
 
+    /** Runtime diagnostics for the active multiview backend. No URLs or auth tokens. */
+    fun multiviewDiagnostics(): Map<String, String> =
+        if (isOpenTiledActive()) openTiledEngine.diagnostics()
+        else decoderResourceDiagnostics()
+
     fun isOpenTiledActive(): Boolean =
         selectedMultiviewBackend === openTiledBackend
 
@@ -76,6 +81,9 @@ class UnifiedMultiviewEngine(context: Context) {
     fun selectOpenTiledFeeds(feedIds: List<String>) {
         openTiledEngine.selectVisibleFeeds(feedIds)
     }
+
+    fun openTiledFrameOutput(): OpenTiledFrameOutput? =
+        if (isOpenTiledActive()) openTiledEngine.frameOutput() else null
 
     fun attachOpenTiledView(view: OpenTiledCompositorView) {
         if (isOpenTiledActive()) openTiledEngine.attachTo(view)
