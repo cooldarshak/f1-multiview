@@ -2,8 +2,6 @@ package app.f1multiview.media
 
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
