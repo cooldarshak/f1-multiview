@@ -68,6 +68,11 @@ class UnifiedMultiviewEngine(context: Context) {
     ): Set<String> {
         streams.forEach(feedRegistry::put)
         if (referenceId != null) setAudioPlayer(referenceId)
+
+        // Warm logical feed sources before decoder scheduling. This is the key feed-rail
+        // latency path: source/sample preload does not consume a physical video decoder.
+        streams.forEachIndexed { index, stream -> decoderManager.preload(stream, index) }
+        decoderManager.updatePreloadRanking(streams.map { it.id }, referenceId)
         val active = decoderManager.activeDecoderIds()
         val target = viewportScheduler.schedule(streams, visibleIds, referenceId, active)
         val targetIds = target.map { it.id }.toSet()

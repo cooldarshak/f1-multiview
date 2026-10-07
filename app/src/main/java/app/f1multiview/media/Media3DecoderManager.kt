@@ -15,6 +15,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
+import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
@@ -46,6 +49,29 @@ class Media3DecoderManager(context: Context) {
     // conservatively so we can use more than four feeds where the secure codec pool allows it.
     private val appContext = context.applicationContext
     private val maxVideoFeeds = DecoderCapacityPolicy.detect()
+
+    // Media3 preload manager keeps nearby feed sources warm without allocating a physical
+    // decoder for every logical feed. This is intentionally source/sample preloading only;
+    // protected video still renders through the existing secure SurfaceView path.
+    private var preloadReferenceRank = 0
+    private val preloadedMediaSources = mutableMapOf<String, MediaSource>()
+    private val preloadRanks = mutableMapOf<String, Int>()
+    private val preloadStatusControl = object : TargetPreloadStatusControl<Int, DefaultPreloadManager.PreloadStatus> {
+        override fun getTargetPreloadStatus(rankingData: Int): DefaultPreloadManager.PreloadStatus {
+            val distance = kotlin.math.abs(rankingData - preloadReferenceRank)
+            return when {
+                distance == 0 -> DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(1_500L)
+                distance == 1 -> DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(3_000L)
+                distance == 2 -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_TRACKS_SELECTED
+                distance in 3..4 -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_SOURCE_PREPARED
+                else -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED
+            }
+        }
+    }
+    private val preloadBuilder = DefaultPreloadManager.Builder(appContext, preloadStatusControl)
+        .setRenderersFactory(F1TvRenderersFactory(appContext))
+        .setLoadControl(ProductionLoadControl.create())
+    private val preloadManager = preloadBuilder.build()
     private val players = linkedMapOf<String, ExoPlayer>()
     private val resourceManager = DecoderResourceManager(maxVideoDecoders = maxVideoFeeds)
     private val qualityManager = QualityManager()
@@ -82,9 +108,9 @@ class Media3DecoderManager(context: Context) {
     fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
 
     private fun createPlayer(id: String): ExoPlayer = players.getOrPut(id) {
-        ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
-            .setLoadControl(ProductionLoadControl.create())
-            .build()
+        preloadBuilder.buildExoPlayer(
+            ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
+        )
             .also { player ->
                 // Multiview owns several ExoPlayers. They must not compete for Android audio focus.
                 // Only the selected main player's volume is audible; audio focus is therefore
@@ -165,6 +191,69 @@ class Media3DecoderManager(context: Context) {
             }
     }
 
+    private fun buildMediaItem(stream: StreamSource): MediaItem {
+        val url = stream.url ?: error("Stream URL missing for ${stream.id}")
+        return MediaItem.Builder()
+            .setUri(url)
+            .apply {
+                if (url.contains(".mpd", true)) setMimeType(MimeTypes.APPLICATION_MPD)
+                if (url.contains(".m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
+                stream.drmLicenseUrl?.let { license ->
+                    setDrmConfiguration(
+                        MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                            .setLicenseUri(license)
+                            .setLicenseRequestHeaders(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
+                            .build()
+                    )
+                }
+            }
+            .build()
+    }
+
+    private fun buildMediaSourceFactory(stream: StreamSource): DefaultMediaSourceFactory {
+        val url = stream.url ?: error("Stream URL missing for ${stream.id}")
+        val baseDataSource = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
+            .setDefaultRequestProperties(stream.requestHeaders)
+        val dataSource = if (url.contains(".m3u8", true)) {
+            F1CmafHlsDrmFixingDataSource.Factory(baseDataSource)
+        } else {
+            baseDataSource
+        }
+        val drmHeaders = buildMap {
+            putAll(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
+            stream.playToken?.takeIf { it.isNotBlank() }?.let { put("Cookie", "playToken=" + it) }
+        }
+        val drmDataSource = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
+            .setDefaultRequestProperties(drmHeaders)
+        val licenseUrl = stream.drmLicenseUrl
+        return if (!licenseUrl.isNullOrBlank()) {
+            val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
+            drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
+            val drmBuilder = DefaultDrmSessionManager.Builder().setMultiSession(false)
+            if (stream.id in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
+                drmBuilder.setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { uuid ->
+                    try {
+                        FrameworkMediaDrm.newInstance(uuid).also { mediaDrm ->
+                            val current = runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrNull()
+                            if (current != "L3") runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
+                            Log.i("Media3DecoderManager", "Secondary " + stream.id + ": Widevine security level=" + runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown"))
+                        }
+                    } catch (_: UnsupportedDrmException) {
+                        DummyExoMediaDrm()
+                    }
+                }
+            }
+            val drmManager = drmBuilder.build(callback)
+            DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
+        } else {
+            DefaultMediaSourceFactory(dataSource)
+        }
+    }
+
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         val url = stream.url ?: return false
         streamKinds[stream.id] = stream.kind
@@ -184,85 +273,19 @@ class Media3DecoderManager(context: Context) {
         val player = createPlayer(stream.id)
 
         if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) {
-            // Re-activate a logically retained feed without rebuilding its MediaSource.
-            // The decoder lease was intentionally released while the feed was off-viewport.
+            // Re-activate a logically retained feed. The MediaSource remains warm in the
+            // preload manager, so this path avoids rebuilding the authenticated source.
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 .build()
+            preloadManager.getMediaSource(player.currentMediaItem!!)?.let { player.setMediaSource(it) }
             player.prepare()
             return true
         }
 
-        val mediaItem = MediaItem.Builder()
-            .setUri(url)
-            .apply {
-                if (url.contains(".mpd", true)) setMimeType(MimeTypes.APPLICATION_MPD)
-                if (url.contains(".m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
-
-                stream.drmLicenseUrl?.let { license ->
-                    setDrmConfiguration(
-                        MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                            .setLicenseUri(license)
-                            .setLicenseRequestHeaders(
-                                stream.drmRequestHeaders.ifEmpty { stream.requestHeaders }
-                            )
-                                .build()
-                    )
-                }
-            }
-            .build()
-
-        val baseDataSource = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
-            .setDefaultRequestProperties(stream.requestHeaders)
-        val dataSource = if (url.contains(".m3u8", true)) {
-            F1CmafHlsDrmFixingDataSource.Factory(baseDataSource)
-        } else {
-            baseDataSource
-        }
-        val drmHeaders = buildMap {
-            putAll(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
-            stream.playToken?.takeIf { it.isNotBlank() }?.let { put("Cookie", "playToken=" + it) }
-        }
-        val drmDataSource = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
-            .setDefaultRequestProperties(drmHeaders)
-        val licenseUrl = stream.drmLicenseUrl
-        val mediaSourceFactory = if (!licenseUrl.isNullOrBlank()) {
-            val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
-            drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
-            val drmBuilder = DefaultDrmSessionManager.Builder()
-                .setMultiSession(false)
-
-            // Targeted fallback for secondary feeds when the device's secure decoder
-            // pool is exhausted. Normal playback remains at the native Widevine level.
-            if (stream.id in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
-                drmBuilder.setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { uuid ->
-                    try {
-                        FrameworkMediaDrm.newInstance(uuid).also { mediaDrm ->
-                            val current = runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrNull()
-                            if (current != "L3") {
-                                runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
-                            }
-                            android.util.Log.i(
-                                "Media3DecoderManager",
-                                "Secondary " + stream.id + ": Widevine security level=" +
-                                    runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown")
-                            )
-                        }
-                    } catch (_: UnsupportedDrmException) {
-                        DummyExoMediaDrm()
-                    }
-                }
-            }
-            val drmManager = drmBuilder.build(callback)
-            DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
-        } else {
-            DefaultMediaSourceFactory(dataSource)
-        }
+        val mediaItem = buildMediaItem(stream)
+        val mediaSourceFactory = buildMediaSourceFactory(stream)
 
         // Preserve an explicit quality choice across media-source reloads.
         val isMain = stream.id == audioPlayerId
@@ -273,9 +296,49 @@ class Media3DecoderManager(context: Context) {
         startupPlayingAtMs.remove(stream.id)
         firstFrameRendered.remove(stream.id)
         Log.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
-        player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
+        val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+        preloadedMediaSources[stream.id]?.let { old ->
+            if (forceReload || preloadMediaSourcesChanged(stream.id, mediaItem)) {
+                runCatching { preloadManager.removeMediaSource(old) }
+                preloadedMediaSources.remove(stream.id)
+            }
+        }
+        if (stream.id !in preloadedMediaSources) {
+            val rank = preloadRanks[stream.id] ?: preloadRanks.size
+            preloadRanks[stream.id] = rank
+            preloadManager.addMediaSource(mediaSource, rank)
+            preloadedMediaSources[stream.id] = mediaSource
+            preloadManager.invalidate()
+        }
+        val playableSource = preloadManager.getMediaSource(mediaItem) ?: mediaSource
+        player.setMediaSource(playableSource)
         player.prepare()
         return true
+    }
+
+    /** Preload a logical feed without consuming a physical decoder lease. */
+    fun preload(stream: StreamSource, rank: Int) {
+        val url = stream.url ?: return
+        preloadRanks[stream.id] = rank
+        if (stream.id in preloadedMediaSources) return
+        runCatching {
+            val mediaItem = buildMediaItem(stream)
+            val source = buildMediaSourceFactory(stream).createMediaSource(mediaItem)
+            preloadManager.addMediaSource(source, rank)
+            preloadedMediaSources[stream.id] = source
+            preloadManager.invalidate()
+            Log.i("Media3DecoderManager", "PRELOAD_REGISTER id=${stream.id} rank=$rank")
+        }.onFailure { error ->
+            Log.w("Media3DecoderManager", "PRELOAD_REGISTER_FAILED id=${stream.id}", error)
+        }
+    }
+
+    /** Update the ranking used by the shared preload manager for the selected feed rail. */
+    fun updatePreloadRanking(orderedIds: List<String>, referenceId: String?) {
+        orderedIds.forEachIndexed { index, id -> preloadRanks[id] = index }
+        preloadReferenceRank = referenceId?.let { preloadRanks[it] } ?: 0
+        preloadManager.setCurrentPlayingIndex(preloadReferenceRank)
+        preloadManager.invalidate()
     }
 
     /**
@@ -718,6 +781,9 @@ class Media3DecoderManager(context: Context) {
         syncController.reset()
         players.values.forEach { it.release() }
         players.clear()
+        preloadManager.release()
+        preloadedMediaSources.clear()
+        preloadRanks.clear()
         resourceManager.reset()
         desiredPlaying.clear()
         audioPlayerId = null
