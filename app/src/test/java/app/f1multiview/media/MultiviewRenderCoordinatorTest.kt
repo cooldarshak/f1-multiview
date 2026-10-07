@@ -41,7 +41,7 @@ class MultiviewRenderCoordinatorTest {
     fun normalPlaybackUsesSurfacePathEvenWithoutDrm() {
         val coordinator = MultiviewRenderCoordinator()
         val slot = coordinator.bind(feed("normal"), "multiview", screenshotMode = false)
-        assertEquals(MultiviewRenderCoordinator.RenderPath.SECURE_SURFACE, slot.path)
+        assertEquals(MultiviewRenderCoordinator.RenderPath.SURFACE_VIEW, slot.path)
     }
 
     @Test
