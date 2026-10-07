@@ -8,15 +8,13 @@ import app.f1multiview.model.StreamSource
  * Central decoder/resource allocator for multiview.
  *
  * A logical feed may exist without holding a decoder lease. A lease represents one
- * physical Media3 video playback pipeline. This distinction is the foundation for
- * later decoder reuse, viewport scheduling and >4 logical views.
+ * physical Media3 video playback pipeline. This separation lets later viewport
+ * scheduling assign/reuse decoder resources without changing the feed model.
  */
 class DecoderResourceManager(
     private val maxVideoDecoders: Int = 4
 ) {
-    data class Allocation(
-        val lease: DecoderLease?,
-    )
+    data class Allocation(val lease: DecoderLease?)
 
     data class DecoderLease(
         val slotId: Int,
@@ -26,9 +24,7 @@ class DecoderResourceManager(
     )
 
     private data class Request(
-        val feedId: String,
         val kind: StreamKind,
-        val priority: Int,
         val isReference: Boolean,
         val quality: Quality
     )
@@ -42,21 +38,24 @@ class DecoderResourceManager(
         quality: Quality = Quality.AUTO
     ): Allocation {
         val priority = priorityFor(stream.kind, isReference)
-        requests[stream.id] = Request(stream.id, stream.kind, priority, isReference, quality)
-        leases[stream.id]?.let { return Allocation(it) }
+        requests[stream.id] = Request(stream.kind, isReference, quality)
+
+        leases[stream.id]?.let { existing ->
+            return Allocation(existing.copy(priority = priority, isReference = isReference))
+        }
 
         val usedSlots = leases.values.map { it.slotId }.toSet()
         val freeSlot = (0 until maxVideoDecoders).firstOrNull { it !in usedSlots }
-        if (freeSlot != null) {
-            return Allocation(DecoderLease(freeSlot, stream.id, priority, isReference).also {
-                leases[stream.id] = it
-            })
-        }
+            ?: return Allocation(null)
 
-        return Allocation(null)
-        }
-
-        return Allocation(null)
+        val lease = DecoderLease(
+            slotId = freeSlot,
+            feedId = stream.id,
+            priority = priority,
+            isReference = isReference
+        )
+        leases[stream.id] = lease
+        return Allocation(lease)
     }
 
     fun release(feedId: String) {
