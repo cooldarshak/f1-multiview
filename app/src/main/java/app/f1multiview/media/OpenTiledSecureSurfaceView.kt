@@ -84,8 +84,9 @@ class OpenTiledSecureSurfaceView(context: Context) : SurfaceView(context) {
         val s = session ?: return
         val tileWidth = s.tileWidth ?: return
         val tileHeight = s.tileHeight ?: return
-        val columns = ceil(s.feeds.size.toDouble().let(::sqrt)).toInt().coerceAtLeast(1)
-        val rows = ceil(s.feeds.size.toDouble() / columns).toInt().coerceAtLeast(1)
+        val plan = OpenTiledDecoderPlan.from(s) ?: return
+        val columns = plan.tileColumns
+        val rows = plan.tileRows
 
         if (focusedIndex == null) {
             scaleX = 1f
