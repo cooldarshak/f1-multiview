@@ -19,6 +19,9 @@ import app.f1multiview.model.StreamSource
  */
 class UnifiedMultiviewEngine(context: Context) {
     private val tiledMultiviewController = TiledMultiviewController()
+    private val nativeTmeBackend = NativeTmePlaybackBackend()
+    private val media3FallbackBackend = Media3MultiPlayerFallbackBackend()
+    private var selectedMultiviewBackend: MultiviewPlaybackBackend = media3FallbackBackend
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val surfaceManager = MultiviewSurfaceManager(context)
@@ -31,10 +34,22 @@ class UnifiedMultiviewEngine(context: Context) {
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
     fun configureTiledMultiview(session: app.f1multiview.core.playback.TiledMultiviewSession) {
+        selectedMultiviewBackend = if (nativeTmeBackend.canHandle(session)) {
+            nativeTmeBackend
+        } else {
+            media3FallbackBackend
+        }
         tiledMultiviewController.configure(session)
     }
 
     fun tiledMultiviewState(): TiledMultiviewController.State = tiledMultiviewController.state()
+
+    /**
+     * Runtime truth about the physical multiview backend. This is intentionally
+     * exposed for diagnostics/UI so TME metadata cannot be mistaken for native
+     * Tiledmedia playback.
+     */
+    fun multiviewBackendStatus(): MultiviewBackendStatus = selectedMultiviewBackend.status
 
     fun setTiledFeeds(feedIds: List<String>) = tiledMultiviewController.setFeeds(feedIds)
 
@@ -92,9 +107,13 @@ class UnifiedMultiviewEngine(context: Context) {
 
         // If F1 supplied TME metadata with the resolved reference feed, configure the
         // logical single-player multiview state before the physical fallback scheduler runs.
-        streams.asSequence()
-            .mapNotNull { it.tmeJson?.let(TiledMultiviewSessionParser::parse) }
-            .firstOrNull()
+        // TME is a session-level playback contract. Prefer the reference feed's
+        // payload rather than whichever secondary feed happened to resolve first.
+        // This prevents a later feed resolution from silently replacing the
+        // multiview session definition.
+        streams.firstOrNull { it.id == referenceId }
+            ?.tmeJson
+            ?.let(TiledMultiviewSessionParser::parse)
             ?.let(::configureTiledMultiview)
         if (referenceId != null) setAudioPlayer(referenceId)
 
