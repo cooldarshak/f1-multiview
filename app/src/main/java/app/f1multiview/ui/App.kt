@@ -1131,7 +1131,7 @@ private fun OpenTiledMultiviewWall(
      * "The specified child already has a parent" during Compose's ViewHolder creation.
      * The engine binding follows the AndroidView lifecycle instead.
      */
-    key(protectedSource) {
+    if (!screenshotMode) key(protectedSource) {
         AndroidView(
                 modifier = Modifier.fillMaxSize(),
             factory = {
@@ -1179,7 +1179,7 @@ private fun OpenTiledSecureWall(
 
     Box(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
 
-    AndroidView(
+    if (!screenshotMode) AndroidView(
             modifier = Modifier.fillMaxSize(),
         factory = {
             FrameLayout(context).apply {
@@ -1369,43 +1369,44 @@ private fun F1HdrPlayerSurface(
     val context = LocalContext.current
     val protectedContent = stream.drmLicenseUrl != null
     val screenshotMode = BuildConfig.DEBUG &&
-        DebugPresentationSettings.isScreenshotModeEnabled(context) &&
-        !protectedContent
+        DebugPresentationSettings.isScreenshotModeEnabled(context)
     val decoderGeneration by engine.decoderGeneration.collectAsState()
 
-    // A logical feed can exist before the decoder lease is allocated. The SurfaceView may
-    // therefore be created while its EnginePlayerHandle has no backend player. Rebind it
-    // whenever the engine allocates/reclaims a decoder; otherwise audio can play while the
-    // surface remains permanently black.
-    LaunchedEffect(player.id, decoderGeneration, source) {
-        if (engine.hasDecoder(player.id)) {
-            engine.updateSurface(player.id, player, source)
-        }
-    }
-
-    /*
-     * Feed identity is part of the native-view identity. Without this key, Compose can
-     * reuse the same AndroidView node when a grid position changes from feed A to feed B;
-     * the native SurfaceView then remains owned by A while update() starts targeting B.
-     */
-    key(player.id) {
-        AndroidView(
-            modifier = modifier,
-            factory = { FrameLayout(context) },
-            update = { container ->
-                engine.attachSurface(
-                    feedId = player.id,
-                    player = player,
-                    stream = stream,
-                    source = source,
-                    container = container,
-                    screenshotMode = screenshotMode
-                )
-            },
-            onRelease = { released ->
-                engine.detachSurface(player.id, player, released)
+    if (!screenshotMode) {
+        // A logical feed can exist before the decoder lease is allocated. The SurfaceView may
+        // therefore be created while its EnginePlayerHandle has no backend player. Rebind it
+        // whenever the engine allocates/reclaims a decoder; otherwise audio can play while the
+        // surface remains permanently black.
+        LaunchedEffect(player.id, decoderGeneration, source) {
+            if (engine.hasDecoder(player.id)) {
+                engine.updateSurface(player.id, player, source)
             }
-        )
+        }
+
+        /*
+         * Feed identity is part of the native-view identity. Without this key, Compose can
+         * reuse the same AndroidView node when a grid position changes from feed A to feed B;
+         * the native SurfaceView then remains owned by A while update() starts targeting B.
+         */
+        key(player.id) {
+            AndroidView(
+                modifier = modifier,
+                factory = { FrameLayout(context) },
+                update = { container ->
+                    engine.attachSurface(
+                        feedId = player.id,
+                        player = player,
+                        stream = stream,
+                        source = source,
+                        container = container,
+                        screenshotMode = false
+                    )
+                },
+                onRelease = { released ->
+                    engine.detachSurface(player.id, player, released)
+                }
+            )
+        }
     }
 }
 
