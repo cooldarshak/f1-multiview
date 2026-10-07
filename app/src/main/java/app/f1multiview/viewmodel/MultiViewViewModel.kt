@@ -241,6 +241,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         val streams=_ui.value.streams
         val world=streams.firstOrNull{it.kind==StreamKind.WORLD}
         val obc=streams.firstOrNull{it.kind==StreamKind.ONBOARD}
+        val timing=streams.firstOrNull{it.kind==StreamKind.TIMING}
         val tracker=streams.firstOrNull{it.kind==StreamKind.TRACK}
         val data=streams.firstOrNull{it.kind==StreamKind.DATA}
         val picked=when(name){
