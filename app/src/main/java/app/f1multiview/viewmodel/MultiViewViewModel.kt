@@ -30,7 +30,7 @@ data class UiState(
     val auth:AuthState=AuthState.Checking,val layout:LayoutPreset=LayoutPreset.GRID_4,val session:Session?=null,
     val sessions: List<Session> =emptyList(),val streams: List<StreamSource> =emptyList(),
     val telemetry: List<DriverTelemetry> =DemoRepository.telemetry(), val liveSessionInfo: LiveSessionInfo = LiveSessionInfo(),val timing: List<TimingRow> =DemoRepository.timing(), val currentLap:Int = 0, val totalLaps:Int = 0,
-    val raceControl: List<RaceControlEvent> =DemoRepository.raceControl(), val weather: TimingWeather = TimingWeather(),val selectedPanel:String?=null,val syncOffsetMs:Long=0,
+    val raceControl: List<RaceControlEvent> =DemoRepository.raceControl(), val weather: TimingWeather = TimingWeather(),val sessionClock:String = "-",val selectedPanel:String?=null,val syncOffsetMs:Long=0,
     val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
@@ -69,6 +69,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.trackPositions.collect{positions->_ui.value=_ui.value.copy(trackPositions=positions)}}
         viewModelScope.launch{timingClient.trackStatus.collect{status->_ui.value=_ui.value.copy(trackStatus=status)}}
         viewModelScope.launch{timingClient.lapCount.collect{laps->_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
+        viewModelScope.launch{timingClient.sessionClock.collect{clock->_ui.value=_ui.value.copy(sessionClock=clock)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
