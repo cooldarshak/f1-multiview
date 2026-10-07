@@ -44,5 +44,19 @@ object DebugPresentationSettings {
             .apply()
     }
 
+    /**
+     * Enters a transient UI-capture state. It intentionally does not persist.
+     * Protected video surfaces are removed from the view hierarchy while playback
+     * continues, so Android's normal screenshot path can capture the Compose UI.
+     */
+    fun enterUiCaptureMode() {
+        cached = true
+        _screenshotMode.value = true
+    }
+
+    fun exitUiCaptureMode(context: Context) {
+        setScreenshotMode(context, false)
+    }
+
     fun isScreenshotModeEnabled(): Boolean = cached
 }
