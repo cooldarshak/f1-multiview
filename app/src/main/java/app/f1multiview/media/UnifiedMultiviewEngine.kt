@@ -292,7 +292,7 @@ class UnifiedMultiviewEngine(context: Context) {
         if (!isOpenTiledActive()) decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
 
-    fun play(id: String) = decoderManager.play(id)
+    fun play(id: String) { if (isOpenTiledActive()) openTiledEngine.play() else decoderManager.play(id) }
     fun prepare(id: String) = decoderManager.prepare(id)
     fun seekTo(id: String, positionMs: Long) = decoderManager.seekTo(id, positionMs)
     fun seekToDefaultPosition(id: String) = decoderManager.seekToDefaultPosition(id)
@@ -302,7 +302,7 @@ class UnifiedMultiviewEngine(context: Context) {
     internal fun detachSurfaceView(id: String, surface: SurfaceView) = decoderManager.detachSurfaceView(id, surface)
     internal fun attachTextureView(id: String, texture: TextureView) = decoderManager.attachTextureView(id, texture)
     internal fun detachTextureView(id: String, texture: TextureView) = decoderManager.detachTextureView(id, texture)
-    fun pause(id: String) = decoderManager.pause(id)
+    fun pause(id: String) { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.pause(id) }
     fun playAll() { if (isOpenTiledActive()) openTiledEngine.play() else decoderManager.playAll() }
     fun pauseAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.pauseAll() }
     fun stopAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.stopAll() }
