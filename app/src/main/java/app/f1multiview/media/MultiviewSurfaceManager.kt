@@ -46,7 +46,10 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     fun update(feedId: String, player: EnginePlayerHandle, source: String) {
-        bindings[feedId]?.let { attachExisting(it, player, source) }
+        bindings[feedId]?.let {
+            renderCoordinator.update(feedId, source)
+            attachExisting(it, player, source)
+        }
     }
 
     fun detach(feedId: String, player: EnginePlayerHandle) {
