@@ -47,6 +47,8 @@ class UnifiedMultiviewEngine(context: Context) {
     fun availableDecoderSlots(): Int = decoderManager.availableDecoderSlots()
     fun decoderCapacity(): Int = decoderManager.capacity()
 
+    fun suspend(id: String) = decoderManager.suspend(id)
+
     fun clear(id: String) {
         if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
         feedRegistry.remove(id)
@@ -180,6 +182,7 @@ private class DecoderManager(context: Context) {
     fun get(id: String): ExoPlayer = backend.get(id)
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
     fun retain(ids: Set<String>) = backend.retain(ids)
+    fun suspend(id: String) = backend.suspend(id)
     fun clear(id: String) = backend.clear(id)
     fun setQuality(id: String, quality: Quality) = backend.setQuality(id, quality)
     fun setQuality(quality: Quality) = backend.setQuality(quality)
