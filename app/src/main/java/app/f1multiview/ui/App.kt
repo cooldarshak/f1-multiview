@@ -1114,6 +1114,544 @@ private fun PitWall(
 }
 
 @Composable
+private fun MultiviewFeedTile(
+    stream: StreamSource,
+    ui: UiState,
+    engine: UnifiedMultiviewEngine,
+    error: String?,
+    modifier: Modifier,
+    onFocus: (String) -> Unit,
+    active: Boolean,
+    surfaceType: Int,
+    showOverlay: Boolean = true
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { isTelevision(context) }
+    Box(
+        modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black)
+            .clickable { onFocus(stream.id) }.focusable()
+    ) {
+        when (stream.kind) {
+            StreamKind.TRACK_MAP -> TrackMapPanel(ui, isTv)
+            StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
+            else -> PlayerTile(
+                stream, engine, error, Modifier.fillMaxSize(), {}, onFocus,
+                active = active, surfaceType = surfaceType, showOverlay = showOverlay
+            )
+        }
+    }
+}
+
+@Composable
+private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize().background(Color(0xFF111214)),
+        contentAlignment = Alignment.Center
+    ) {
+        val designWidth = 832f
+        val designHeight = 480f
+        val scaleX = maxWidth.value / designWidth
+        val scaleY = maxHeight.value / designHeight
+        val uiScale = minOf(scaleX, scaleY).coerceIn(0.45f, 1f)
+
+        Box(
+            Modifier
+                .requiredWidth(designWidth.dp)
+                .requiredHeight(designHeight.dp)
+                .scale(uiScale)
+        ) {
+            F1DashReferenceLayout(ui, isTv)
+        }
+    }
+}
+
+private fun countryFlag(country: String): String {
+    val value = country.trim()
+    if (value.any { it.code in 0x1F1E6..0x1F1FF }) return value
+    return when (value.uppercase()) {
+        "AUSTRALIA" -> "🇦🇺"
+        "CHINA" -> "🇨🇳"
+        "JAPAN" -> "🇯🇵"
+        "BAHRAIN" -> "🇧🇭"
+        "SAUDI ARABIA" -> "🇸🇦"
+        "USA", "UNITED STATES", "UNITED STATES OF AMERICA" -> "🇺🇸"
+        "CANADA" -> "🇨🇦"
+        "MONACO" -> "🇲🇨"
+        "SPAIN" -> "🇪🇸"
+        "AUSTRIA" -> "🇦🇹"
+        "GREAT BRITAIN", "UNITED KINGDOM", "UK" -> "🇬🇧"
+        "BELGIUM" -> "🇧🇪"
+        "HUNGARY" -> "🇭🇺"
+        "NETHERLANDS" -> "🇳🇱"
+        "ITALY" -> "🇮🇹"
+        "AZERBAIJAN" -> "🇦🇿"
+        "SINGAPORE" -> "🇸🇬"
+        "MEXICO" -> "🇲🇽"
+        "BRAZIL" -> "🇧🇷"
+        "QATAR" -> "🇶🇦"
+        "ABU DHABI", "UNITED ARAB EMIRATES", "UAE" -> "🇦🇪"
+        else -> "🏁"
+    }
+}
+
+private fun formatWind(wind: String, direction: String): String {
+    val speed = wind.trim()
+    val dir = direction.trim()
+    if (speed.isBlank() || speed == "-") return if (dir.isBlank() || dir == "-") "-" else dir
+    if (dir.isBlank() || dir == "-") return if (speed.contains("km/h", true)) speed else "$speed km/h"
+    return if (speed.contains("km/h", true)) "$speed $dir" else "$speed km/h $dir"
+}
+
+private fun parseTeamColor(value: String): Color {
+    val hex = value.trim().removePrefix("#").let {
+        when (it.length) {
+            3 -> it.map { ch -> "$ch$ch" }.joinToString("")
+            6 -> it
+            8 -> it.takeLast(6)
+            else -> "55565D"
+        }
+    }
+    return try {
+        Color(android.graphics.Color.parseColor("#$hex"))
+    } catch (_: IllegalArgumentException) {
+        Color(0xFF55565D)
+    }
+}
+
+private fun isLightColor(color: Color): Boolean {
+    val luminance = 0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue
+    return luminance > 0.62f
+}
+
+private fun dashboardClock(value: String): String? {
+    val raw = value.trim()
+    if (raw.isBlank() || raw == "-") return null
+    val parts = raw.split(":").mapNotNull { it.toIntOrNull() }
+    return when {
+        parts.size == 3 -> "%02d:%02d".format(parts[1], parts[2])
+        parts.size == 2 -> "%02d:%02d".format(parts[0], parts[1])
+        else -> raw
+    }
+}
+
+@Composable
+private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
+    val rows = ui.timing.sortedBy { it.position }.take(5)
+    val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
+    val totalLaps = ui.totalLaps.takeIf { it > 0 }
+    val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
+    val status = ui.trackStatus.label.ifBlank { "GREEN" }
+
+    Column(Modifier.fillMaxSize().background(Color(0xFF111214))) {
+        Row(
+            Modifier.fillMaxWidth().height(62.dp).background(Color(0xFF17181A)).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(46.dp, 38.dp).background(Color(0xFF101114), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
+                Text(countryFlag(ui.liveSessionInfo.country), fontSize = 24.sp)
+            }
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val clock = dashboardClock(ui.sessionClock)
+                if (clock != null) {
+                    Text(clock, color = White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                }
+                Text(
+                    (if (currentLap > 0) "LIVE  " else "") + "Lap: " + currentLap + (totalLaps?.let { "/$it" } ?: "") +
+                        (if (currentLap > 0 && totalLaps != null) " (" + (totalLaps - currentLap).coerceAtLeast(0) + " left)" else ""),
+                    color = if (clock != null) Muted else White,
+                    fontSize = if (clock != null) 9.sp else 15.sp,
+                    fontWeight = FontWeight.Black, maxLines = 1
+                )
+            }
+            Surface(
+                color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A),
+                shape = RoundedCornerShape(3.dp)
+            ) {
+                Text(
+                    if (status.equals("GREEN", true)) "Track Clear" else status,
+                    color = if (status.equals("GREEN", true)) Color(0xFF70C96D) else Color(0xFFFF8C82),
+                    fontSize = 9.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Wind", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                Text(formatWind(ui.weather.wind, ui.weather.windDirection), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Track", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                Text(if (ui.weather.track == "-") "-" else ui.weather.track + "°C", color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (rows.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                items(rows, key = { it.position }) { row ->
+                    val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
+                    val telemetry = ui.telemetry.firstOrNull {
+                        it.driver.equals(row.driverNumber, true) ||
+                            (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
+                    }
+                    val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
+                    val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
+
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .height(68.dp)
+                            .background(if (row.position % 2 == 0) Color(0xFF242526) else Color(0xFF151617))
+                            .padding(horizontal = 7.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // F1-style single team/position tag. This replaces the old separate position + TLA blocks.
+                        Surface(color = teamColor, shape = RoundedCornerShape(3.dp), modifier = Modifier.width(125.dp)) {
+                            Row(
+                                Modifier.height(42.dp).padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(27.dp))
+                                Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                            }
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        // 2026 has no DRS. Use this slot for the actual tyre compound instead.
+                        Column(
+                            Modifier.width(48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                row.tyre.take(4).uppercase().ifBlank { "-" },
+                                color = tyreDisplayColor(row.tyre),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1
+                            )
+                            Text("L" + row.lap, color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        GearGauge(
+                            gear = telemetry?.gear ?: 0,
+                            rpm = telemetry?.rpm ?: 0,
+                            speed = telemetry?.speed ?: row.speed.toIntOrNull() ?: 0,
+                            modifier = Modifier.width(72.dp)
+                        )
+
+                        Column(Modifier.width(118.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
+                                LapPill(row.lastLap, lapColor)
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
+                                if (row.position == 1) {
+                                    LapPill(row.bestLap, Color(0xFFD84BEB))
+                                } else {
+                                    Text(row.bestLap, color = White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                                }
+                            }
+                        }
+
+                        Column(Modifier.width(98.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("INT", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
+                                GapPill(row.interval, row.position != 1)
+                            }
+                            Spacer(Modifier.height(5.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("LDR", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
+                                Text(if (row.position == 1) "—" else row.leaderGap, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+
+                        Row(
+                            Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
+                            DashSectorColumn(row.sector2, row.sector2Status, row.sector2Segments)
+                            DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GearGauge(gear: Int, rpm: Int, speed: Int, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 4.dp.toPx()
+                drawArc(
+                    color = Color(0xFF4A4B50),
+                    startAngle = 135f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+                val progress = (rpm / 12500f).coerceIn(0f, 1f)
+                drawArc(
+                    color = Color(0xFF2999EA),
+                    startAngle = 135f,
+                    sweepAngle = 270f * progress,
+                    useCenter = false,
+                    style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+            }
+            Text(gear.toString(), color = White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        }
+        Text(rpm.toString(), color = White, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+        Text("$speed km/h", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun LapPill(value: String, color: Color) {
+    Box(
+        Modifier.width(69.dp).height(24.dp).background(color, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(value, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+    }
+}
+
+@Composable
+private fun GapPill(value: String, visible: Boolean) {
+    if (visible && value.isNotBlank() && value != "-") {
+        Box(
+            Modifier.border(1.dp, Color(0xFF7CCB82), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(value, color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+        }
+    } else {
+        Text("—", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun DashSectorColumn(value: String, status: String, segments: List<String>) {
+    Column(Modifier.widthIn(min = 56.dp, max = 76.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            val source = if (segments.isNotEmpty()) segments else List(8) { status }
+            source.take(10).forEach { seg ->
+                Box(
+                    Modifier.width(5.dp).height(6.dp)
+                        .background(segmentColor(seg), RoundedCornerShape(1.dp))
+                )
+            }
+        }
+        Text(value, color = sectorColor(status), fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+private fun tyreDisplayColor(tyre: String): Color = when (tyre.uppercase()) {
+    "SOFT", "S" -> Color(0xFFFF4B4B)
+    "MEDIUM", "M" -> Color(0xFFFFD34E)
+    "HARD", "H" -> Color(0xFFF4F4F4)
+    "INTERMEDIATE", "I" -> Color(0xFF4DB36B)
+    "WET", "W" -> Color(0xFF4C8DFF)
+    else -> Muted
+}
+
+private fun segmentColor(status: String): Color = when(status.uppercase()) {
+    "PURPLE" -> Color(0xFFD84BEB)
+    "GREEN" -> Color(0xFF59B35D)
+    "YELLOW" -> Color(0xFFF0C93B)
+    "BLUE" -> Color(0xFF4B9EEA)
+    else -> Color(0xFF55565C)
+}
+
+@Composable
+private fun SectorCell(label: String, value: String, status: String) {
+    Column(Modifier.widthIn(min = 43.dp, max = 62.dp)) {
+        Text(label, color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black)
+        Text(value, color = sectorColor(status), fontSize = 6.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+private fun sectorColor(status: String): Color = when (status.uppercase()) {
+    "PURPLE" -> Color(0xFFD14DFF)
+    "GREEN", "PERSONAL" -> Color(0xFF4CCB68)
+    "YELLOW", "SLOW" -> Color(0xFFFFD54A)
+    else -> Color(0xFFB8B9C0)
+}
+
+private fun tyreLabel(value: String): String = when {
+    value.contains("SOFT", true) -> "SOFT"
+    value.contains("MED", true) || value.contains("MEDIUM", true) -> "MED"
+    value.contains("HARD", true) -> "HARD"
+    value.isBlank() -> "-"
+    else -> value.take(5).uppercase()
+}
+
+private fun tyreColor(value: String): Color = when {
+    value.contains("SOFT", true) -> Color(0xFFE10600)
+    value.contains("MED", true) -> Color(0xFFFFD54A)
+    value.contains("HARD", true) -> Color(0xFFF2F2F2)
+    else -> White
+}
+
+@Composable
+private fun CanonicalMultiviewLayout(
+    ui: UiState,
+    selected: List<StreamSource>,
+    engine: UnifiedMultiviewEngine,
+    errors: Map<String, String>,
+    editSize: Boolean,
+    onFocus: (String) -> Unit,
+    activeId: String? = null,
+    modifier: Modifier = Modifier,
+    surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW
+) {
+    val gap = 6.dp
+    var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
+    var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
+    var mainX by rememberSaveable { mutableFloatStateOf(.62f) }
+    var topX by rememberSaveable { mutableFloatStateOf(.33f) }
+    var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
+    var fourSideH2 by rememberSaveable { mutableFloatStateOf(.34f) }
+    var topX2 by rememberSaveable { mutableFloatStateOf(.5f) }
+    var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
+    var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
+    var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
+    val firstResizeFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(editSize, selected.size) {
+        if (editSize && selected.size > 1) {
+            delay(60L)
+            firstResizeFocusRequester.requestFocus()
+        }
+    }
+
+    Box(modifier) {
+        when {
+            selected.isEmpty() ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
+                }
+            selected.size == 1 ->
+                MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+            selected.size == 2 ->
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
+                    MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                }
+            selected.size == 3 ->
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
+                    Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
+                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                    }
+                }
+            selected.size == 4 ->
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    // Four-feed layout: the main feed gets the large left pane;
+                    // feeds 2-4 are stacked vertically on the right.
+                    MultiviewFeedTile(
+                        selected[0],
+                        ui,
+                        engine,
+                        errors[selected[0].id],
+                        Modifier.weight(mainX).fillMaxHeight(),
+                        onFocus,
+                        active = activeId == selected[0].id,
+                        surfaceType = surfaceType
+                    )
+                    ResizeHandle(
+                        Orientation.Horizontal,
+                        editSize,
+                        firstResizeFocusRequester
+                    ) {
+                        mainX = (mainX + it / 1000f).coerceIn(.45f, .78f)
+                    }
+                    Column(
+                        Modifier.weight(1f - mainX).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(gap)
+                    ) {
+                        MultiviewFeedTile(
+                        selected[1],
+                        ui,
+                            engine,
+                            errors[selected[1].id],
+                            Modifier.weight(fourSideH1).fillMaxWidth(),
+                            onFocus,
+                            active = activeId == selected[1].id,
+                            surfaceType = surfaceType
+                        )
+                        ResizeHandle(Orientation.Vertical, editSize) {
+                            val delta = it / 900f
+                            fourSideH1 = (fourSideH1 + delta).coerceIn(.16f, .58f)
+                            fourSideH2 = (fourSideH2 - delta).coerceIn(.16f, .58f)
+                        }
+                        MultiviewFeedTile(
+                        selected[2],
+                        ui,
+                            engine,
+                            errors[selected[2].id],
+                            Modifier.weight(fourSideH2).fillMaxWidth(),
+                            onFocus,
+                            active = activeId == selected[2].id,
+                            surfaceType = surfaceType
+                        )
+                        ResizeHandle(Orientation.Vertical, editSize) {
+                            val delta = it / 900f
+                            fourSideH2 = (fourSideH2 + delta).coerceIn(.16f, .58f)
+                        }
+                        MultiviewFeedTile(
+                        selected[3],
+                        ui,
+                            engine,
+                            errors[selected[3].id],
+                            Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
+                            onFocus,
+                            active = activeId == selected[3].id,
+                            surfaceType = surfaceType
+                        )
+                    }
+                }
+            else ->
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                        ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
+                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
+                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                    }
+                    ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
+                    Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
+                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
+                        MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
+                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
+                        MultiviewFeedTile(selected[5], ui, engine, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
+                    }
+                }
+        }
+    }
+}
+@OptIn(UnstableApi::class)
+@Composable
 private fun OpenTiledMultiviewWall(
     engine: UnifiedMultiviewEngine,
     feedIds: List<String>,
