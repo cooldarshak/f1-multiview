@@ -113,6 +113,13 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadStreams(session)
          loadReplayTiming(session)
      }
+    fun prepareStream(id:String)=viewModelScope.launch {
+        val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
+        if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) {
+            resolveSource(source)
+        }
+    }
+
     fun setQuality(q:Quality){_ui.value=_ui.value.copy(quality=q)}
 
      fun clearPendingResume() {
