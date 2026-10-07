@@ -64,8 +64,7 @@ class Media3DecoderManager(context: Context) {
     private var playAllRequested = false
     private val syncController = MultiviewSyncController(
         players = { players },
-        desiredPlaying = { desiredPlaying },
-        onReferenceRemoved = { }
+        desiredPlaying = { desiredPlaying }
     )
     private val desiredPlaying = mutableSetOf<String>()
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
