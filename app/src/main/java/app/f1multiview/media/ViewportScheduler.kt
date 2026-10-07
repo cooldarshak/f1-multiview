@@ -3,13 +3,6 @@ package app.f1multiview.media
 import app.f1multiview.model.StreamKind
 import app.f1multiview.model.StreamSource
 
-/**
- * Chooses which logical feeds are allowed to consume physical decoder slots.
- *
- * Logical feeds may outnumber the decoder budget. Selection is deterministic:
- * reference feed first, then visible feeds in viewport order, then already-active
- * feeds to avoid unnecessary churn. The scheduler never changes the decoder budget.
- */
 class ViewportScheduler(private val maxDecoders: Int) {
     data class Candidate(
         val stream: StreamSource,
@@ -24,7 +17,7 @@ class ViewportScheduler(private val maxDecoders: Int) {
         referenceId: String?,
         activeIds: Set<String>
     ): List<StreamSource> {
-        val candidates = streams.asSequence()
+        return streams.asSequence()
             .filter { it.url != null }
             .filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
             .mapIndexed { index, stream ->
@@ -43,11 +36,7 @@ class ViewportScheduler(private val maxDecoders: Int) {
             )
             .take(maxDecoders)
             .map { it.stream }
+            .distinctBy { it.id }
             .toList()
-
-        return candidates(streams, visibleIds, referenceId, activeIds).distinctBy { it.id }
     }
-
-    private val scheduled: List<StreamSource>
-        get() = emptyList()
 }
