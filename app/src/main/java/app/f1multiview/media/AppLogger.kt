@@ -176,8 +176,7 @@ object AppLogger {
         val output = logOutput ?: return
         runCatching {
             if (output is java.io.FileOutputStream && output.channel.size() > MAX_FILE_BYTES) return
-            output.write((line + "
-").toByteArray(Charsets.UTF_8))
+            output.write((line + "\n").toByteArray(Charsets.UTF_8))
             output.flush()
         }.onFailure { Log.w(TAG, "Unable to write app log", it) }
     }
