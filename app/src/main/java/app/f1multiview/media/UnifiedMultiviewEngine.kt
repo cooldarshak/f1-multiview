@@ -302,6 +302,7 @@ class UnifiedMultiviewEngine(context: Context) {
         tiledMultiviewController.clear()
         surfaceManager.clear()
         feedRegistry.clear()
+        openTiledEngine.release()
         decoderManager.release()
     }
 
