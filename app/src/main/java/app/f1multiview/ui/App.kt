@@ -1413,6 +1413,7 @@ private fun FullscreenFeedRail(
     onSwitchStream: (String) -> Unit,
     modifier: Modifier
 ) {
+    val isTv = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
     // The rail contains both video feeds and native F1 data views. Only video
     // feeds participate in the physical decoder viewport; data/tracker remain
     // decoder-free and can still become the active main view.
