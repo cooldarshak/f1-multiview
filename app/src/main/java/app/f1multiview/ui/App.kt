@@ -1877,14 +1877,15 @@ private fun FullscreenMultiview(
         }
 
 
-        if (feedPickerOpen && openTiled && ui.tiledMultiviewSession != null) {
+        val fullscreenTiledSession = ui.tiledMultiviewSession
+        if (feedPickerOpen && openTiled && fullscreenTiledSession != null) {
             Spacer(Modifier.height(6.dp))
             LazyRow(
                 Modifier.fillMaxWidth().align(Alignment.BottomCenter).zIndex(15f).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 7.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                items(ui.tiledMultiviewSession.feeds, key = { it.index }) { feed ->
-                    val feedId = ui.tiledMultiviewSession.feedIds[feed.index]
+                items(fullscreenTiledSession.feeds, key = { it.index }) { feed ->
+                    val feedId = fullscreenTiledSession.feedIds[feed.index]
                     val picked = feedId in tiledSelected
                     Surface(
                         Modifier.widthIn(min = 135.dp, max = 190.dp).clickable { vm.toggleTiledFeed(feedId) }.focusable(),
