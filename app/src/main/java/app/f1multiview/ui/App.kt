@@ -1764,7 +1764,9 @@ private fun segmentColor(status: String): Color = when(status.uppercase()) {
     else -> Color(0xFF55565C)
 }
 
-private fun parseTeamColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor("#" + value.removePrefix("#").padStart(6, 'F'))) }.getOrDefault(Color(0xFF5B5D66))\n\nprivate fun countryFlag(country: String): String = when {
+private fun parseTeamColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor("#" + value.removePrefix("#").padStart(6, 'F'))) }.getOrDefault(Color(0xFF5B5D66))
+
+private fun countryFlag(country: String): String = when {
     country.contains("Australia", true) -> "🇦🇺"
     country.contains("United Kingdom", true) || country.equals("UK", true) -> "🇬🇧"
     country.contains("Italy", true) -> "🇮🇹"
