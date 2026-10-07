@@ -231,19 +231,34 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadReplayTiming(session)
      }
     fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
-    private suspend fun loadStreams(session:Session){
+    private suspend fun loadStreams(session:Session, autoSelectFeeds:Boolean = false){
         provider.streams(session.id).fold(
             {sources->
                 val visible=sources
                 val mainSource=visible.firstOrNull { it.kind == StreamKind.WORLD } ?: visible.firstOrNull()
+                val playableSources = visible.filter {
+                    it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+                }
+                val selected = if (autoSelectFeeds) {
+                    listOfNotNull(mainSource?.id) +
+                        playableSources.filter { it.id != mainSource?.id }.take(3).map { it.id }
+                } else {
+                    listOfNotNull(mainSource?.id)
+                }
+                val selectedDistinct = selected.distinct().take(4)
                 _ui.value=_ui.value.copy(
                     streams=visible,
-                    selectedStreamIds=listOfNotNull(mainSource?.id),
+                    selectedStreamIds=selectedDistinct,
                     mainStreamId=mainSource?.id,
                     providerError=null
                 )
-                if (mainSource != null && mainSource.url == null) {
-                    resolveSource(mainSource)
+                val sourcesToResolve = if (autoSelectFeeds) {
+                    visible.filter { it.id in selectedDistinct && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+                } else {
+                    listOfNotNull(mainSource?.takeIf { it.url == null })
+                }
+                for (source in sourcesToResolve) {
+                    resolveSource(source)
                 }
             },
             {_ui.value=_ui.value.copy(providerError=it.message?:"Unable to load streams")}
