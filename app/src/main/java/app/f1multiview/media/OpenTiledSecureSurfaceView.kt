@@ -55,6 +55,10 @@ class OpenTiledSecureSurfaceView(context: Context) : SurfaceView(context) {
         }
     }
 
+    fun clearOutputSurface() {
+        listener?.onSurfaceReleased()
+    }
+
     fun setSession(value: TiledMultiviewSession) {
         session = value
         focusedIndex = null
