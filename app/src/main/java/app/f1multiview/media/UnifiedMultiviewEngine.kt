@@ -75,6 +75,15 @@ class UnifiedMultiviewEngine(context: Context) {
         openTiledEngine.selectVisibleFeeds(feedIds)
     }
 
+    fun attachOpenTiledView(view: OpenTiledCompositorView) {
+        if (isOpenTiledActive()) openTiledEngine.attachTo(view)
+    }
+
+    fun detachOpenTiledView(view: OpenTiledCompositorView) {
+        view.setListener(null)
+        view.releaseOutput()
+    }
+
     fun setTiledFeeds(feedIds: List<String>) = tiledMultiviewController.setFeeds(feedIds)
 
     fun focusTiledFeed(feedId: String) = tiledMultiviewController.focus(feedId)
@@ -314,7 +323,10 @@ private class DecoderManager(context: Context) {
     fun stopAll() = backend.stopAll()
     fun playbackStartupDiagnostics() = backend.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics() = backend.decoderResourceDiagnostics()
-    fun release() = backend.release()
+    fun release() {
+        openTiledEngine.release()
+        backend.release()
+    }
 }
 
 /** Logical feed registry. A feed is intentionally not equivalent to a decoder. */
