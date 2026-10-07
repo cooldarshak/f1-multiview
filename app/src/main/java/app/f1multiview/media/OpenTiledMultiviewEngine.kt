@@ -68,6 +68,8 @@ class OpenTiledMultiviewEngine(
     private val mseController = OpenTiledMseController()
     private val _state = MutableStateFlow(State())
     private var compositorPlayerListener: Player.Listener? = null
+    private var clockCorrectionHandler: Handler? = null
+    private var clockCorrectionRunnable: Runnable? = null
     val state: StateFlow<State> = _state.asStateFlow()
 
     fun canHandle(tme: TmePlayback): Boolean =
@@ -201,6 +203,35 @@ class OpenTiledMultiviewEngine(
         return nowMs
     }
 
+
+    /**
+     * Continuously reconciles the shared tiled clock against an external reference.
+     * The reference provider is owned by the caller; this engine never creates a
+     * second video player merely to obtain a reference clock.
+     */
+    fun startClockCorrection(referencePositionProvider: () -> Long, intervalMs: Long = 500L) {
+        stopClockCorrection()
+        val p = player ?: return
+        val handler = Handler(p.applicationLooper)
+        val runnable = object : Runnable {
+            override fun run() {
+                if (player == null) return
+                correctClock(referencePositionProvider())
+                handler.postDelayed(this, intervalMs.coerceAtLeast(100L))
+            }
+        }
+        clockCorrectionHandler = handler
+        clockCorrectionRunnable = runnable
+        handler.post(runnable)
+    }
+
+    fun stopClockCorrection() {
+        val handler = clockCorrectionHandler
+        val runnable = clockCorrectionRunnable
+        if (handler != null && runnable != null) handler.removeCallbacks(runnable)
+        clockCorrectionHandler = null
+        clockCorrectionRunnable = null
+    }
 
     fun setQuality(quality: app.f1multiview.core.playback.Quality) {
         val p = player ?: return
@@ -355,6 +386,7 @@ class OpenTiledMultiviewEngine(
     }
 
     fun release() {
+        stopClockCorrection()
         compositorPlayerListener?.let { listener -> player?.removeListener(listener) }
         compositorPlayerListener = null
         player?.release()
