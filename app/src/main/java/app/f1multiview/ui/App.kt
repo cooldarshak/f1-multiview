@@ -957,7 +957,7 @@ private fun PitWall(
     onSetMainStream: (String) -> Unit
 ) {
     val backendStatus by engine.backendStatus.collectAsState()
-    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(4).orEmpty() }
+    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
         .let { if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) it else it.take(4) }
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
