@@ -126,6 +126,16 @@ object AppLogger {
 
     fun snapshot(): String = _entries.value.joinToString("\n")
 
+    @Synchronized
+    fun hasPersistentStorage(): Boolean = logUri != null && logOutput != null
+
+    @Synchronized
+    fun retryPersistentStorage(context: Context): Boolean {
+        if (!enabled) return false
+        appContext = context.applicationContext
+        return ensurePersistentFileLocked("permission-retry")
+    }
+
     fun currentLogLocation(): String {
         val uri = logUri ?: return "Download/F1 MultiView Logs/<date>/<launch>.log"
         return uri.toString()
