@@ -57,7 +57,6 @@ class Media3DecoderManager(context: Context) {
     private val decoderRecoveryAttempts = mutableMapOf<String, Int>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val lastLiveSeekMs = mutableMapOf<String, Long>()
     private val startupRequestedAtMs = mutableMapOf<String, Long>()
     private val startupFirstFrameAtMs = mutableMapOf<String, Long>()
     private val startupPlayingAtMs = mutableMapOf<String, Long>()
@@ -667,18 +666,12 @@ class Media3DecoderManager(context: Context) {
     fun isMuted(id: String): Boolean =
         players[id]?.volume?.let { it <= 0.001f } ?: true
 
-    private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
-
     /** Central synchronization entry point. */
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
-        syncMainId = mainId
-        activeChannelOffsetsMs = channelOffsetsMs
         syncController.setReference(mainId)
         syncController.synchronize(channelOffsetsMs)
     }
 
-    private val syncMainId: String?
-        get() = syncController.referenceId()
 
     private fun windowStart(player: ExoPlayer): Long {
         if (player.currentTimeline.isEmpty) return C.TIME_UNSET
