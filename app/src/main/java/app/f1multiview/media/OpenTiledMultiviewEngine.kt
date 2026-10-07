@@ -114,21 +114,8 @@ class OpenTiledMultiviewEngine(
             p.prepare()
         }
 
-        val columns = max(1, kotlin.math.ceil(kotlin.math.sqrt(tme.feeds.size.toDouble())).toInt())
-        val rows = max(1, kotlin.math.ceil(tme.feeds.size.toDouble() / columns).toInt())
         val tileWidth = tme.tileWidth ?: return false
         val tileHeight = tme.tileHeight ?: return false
-
-        val tiles = tme.feeds.mapIndexed { index, feed ->
-            Tile(
-                feedId = feed.uuid ?: feed.channelId?.toString() ?: "feed-$index",
-                index = index,
-                row = index / columns,
-                column = index % columns,
-                widthPx = tileWidth,
-                heightPx = tileHeight
-            )
-        }
 
         session = TiledMultiviewSession(
             version = tme.version ?: 0,
@@ -151,8 +138,16 @@ class OpenTiledMultiviewEngine(
             }
         )
 
-        val normalizedTiles = tiles.mapIndexed { index, tile ->
-            tile.copy(feedId = session!!.feedIds[index])
+        val plan = OpenTiledDecoderPlan.from(session!!) ?: return false
+        val normalizedTiles = plan.bindings.map { binding ->
+            Tile(
+                feedId = binding.feedId,
+                index = binding.logicalIndex,
+                row = binding.logicalIndex / plan.tileColumns,
+                column = binding.logicalIndex % plan.tileColumns,
+                widthPx = plan.tileWidthPx,
+                heightPx = plan.tileHeightPx
+            )
         }
         publish(tiles = normalizedTiles, selected = normalizedTiles.map { it.feedId })
         return true
