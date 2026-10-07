@@ -3,6 +3,7 @@ package app.f1multiview.media
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.opengl.GLES20
+import android.opengl.EGL14
 import android.opengl.GLES11Ext
 import android.opengl.GLSurfaceView
 import android.view.Surface
@@ -21,7 +22,7 @@ import kotlin.math.max
  * Protected streams must not use this path. The secure Media3 SurfaceView path
  * remains the only path for DRM content.
  */
-class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
+class OpenTiledCompositorView(\n    context: Context,\n    private val protectedOutput: Boolean = false\n) : GLSurfaceView(context) {
     interface Listener {
         fun onOutputSurfaceReady(surface: Surface)
         fun onOutputSurfaceReleased()
@@ -32,9 +33,61 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
     init {
         setEGLContextClientVersion(2)
+        if (protectedOutput) {
+            installProtectedEgl()
+        }
         setRenderer(renderer)
         renderMode = RENDERMODE_WHEN_DIRTY
         preserveEGLContextOnPause = true
+    }
+
+    private fun installProtectedEgl() {
+        setEGLContextFactory(object : EGLContextFactory {
+            override fun createContext(
+                egl: javax.microedition.khronos.egl.EGL10,
+                display: javax.microedition.khronos.egl.EGLDisplay,
+                config: javax.microedition.khronos.egl.EGLConfig
+            ): javax.microedition.khronos.egl.EGLContext {
+                val attributes = intArrayOf(
+                    EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
+                    EGL_PROTECTED_CONTENT_EXT, EGL14.EGL_TRUE,
+                    EGL14.EGL_NONE
+                )
+                return egl.eglCreateContext(
+                    display, config, javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT, attributes
+                )
+            }
+
+            override fun destroyContext(
+                egl: javax.microedition.khronos.egl.EGL10,
+                display: javax.microedition.khronos.egl.EGLDisplay,
+                context: javax.microedition.khronos.egl.EGLContext
+            ) {
+                egl.eglDestroyContext(display, context)
+            }
+        })
+        setEGLWindowSurfaceFactory(object : EGLWindowSurfaceFactory {
+            override fun createWindowSurface(
+                egl: javax.microedition.khronos.egl.EGL10,
+                display: javax.microedition.khronos.egl.EGLDisplay,
+                config: javax.microedition.khronos.egl.EGLConfig,
+                nativeWindow: Any
+            ): javax.microedition.khronos.egl.EGLSurface {
+                val attributes = intArrayOf(
+                    EGL_PROTECTED_CONTENT_EXT, EGL14.EGL_TRUE,
+                    javax.microedition.khronos.egl.EGL10.EGL_NONE
+                )
+                return egl.eglCreateWindowSurface(display, config, nativeWindow, attributes)
+            }
+
+            override fun destroySurface(
+                egl: javax.microedition.khronos.egl.EGL10,
+                display: javax.microedition.khronos.egl.EGLDisplay,
+                surface: javax.microedition.khronos.egl.EGLSurface
+            ) {
+                egl.eglDestroySurface(display, surface)
+            }
+        })
     }
 
     fun setListener(value: Listener?) {
@@ -246,7 +299,7 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
                 }
     }
 
-    private class ShaderProgram(vertexSource: String, fragmentSource: String) {
+    companion object {\n        private const val EGL_PROTECTED_CONTENT_EXT = 0x32C0\n        private const val GL_TEXTURE_PROTECTED_EXT = 0x8BFA\n    }\n\n    private class ShaderProgram(vertexSource: String, fragmentSource: String) {
         val id: Int
         val position: Int
         val texCoord: Int
