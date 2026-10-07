@@ -890,6 +890,36 @@ class Media3DecoderManager(context: Context) {
         if (audioPlayerId == id) setAudioPlayer(null)
     }
 
+    fun prepare(id: String) { players[id]?.prepare() }
+
+    fun seekTo(id: String, positionMs: Long) { players[id]?.seekTo(positionMs) }
+
+    fun seekToDefaultPosition(id: String) { players[id]?.seekToDefaultPosition() }
+
+    fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) {
+        players[id]?.setPlaybackParameters(parameters)
+    }
+
+    fun setPlaybackSpeed(id: String, speed: Float) {
+        players[id]?.setPlaybackSpeed(speed)
+    }
+
+    fun attachSurfaceView(id: String, surface: android.view.SurfaceView) {
+        players[id]?.setVideoSurfaceView(surface)
+    }
+
+    fun detachSurfaceView(id: String, surface: android.view.SurfaceView) {
+        players[id]?.clearVideoSurfaceView(surface)
+    }
+
+    fun attachTextureView(id: String, texture: android.view.TextureView) {
+        players[id]?.setVideoTextureView(texture)
+    }
+
+    fun detachTextureView(id: String, texture: android.view.TextureView) {
+        players[id]?.clearVideoTextureView(texture)
+    }
+
     fun release() {
         mainHandler.removeCallbacksAndMessages(null)
         syncMainId = null
