@@ -110,8 +110,7 @@ object AppLogger {
         runCatching { logOutput?.flush() }
     }
 
-    fun snapshot(): String = _entries.value.joinToString("
-")
+    fun snapshot(): String = _entries.value.joinToString("\n")
 
     fun currentLogLocation(): String {
         val uri = logUri ?: return "Download/F1 MultiView Logs/<date>/<launch>.log"
