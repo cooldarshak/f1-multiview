@@ -956,6 +956,7 @@ private fun PitWall(
     onSetMainStream: (String) -> Unit
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    val backendStatus by engine.backendStatus.collectAsState()
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -1080,16 +1081,53 @@ private fun PitWall(
         }
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
-        CanonicalMultiviewLayout(
-            ui,
-            selected,
-            engine,
-            errors,
-            if (isTv) tvResizeMode else false,
-            {},
-            modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
-        )
+        if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
+            OpenTiledMultiviewWall(
+                engine = engine,
+                feedIds = selected.map { it.id },
+                modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
+            )
+        } else {
+            CanonicalMultiviewLayout(
+                ui,
+                selected,
+                engine,
+                errors,
+                if (isTv) tvResizeMode else false,
+                {},
+                modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
+            )
+        }
     }
+}
+
+@Composable
+private fun OpenTiledMultiviewWall(
+    engine: UnifiedMultiviewEngine,
+    feedIds: List<String>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val view = remember(engine) { engine.openTiledView(context) }
+
+    LaunchedEffect(view, feedIds) {
+        engine.selectOpenTiledFeeds(feedIds)
+    }
+
+    DisposableEffect(view, engine) {
+        engine.attachOpenTiledView(view)
+        onDispose {
+            engine.detachOpenTiledView(view)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier.clip(RoundedCornerShape(14.dp)),
+        factory = { view },
+        update = {
+            engine.selectOpenTiledFeeds(feedIds)
+        }
+    )
 }
 @Composable
 private fun ResizableCompactWall(selected: List<StreamSource>, engine: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
