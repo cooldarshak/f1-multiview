@@ -80,16 +80,16 @@ class UnifiedMultiviewEngine(context: Context) {
 
         target.forEach { stream ->
             if (!decoderManager.hasDecoder(stream.id)) {
+                var evicted: StreamSource? = null
                 if (decoderManager.availableDecoderSlots() == 0) {
-                    val evicted = evictionCandidates.removeFirstOrNull()
-                    if (evicted != null) clear(evicted.id)
+                    evicted = evictionCandidates.removeFirstOrNull()
+                    evicted?.let { clear(it.id) }
                 }
 
                 val loaded = load(stream)
                 if (!loaded) {
-                    // Best-effort rollback of the feed evicted to make room.
-                    if (evictionCandidates.isNotEmpty()) {
-                        // The remaining candidates were not evicted.
+                    evicted?.let { restore ->
+                        load(restore)
                     }
                 }
             }
