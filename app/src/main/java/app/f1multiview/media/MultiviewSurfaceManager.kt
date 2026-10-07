@@ -37,10 +37,12 @@ class MultiviewSurfaceManager(private val context: Context) {
         container: FrameLayout,
         screenshotMode: Boolean = false
     ) {
+        AppLogger.d("Surface", "bind start feed=$feedId player=${player.id} source=$source container=${System.identityHashCode(container)}")
         val current = bindings[feedId]
         if (current != null && current.container === container && current.owner === player) {
             renderCoordinator.update(feedId, source)
             attachExisting(current, player, source)
+            AppLogger.d("Surface", "bind reused feed=$feedId container=${System.identityHashCode(container)}")
             return
         }
 
@@ -49,6 +51,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
         val protectedContent = renderSlot.protectedContent
 
+        AppLogger.d("Surface", "bind create feed=$feedId path=${renderSlot.path} protected=$protectedContent")
         if (renderSlot.path == MultiviewRenderCoordinator.RenderPath.GPU_TEXTURE) {
             val texture = TextureView(context)
             container.addView(texture, params)
@@ -90,6 +93,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     fun update(feedId: String, player: EnginePlayerHandle, source: String) {
+        AppLogger.d("Surface", "update feed=$feedId player=${player.id} bound=${bindings.containsKey(feedId)}")
         bindings[feedId]?.let {
             renderCoordinator.update(feedId, source)
             if (it.owner !== player) {
@@ -108,11 +112,19 @@ class MultiviewSurfaceManager(private val context: Context) {
      * Compose onRelease must not detach a newer binding for the same logical feed.
      */
     fun detach(feedId: String, player: EnginePlayerHandle, container: FrameLayout) {
-        val binding = bindings[feedId] ?: return
-        if (binding.container !== container || binding.owner !== player) return
+        AppLogger.d("Surface", "detach request feed=$feedId player=${player.id} container=${System.identityHashCode(container)}")
+        val binding = bindings[feedId] ?: run {
+            AppLogger.w("Surface", "detach ignored: no binding feed=$feedId")
+            return
+        }
+        if (binding.container !== container || binding.owner !== player) {
+            AppLogger.w("Surface", "detach identity mismatch feed=$feedId currentContainer=${System.identityHashCode(binding.container)} currentOwner=${binding.owner.id}")
+            return
+        }
         bindings.remove(feedId)
         renderCoordinator.unbind(feedId)
         releaseBinding(binding, unbindCoordinator = false)
+        AppLogger.d("Surface", "detach complete feed=$feedId")
     }
 
     fun binding(feedId: String): SurfaceBinding? = bindings[feedId]
@@ -126,6 +138,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     fun isGpuComposable(feedId: String): Boolean = renderCoordinator.isGpuComposable(feedId)
 
     fun clear() {
+        AppLogger.i("Surface", "clear bindings=${bindings.keys}")
         bindings.values.toList().forEach { releaseBinding(it, unbindCoordinator = false) }
         bindings.clear()
         renderCoordinator.clear()
