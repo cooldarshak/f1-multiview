@@ -27,7 +27,7 @@ class MultiviewRenderCoordinator {
 
     fun pathFor(stream: StreamSource, screenshotMode: Boolean): RenderPath =
         if (stream.drmLicenseUrl != null || !screenshotMode) {
-            RenderPath.SECURE_SURFACE
+            RenderPath.SURFACE_VIEW
         } else {
             RenderPath.GPU_TEXTURE
         }
