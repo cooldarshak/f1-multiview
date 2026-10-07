@@ -30,9 +30,8 @@ data class PlaybackSession(
     /**
      * Parsed TME is deliberately exposed as a first-class playback capability.
      *
-     * The current Media3 fallback does not pretend to implement Tiledmedia's native
-     * single-player decoder. Callers can inspect/configure the tiled session separately
-     * and fall back to ordinary stream playback until a native tiled backend is present.
+     * Callers can inspect the topology and let the multiview engine choose the
+     * open single-player tiled backend or the independent-feed fallback.
      */
     val tiledMultiview: TiledMultiviewSession?
         get() = tmeJson?.let(TiledMultiviewSessionParser::parse)
