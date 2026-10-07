@@ -71,6 +71,7 @@ import app.f1multiview.media.DebugPresentationSettings
 import app.f1multiview.media.AppLogger
 import app.f1multiview.media.OpenTiledSecureSurfaceView
 import app.f1multiview.media.OpenTiledCompositorView
+import app.f1multiview.media.OpenTiledMultiviewEngine
 import app.f1multiview.BuildConfig
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
