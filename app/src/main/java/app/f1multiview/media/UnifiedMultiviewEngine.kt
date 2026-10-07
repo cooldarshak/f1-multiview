@@ -89,9 +89,6 @@ class UnifiedMultiviewEngine(context: Context) {
         decoderManager.release()
     }
 
-    /** Temporary rendering bridge while SurfaceManager is introduced in the next phase. */
-    @Deprecated("Use the engine-owned rendering surface bridge; retained during incremental migration")
-    fun playerForRendering(id: String): ExoPlayer = decoderManager.get(id)
 }
 
 /** Decoder/resource ownership boundary. Media3 is the first backend implementation. */
