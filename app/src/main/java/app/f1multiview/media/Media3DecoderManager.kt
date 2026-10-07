@@ -98,14 +98,7 @@ class Media3DecoderManager(context: Context) {
                 // This reduces simultaneous decoder/network pressure without forcing the
                 // main feed down to 720p on a flagship phone.
                 val isMain = id == audioPlayerId
-                player.trackSelectionParameters = buildQualityParameters(
-                    player = player,
-                    quality = selectedQualities[id] ?: Quality.AUTO,
-                    isMain = isMain,
-                    // Keep audio selected for every multiview player. Audible
-                    // routing is controlled by volume in setAudioPlayer/setMuted.
-                    preserveAudioSetting = true
-                )
+                player.trackSelectionParameters = qualityParameters(player, selectedQualities[id] ?: Quality.AUTO, isMain)
 
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
@@ -264,14 +257,7 @@ class Media3DecoderManager(context: Context) {
 
         // Preserve an explicit quality choice across media-source reloads.
         val isMain = stream.id == audioPlayerId
-        player.trackSelectionParameters = buildQualityParameters(
-            player = player,
-            quality = selectedQualities[stream.id] ?: Quality.AUTO,
-            isMain = isMain,
-            // Do not disable secondary audio at load time. All feeds must retain
-            // an initialized audio track so switching the audible feed is instant.
-            preserveAudioSetting = true
-        )
+        player.trackSelectionParameters = qualityParameters(player, selectedQualities[stream.id] ?: Quality.AUTO, isMain)
 
         startupRequestedAtMs[stream.id] = android.os.SystemClock.elapsedRealtime()
         startupFirstFrameAtMs.remove(stream.id)
