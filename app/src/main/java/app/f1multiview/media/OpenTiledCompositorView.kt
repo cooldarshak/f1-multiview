@@ -77,7 +77,7 @@ class OpenTiledCompositorView(
                 nativeWindow: Any
             ): javax.microedition.khronos.egl.EGLSurface {
                 val attributes = intArrayOf(
-                    EGL_PROTECTED_CONTENT_EXT, EGL14.EGL_TRUE,
+                    0x32C0, EGL14.EGL_TRUE,
                     javax.microedition.khronos.egl.EGL10.EGL_NONE
                 )
                 return egl.eglCreateWindowSurface(display, config, nativeWindow, attributes)
