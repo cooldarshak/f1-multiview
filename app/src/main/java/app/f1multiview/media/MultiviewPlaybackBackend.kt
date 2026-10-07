@@ -1,6 +1,9 @@
 package app.f1multiview.media
 
 import app.f1multiview.core.playback.TiledMultiviewSession
+import app.f1multiview.data.f1tv.TmePlayback
+import app.f1multiview.data.f1tv.TmeTopology
+import app.f1multiview.model.StreamSource
 
 /**
  * Capability boundary between the app's multiview orchestration and the physical
@@ -12,6 +15,7 @@ import app.f1multiview.core.playback.TiledMultiviewSession
  */
 enum class MultiviewBackendKind {
     NATIVE_TME,
+    OPEN_TME,
     MEDIA3_MULTI_PLAYER_FALLBACK
 }
 
@@ -63,4 +67,34 @@ class Media3MultiPlayerFallbackBackend : MultiviewPlaybackBackend {
     )
 
     override fun canHandle(session: TiledMultiviewSession): Boolean = true
+}
+
+
+/**
+ * Our open-source tiled backend. It is intentionally narrower than the proprietary
+ * Tiledmedia SDK: it only claims native single-player capability when the provider
+ * gives us one actual mosaic/tiled media URL.
+ */
+class OpenTiledMultiviewBackend(
+    private val engine: OpenTiledMultiviewEngine
+) : MultiviewPlaybackBackend {
+    override val status = MultiviewBackendStatus(
+        kind = MultiviewBackendKind.OPEN_TME,
+        available = true,
+        singlePlayer = true,
+        reason = "Open tiled backend using one Media3 player for a genuine single-source mosaic"
+    )
+
+    override fun canHandle(session: TiledMultiviewSession): Boolean =
+        session.feeds.size > 1 &&
+            session.tileWidth > 0 &&
+            session.tileHeight > 0 &&
+            session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct().size == 1
+
+    fun canHandle(tme: TmePlayback): Boolean =
+        tme.topology == TmeTopology.SINGLE_MOSAIC_SOURCE &&
+            engine.canHandle(tme)
+
+    fun prepare(tme: TmePlayback, source: StreamSource, referenceFeedId: String? = null): Boolean =
+        engine.prepare(tme, source, referenceFeedId)
 }
