@@ -240,7 +240,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(ui, engine, errors, { engine.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
+        FullscreenMultiview(ui, vm, engine, errors, { engine.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
         return
     }
 
@@ -1430,8 +1430,8 @@ private fun FullscreenFeedRail(
                     Box(Modifier.fillMaxSize()) {
                         val previewPlayer = remember(candidate.id) { engine.player(candidate.id) }
                         when {
-                            candidate.kind == StreamKind.TRACK_MAP -> TrackMapPanel(ui, isTv, Modifier.fillMaxSize())
-                            candidate.kind == StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
+                            candidate.kind == StreamKind.TRACK_MAP -> Box(Modifier.fillMaxSize()) { TrackMapPanel(ui, isTv) }
+                            candidate.kind == StreamKind.F1_DASH_DATA -> Box(Modifier.fillMaxSize()) { F1DashDataFeed(ui, isTv) }
                             candidate.url != null && candidate.id in previewIds -> {
                                 F1HdrPlayerSurface(
                                     engine = engine,
@@ -1501,6 +1501,7 @@ private val HomeFeedRed = Color(0xFFE10600)
 @Composable
 private fun FullscreenMultiview(
     ui: UiState,
+    vm: MultiViewViewModel,
     engine: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     onClose: () -> Unit,
