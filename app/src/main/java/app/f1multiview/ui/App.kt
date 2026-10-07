@@ -1646,6 +1646,7 @@ private fun MultiviewFeedTile(
         when (stream.kind) {
             StreamKind.F1_DASH -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
             StreamKind.TIMING -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
+            StreamKind.TRACK -> CompactDriverTrackerFeed(ui, isTv, Modifier.fillMaxSize())
             else -> PlayerTile(
                 stream, pool, error, Modifier.fillMaxSize(), {}, onFocus,
                 active = active, surfaceType = surfaceType
@@ -1654,7 +1655,6 @@ private fun MultiviewFeedTile(
     }
 }
 
-@Composable
 @Composable
 private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
     BoxWithConstraints(
@@ -1678,9 +1678,20 @@ private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modi
     }
 }
 
+private fun dashboardClock(value: String): String? {
+    val raw = value.trim()
+    if (raw.isBlank() || raw == "-") return null
+    val parts = raw.split(":").mapNotNull { it.toIntOrNull() }
+    return when {
+        parts.size == 3 -> "%02d:%02d".format(parts[1], parts[2])
+        parts.size == 2 -> "%02d:%02d".format(parts[0], parts[1])
+        else -> raw
+    }
+}
+
 @Composable
 private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
-    val rows = ui.timing.sortedBy { it.position }.take(8)
+    val rows = ui.timing.sortedBy { it.position }.take(5)
     val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
     val totalLaps = ui.totalLaps.takeIf { it > 0 }
     val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
@@ -1697,10 +1708,16 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val clock = dashboardClock(ui.sessionClock)
+                if (clock != null) {
+                    Text(clock, color = White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                }
                 Text(
                     (if (currentLap > 0) "LIVE  " else "") + "Lap: " + currentLap + (totalLaps?.let { "/$it" } ?: "") +
                         (if (currentLap > 0 && totalLaps != null) " (" + (totalLaps - currentLap).coerceAtLeast(0) + " left)" else ""),
-                    color = White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1
+                    color = if (clock != null) Muted else White,
+                    fontSize = if (clock != null) 9.sp else 15.sp,
+                    fontWeight = FontWeight.Black, maxLines = 1
                 )
             }
             Surface(
@@ -1738,9 +1755,8 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
                 items(rows, key = { it.position }) { row ->
                     val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
                     val telemetry = ui.telemetry.firstOrNull {
-                        it.driver.equals(meta?.number ?: "", true) ||
-                            it.driver.equals(row.driver, true) ||
-                            it.driver.contains(row.driver, true)
+                        it.driver.equals(row.driverNumber, true) ||
+                            (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
                     }
                     val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
                     val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
