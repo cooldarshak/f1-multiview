@@ -82,7 +82,7 @@ class UnifiedMultiviewEngine(context: Context) {
             if (!decoderManager.hasDecoder(stream.id)) {
                 var evicted: StreamSource? = null
                 if (decoderManager.availableDecoderSlots() == 0) {
-                    evicted = evictionCandidates.removeFirstOrNull()
+                    evicted = if (evictionCandidates.isNotEmpty()) evictionCandidates.removeAt(0) else null
                     evicted?.let { clear(it.id) }
                 }
 
