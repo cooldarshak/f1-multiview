@@ -59,7 +59,7 @@ class OpenTiledMultiviewEngine(
     private var player: ExoPlayer? = null
     private var session: TiledMultiviewSession? = null
     private var source: StreamSource? = null
-    private var referenceFeedId: String? = null
+    private var referenceFeedId: String? = null\n    private var decoderPlan: OpenTiledDecoderPlan? = null\n    private var sourceVideoWidth = 0\n    private var sourceVideoHeight = 0
     private val qualityManager = QualityManager()
     private val _state = MutableStateFlow(State())
     private var compositorPlayerListener: Player.Listener? = null
@@ -248,7 +248,7 @@ class OpenTiledMultiviewEngine(
         compositorPlayerListener?.let { listener -> player?.removeListener(listener) }
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                view.setSourceVideoSize(videoSize.width, videoSize.height)
+                sourceVideoWidth = videoSize.width\n                sourceVideoHeight = videoSize.height\n                decoderPlan = session?.let { OpenTiledDecoderPlan.from(it, videoSize.width, videoSize.height) }\n                view.setSourceVideoSize(videoSize.width, videoSize.height)
             }
         }
         compositorPlayerListener = listener
@@ -257,7 +257,7 @@ class OpenTiledMultiviewEngine(
         view.setListener(object : OpenTiledCompositorView.Listener {
             override fun onOutputSurfaceReady(surface: android.view.Surface) {
                 val p = player ?: return
-                view.setSourceVideoSize(p.videoSize.width, p.videoSize.height)
+                sourceVideoWidth = p.videoSize.width\n                sourceVideoHeight = p.videoSize.height\n                decoderPlan = session?.let { OpenTiledDecoderPlan.from(it, p.videoSize.width, p.videoSize.height) }\n                view.setSourceVideoSize(p.videoSize.width, p.videoSize.height)
                 Handler(p.applicationLooper).post { p.setVideoSurface(surface) }
             }
 
