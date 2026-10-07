@@ -2579,7 +2579,7 @@ private fun FullscreenMultiview(
                             layout = ui.layout,
                             modifier = Modifier.fillMaxSize(),
                             onFeedFocus = { id ->
-                                activeFeedId = id
+                                activeFeedId = vm.streamIdForTiledFeed(id) ?: activeFeedId
                                 menu = null
                             }
                         )
@@ -2619,7 +2619,7 @@ private fun FullscreenMultiview(
                     activeId = activeFeedId ?: ui.mainStreamId.orEmpty(),
                     onSwitchStream = { id ->
                         if (openTiled) {
-                            vm.ensureTiledFeedSelected(id)
+                            vm.ensureTiledStreamSelected(id)
                         }
                         activeFeedId = id
                         menu = null
