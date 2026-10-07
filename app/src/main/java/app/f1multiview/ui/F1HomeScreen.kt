@@ -56,13 +56,13 @@ private enum class HomeDestination(val label: String) {
 }
 
 @Composable
-fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean, onOpenMultiview: () -> Unit) {
+fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean, onOpenMultiview: () -> Unit, onOpenEditorial: (EditorialItem) -> Unit) {
     var drawer by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf(false) }
     var destination by rememberSaveable { mutableStateOf(HomeDestination.HOME) }
 
     Box(Modifier.fillMaxSize().background(HomeBg)) {
-        F1HomeBody(ui, vm, isTv, compactPhone, destination, { drawer = true }, { search = true }, onOpenMultiview)
+        F1HomeBody(ui, vm, isTv, compactPhone, destination, { drawer = true }, { search = true }, onOpenMultiview, onOpenEditorial)
         AnimatedVisibility(drawer, enter=fadeIn(tween(180)), exit=fadeOut(tween(140)), modifier=Modifier.fillMaxSize().zIndex(50f)) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.58f)).clickable { drawer=false })
         }
@@ -76,7 +76,7 @@ fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhon
 }
 
 @Composable
-private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactPhone:Boolean, destination:HomeDestination, onMenu:()->Unit, onSearch:()->Unit, onOpenMultiview:()->Unit) {
+private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactPhone:Boolean, destination:HomeDestination, onMenu:()->Unit, onSearch:()->Unit, onOpenMultiview:()->Unit, onOpenEditorial:(EditorialItem)->Unit) {
     val side=if(compactPhone)16.dp else if(isTv)38.dp else 24.dp
     Column(Modifier.fillMaxSize()) {
         F1TopBar(compactPhone,onMenu,onSearch,onOpenMultiview)
@@ -89,8 +89,8 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
                 if(ui.continueWatching.isNotEmpty()) item { F1RailTitle("Continue Watching","View all",side); ContinueRail(ui.continueWatching,compactPhone,vm::resumeContinueWatching) }
                 item { F1RailTitle((ui.selectedSeason?.year ?: 2026).toString()+" Season","View all",side); SeasonRail(ui.vodEvents,compactPhone,vm::selectVodEvent) }
                 item { F1RailTitle("Multiview","Open",side); MultiviewCard(compactPhone,onOpenMultiview) }
-                if(ui.showsDocs.isNotEmpty()) item { F1RailTitle("Shows","View all",side); EditorialRail(ui.showsDocs.filter{it.pageId!=413}.take(12),compactPhone,vm::playEditorial) }
-                item { F1RailTitle("Documentaries","View all",side); EditorialRail(ui.showsDocs.filter{it.pageId==413}.take(12),compactPhone,vm::playEditorial) }
+                if(ui.showsDocs.isNotEmpty()) item { F1RailTitle("Shows","View all",side); EditorialRail(ui.showsDocs.filter{it.pageId!=413}.take(12),compactPhone){item->vm.playEditorial(item);onOpenEditorial(item)} }
+                item { F1RailTitle("Documentaries","View all",side); EditorialRail(ui.showsDocs.filter{it.pageId==413}.take(12),compactPhone){item->vm.playEditorial(item);onOpenEditorial(item)} }
                 item { F1RailTitle("Popular Races From The Archive","View all",side); SeasonRail(ui.vodEvents.takeLast(12).reversed(),compactPhone,vm::selectVodEvent) }
             }
             HomeDestination.SEASON -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
