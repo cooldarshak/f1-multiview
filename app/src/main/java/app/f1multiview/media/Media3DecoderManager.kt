@@ -76,8 +76,8 @@ class Media3DecoderManager(context: Context) {
 
     fun capacity(): Int = maxVideoFeeds
     fun availableDecoderSlots(): Int = resourceManager.availableSlots()
-    fun hasDecoder(id: String): Boolean = players.containsKey(id)
-    fun activeDecoderIds(): Set<String> = players.keys.toSet()
+    fun hasDecoder(id: String): Boolean = resourceManager.hasLease(id)
+    fun activeDecoderIds(): Set<String> = resourceManager.activeLeases().map { it.feedId }.toSet()
 
     fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
 
@@ -183,7 +183,16 @@ class Media3DecoderManager(context: Context) {
         }
         val player = createPlayer(stream.id)
 
-        if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return true
+        if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) {
+            // Re-activate a logically retained feed without rebuilding its MediaSource.
+            // The decoder lease was intentionally released while the feed was off-viewport.
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
+            player.prepare()
+            return true
+        }
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
@@ -267,6 +276,26 @@ class Media3DecoderManager(context: Context) {
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
         return true
+    }
+
+    /**
+     * Keep the logical player, media item, timeline and UI surface alive while releasing
+     * the physical video decoder lease. This is the key fast-switch path for feed rails:
+     * selecting the feed again can reuse the already-prepared player instead of rebuilding
+     * the entire MediaSource/DRM pipeline.
+     */
+    fun suspend(id: String) {
+        val player = players[id] ?: return
+        player.pause()
+        player.playWhenReady = false
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            .build()
+        resourceManager.release(id)
+        firstFrameRendered.remove(id)
+        syncController.onFeedRemoved(id)
+        Log.i("Media3DecoderManager", "DECODER_SUSPEND id=" + id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
     }
 
     fun setQuality(id: String, quality: Quality) {
