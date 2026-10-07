@@ -81,6 +81,14 @@ class OpenTiledMultiviewEngine(
         val url = tme.feeds.firstNotNullOfOrNull { it.url?.takeIf(String::isNotBlank) }
             ?: return false
 
+        if (player != null && _state.value.sourceUrl == url) {
+            val ids = tme.feeds.mapIndexed { index, feed ->
+                feed.uuid ?: feed.channelId?.toString() ?: "feed-$index"
+            }
+            publish(selected = ids)
+            return true
+        }
+
         release()
         this.source = source
         this.referenceFeedId = referenceFeedId ?: tme.feeds.firstOrNull()?.uuid
