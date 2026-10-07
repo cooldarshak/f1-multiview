@@ -188,6 +188,8 @@ private class DecoderManager(context: Context) {
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
     fun retain(ids: Set<String>) = backend.retain(ids)
     fun suspend(id: String) = backend.suspend(id)
+    fun preload(stream: StreamSource, rank: Int) = backend.preload(stream, rank)
+    fun updatePreloadRanking(orderedIds: List<String>, referenceId: String?) = backend.updatePreloadRanking(orderedIds, referenceId)
     fun clear(id: String) = backend.clear(id)
     fun setQuality(id: String, quality: Quality) = backend.setQuality(id, quality)
     fun setQuality(quality: Quality) = backend.setQuality(quality)
