@@ -316,6 +316,13 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         persist()
         picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null && it.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)}.forEach{viewModelScope.launch{resolveSource(it)}}
     }
+    private fun maxLogicalFeeds(layout: LayoutPreset = _ui.value.layout): Int = when (layout) {
+        LayoutPreset.SINGLE -> 1
+        LayoutPreset.SPLIT_2 -> 2
+        LayoutPreset.GRID_4 -> 4
+        LayoutPreset.GRID_6 -> if (openTiledCapable()) 24 else 4
+    }
+
     private fun openTiledCapable(): Boolean {
         val mainId = _ui.value.mainStreamId ?: return false
         val source = _ui.value.streams.firstOrNull { it.id == mainId } ?: return false
@@ -334,12 +341,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
 }
 fun toggleStream(id:String)=viewModelScope.launch{
     val current=_ui.value.selectedStreamIds
-    val maxFeeds=when(_ui.value.layout){
-        LayoutPreset.SINGLE->1
-        LayoutPreset.SPLIT_2->2
-        LayoutPreset.GRID_4->4
-        LayoutPreset.GRID_6->if(openTiledCapable()) 24 else 4
-    }
+    val maxFeeds=maxLogicalFeeds()
     if(id in current){
         if(id == _ui.value.mainStreamId) return@launch
         _ui.value=_ui.value.copy(selectedStreamIds=current.filterNot{it==id})
@@ -351,7 +353,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
     // so logical tile count is bounded by the source and UI capacity instead.
     if(current.size>=maxFeeds){
         _ui.value=_ui.value.copy(
-            providerError="4 simultaneous video feeds is the current safe limit. The 5th feed was blocked to prevent a decoder crash."
+            providerError=if (openTiledCapable()) "The tiled source has reached its 24-feed logical limit." else "4 simultaneous video feeds is the current safe limit. The 5th feed was blocked to prevent a decoder crash."
         )
         return@launch
     }
@@ -388,12 +390,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
         if (source.kind == StreamKind.TRACK_MAP || source.kind == StreamKind.F1_DASH_DATA) return@launch
         val current=_ui.value.selectedStreamIds
-        val maxFeeds=when(_ui.value.layout){
-            LayoutPreset.SINGLE->1
-            LayoutPreset.SPLIT_2->2
-            LayoutPreset.GRID_4->4
-            LayoutPreset.GRID_6->4
-        }
+        val maxFeeds=maxLogicalFeeds()
         val oldMain = _ui.value.mainStreamId
         val next = listOf(id) + current.filterNot { it == id || it == oldMain }
         _ui.value=_ui.value.copy(selectedStreamIds=next.distinct().take(maxFeeds),mainStreamId=id,providerError=null)
@@ -434,7 +431,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
     fun saveCurrentSetup(name:String="My Race View"){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup("setup-"+System.currentTimeMillis(),name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
     fun saveNamedSetup(id:String, name:String){val current=_ui.value;viewModelScope.launch{store.save(SavedSetup(id,name,current.layout,current.selectedStreamIds,current.mainStreamId))}}
-    fun loadSavedSetup(setup:SavedSetup){val available=_ui.value.streams.map{it.id}.toSet();val ids=setup.streamIds.filter{it in available};val max=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4};val main=setup.mainStreamId?.takeIf{it in ids}?:ids.firstOrNull();_ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=listOfNotNull(main)+ids.filterNot{it==main}.take(max-1),mainStreamId=main);persist()}
+    fun loadSavedSetup(setup:SavedSetup){val available=_ui.value.streams.map{it.id}.toSet();val ids=setup.streamIds.filter{it in available};val max=maxLogicalFeeds(setup.layout);val main=setup.mainStreamId?.takeIf{it in ids}?:ids.firstOrNull();_ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=listOfNotNull(main)+ids.filterNot{it==main}.take(max-1),mainStreamId=main);persist()}
     fun deleteSavedSetup(id:String)=viewModelScope.launch{store.delete(id)}
     fun clearSavedSetup()=viewModelScope.launch{store.clear()}
     override fun onCleared(){timingClient.stop();super.onCleared()}
