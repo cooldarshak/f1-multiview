@@ -99,7 +99,7 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
             }
         """.trimIndent()
 
-        override fun onSurfaceCreated(config: javax.microedition.khronos.egl.EGLConfig?) {
+        override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: javax.microedition.khronos.egl.EGLConfig?) {
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             program = ShaderProgram(vertexShader, fragmentShader)
 
