@@ -18,6 +18,8 @@ object DecoderCapacityPolicy {
     private const val MIN_CAPACITY = 4
     private const val MAX_CAPACITY = 6
 
+    internal fun clampCapacity(value: Int): Int = value.coerceIn(MIN_CAPACITY, MAX_CAPACITY)
+
     fun detect(): Int {
         if (Build.VERSION.SDK_INT < 23) return FALLBACK_CAPACITY
 
@@ -53,7 +55,7 @@ object DecoderCapacityPolicy {
             if (supportedInstances == null) {
                 FALLBACK_CAPACITY
             } else {
-                supportedInstances.coerceIn(MIN_CAPACITY, MAX_CAPACITY)
+                clampCapacity(supportedInstances)
             }
         }.getOrDefault(FALLBACK_CAPACITY)
     }
