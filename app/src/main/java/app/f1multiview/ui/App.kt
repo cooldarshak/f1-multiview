@@ -246,7 +246,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(ui, vm, engine, errors, { engine.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
+        FullscreenMultiview(ui, vm, engine, errors, { engine.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming)
         return
     }
 
@@ -1508,44 +1508,52 @@ private fun FullscreenFeedRail(
     modifier: Modifier
 ) {
     val isTv = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
-    // The rail contains both video feeds and native F1 data views. Only video
-    // feeds participate in the physical decoder viewport; data/tracker remain
-    // decoder-free and can still become the active main view.
     val candidates = remember(ui.streams) { ui.streams }
     val listState = rememberLazyListState()
     val previewIds = remember { mutableStateListOf<String>() }
 
-    LaunchedEffect(listState.firstVisibleItemIndex, candidates, ui.streams) {
+    LaunchedEffect(activeId, listState.firstVisibleItemIndex, candidates, ui.streams) {
         val visibleItems = listState.layoutInfo.visibleItemsInfo
         val visibleIds = visibleItems
             .mapNotNull { candidates.getOrNull(it.index)?.id }
-            .filter { it != activeId }
-            .take(3)
+            .filter { id ->
+                candidates.firstOrNull { it.id == id }?.kind !in
+                    setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+            }
+            .take(4)
+
         val firstVisibleIndex = visibleItems.minOfOrNull { it.index } ?: listState.firstVisibleItemIndex
         val lastVisibleIndex = visibleItems.maxOfOrNull { it.index } ?: listState.firstVisibleItemIndex
-        // Keep a small logical runway around the actual viewport. These extra feeds are
-        // source-preloaded but do not receive decoder leases unless they enter the viewport.
         val preloadIds = (firstVisibleIndex - 2..lastVisibleIndex + 2)
             .mapNotNull { candidates.getOrNull(it)?.id }
             .distinct()
-        previewIds.filterNot { it in preloadIds }.toList().forEach {
-            previewIds.remove(it)
-        }
+
+        previewIds.filterNot { it in preloadIds }.toList().forEach { previewIds.remove(it) }
         preloadIds.forEach { id ->
             if (id !in previewIds) previewIds.add(id)
             vm.prepareStream(id)
         }
-        val viewportStreams = candidates
-            .filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
-            .filter { it.id == activeId || it.id in preloadIds }
-        val referenceId = activeId.takeIf { id ->
-            candidates.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+
+        val activeStream = candidates.firstOrNull { it.id == activeId }
+        if (activeStream != null &&
+            activeStream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK) &&
+            activeStream.url == null
+        ) {
+            vm.prepareStream(activeId)
         }
+
+        val viewportStreams = candidates
+            .filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK) }
+            .filter { it.id == activeId || it.id in preloadIds }
+
+        val referenceId = activeId.takeIf { id ->
+            candidates.firstOrNull { it.id == id }?.kind !in
+                setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+        }
+
         engine.updateViewport(
             streams = viewportStreams,
-            visibleIds = visibleIds
-                .filter { id -> candidates.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
-                .toSet(),
+            visibleIds = visibleIds.toSet(),
             referenceId = referenceId,
             autoplay = true
         )
@@ -1553,29 +1561,29 @@ private fun FullscreenFeedRail(
 
     Surface(
         modifier = modifier,
-        color = Color(0xFF0F1015),
-        tonalElevation = 4.dp,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+        color = Color(0xFF0D0E12),
+        tonalElevation = 0.dp,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .06f))
     ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(horizontal = 5.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             items(candidates, key = { it.id }) { candidate ->
                 val active = candidate.id == activeId
                 Surface(
                     Modifier
                         .fillMaxWidth()
-                        .height(104.dp)
+                        .height(if (isTv) 88.dp else 78.dp)
                         .clickable { onSwitchStream(candidate.id) }
                         .focusable(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (active) HomeFeedRed else Color(0xFF17181F),
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (active) Color(0xFF251619) else Color(0xFF15161B),
                     border = BorderStroke(
-                        if (active) 2.dp else 1.dp,
-                        if (active) Color.White else Color.White.copy(alpha = .08f)
+                        1.dp,
+                        if (active) HomeFeedRed else Color.White.copy(alpha = .055f)
                     )
                 ) {
                     Box(Modifier.fillMaxSize()) {
@@ -1583,7 +1591,7 @@ private fun FullscreenFeedRail(
                         when {
                             candidate.kind == StreamKind.TRACK_MAP -> Box(Modifier.fillMaxSize()) { TrackMapPanel(ui, isTv) }
                             candidate.kind == StreamKind.F1_DASH_DATA -> Box(Modifier.fillMaxSize()) { F1DashDataFeed(ui, isTv) }
-                            candidate.url != null && candidate.id in previewIds -> {
+                            candidate.url != null -> {
                                 F1HdrPlayerSurface(
                                     engine = engine,
                                     player = previewPlayer,
@@ -1600,18 +1608,22 @@ private fun FullscreenFeedRail(
                                 fallbackSeed = candidate.id
                             )
                         }
+
                         Box(
-                            Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Black.copy(alpha = .05f), Color.Black.copy(alpha = .78f))
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = .74f))
+                                    )
                                 )
-                            )
                         )
-                        Column(Modifier.align(Alignment.BottomStart).padding(8.dp)) {
+
+                        Column(Modifier.align(Alignment.BottomStart).padding(6.dp)) {
                             Text(
                                 candidate.driver?.takeIf { it.isNotBlank() } ?: candidate.title,
-                                color = Color.White,
-                                fontSize = 9.sp,
+                                color = White,
+                                fontSize = 7.5.sp,
                                 fontWeight = FontWeight.Black,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -1619,25 +1631,31 @@ private fun FullscreenFeedRail(
                             Text(
                                 when {
                                     active -> "ACTIVE"
-                                    candidate.kind == StreamKind.TRACK_MAP -> "DRIVER TRACKER"
-                                    candidate.kind == StreamKind.F1_DASH_DATA -> "LIVE DATA"
-                                    candidate.url != null -> "LIVE PREVIEW"
-                                    else -> "LOAD PREVIEW"
+                                    candidate.kind == StreamKind.TRACK_MAP -> "TRACKER"
+                                    candidate.kind == StreamKind.F1_DASH_DATA -> "DATA"
+                                    candidate.url != null -> "PREVIEW"
+                                    else -> "LOAD"
                                 },
-                                color = if (active) Color.White else Color.White.copy(alpha = .68f),
-                                fontSize = 7.sp,
+                                color = if (active) White else White.copy(alpha = .54f),
+                                fontSize = 5.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 2.dp)
+                                modifier = Modifier.padding(top = 1.dp)
                             )
                         }
+
                         if (candidate.isLive) {
                             Surface(
-                                Modifier.align(Alignment.TopStart).padding(6.dp),
+                                Modifier.align(Alignment.TopStart).padding(4.dp),
                                 color = HomeFeedRed,
-                                shape = RoundedCornerShape(4.dp)
+                                shape = RoundedCornerShape(3.dp)
                             ) {
-                                Text("LIVE", color = Color.White, fontSize = 6.sp, fontWeight = FontWeight.Black,
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp))
+                                Text(
+                                    "LIVE",
+                                    color = White,
+                                    fontSize = 5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
                             }
                         }
                     }
@@ -1647,8 +1665,6 @@ private fun FullscreenFeedRail(
     }
 }
 
-private val HomeFeedRed = Color(0xFFE10600)
-
 @Composable
 private fun FullscreenMultiview(
     ui: UiState,
@@ -1656,58 +1672,49 @@ private fun FullscreenMultiview(
     engine: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     onClose: () -> Unit,
-    onReplayPosition: (Long) -> Unit,
-    onToggleStream: (String) -> Unit,
-    onSetMainStream: (String) -> Unit,
-    onLayout: (LayoutPreset) -> Unit,
-    onPreset: (String) -> Unit
+    onReplayPosition: (Long) -> Unit
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     val openTiled = engine.multiviewBackendStatus().kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME
     val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }.take(24)
     val context = LocalContext.current
-    val isTv = remember(context) { isTelevision(context) }
     val displayHdr = displaySupportsHdr(context)
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
-    var feedPickerOpen by rememberSaveable { mutableStateOf(false) }
-    var editSize by rememberSaveable { mutableStateOf(false) }
-    var layout by rememberSaveable { mutableStateOf(ui.layout) }
+    var railOpen by rememberSaveable { mutableStateOf(true) }
     var activeFeedId by rememberSaveable { mutableStateOf(ui.mainStreamId ?: selected.firstOrNull()?.id) }
     var menu by rememberSaveable { mutableStateOf<String?>(null) }
-    var trackVersion by remember { mutableIntStateOf(0) }
     var speed by rememberSaveable(activeFeedId) { mutableFloatStateOf(1f) }
     var quality by remember(activeFeedId, engine) {
         mutableStateOf(activeFeedId?.let(engine::getQuality) ?: Quality.AUTO)
     }
     var fit by rememberSaveable(activeFeedId) { mutableStateOf(false) }
+    var trackVersion by remember { mutableIntStateOf(0) }
     val fullscreenBackFocusRequester = remember { FocusRequester() }
     val fullscreenShowControlsFocusRequester = remember { FocusRequester() }
     var fullscreenBackFocused by remember { mutableStateOf(false) }
     var fullscreenShowControlsFocused by remember { mutableStateOf(false) }
-    // Fullscreen is an explicit playback action; the inline Pit Wall remains paused until opened.
 
     BackHandler(enabled = true) {
         when {
             menu != null -> menu = null
-            feedPickerOpen -> feedPickerOpen = false
-            editSize -> editSize = false
             controlsVisible -> controlsVisible = false
+            railOpen -> railOpen = false
             else -> onClose()
         }
     }
 
-    LaunchedEffect(controlsVisible) {
-        delay(80L)
-        if (controlsVisible) fullscreenBackFocusRequester.requestFocus()
-        else fullscreenShowControlsFocusRequester.requestFocus()
+    LaunchedEffect(activeFeedId, ui.streams) {
+        val id = activeFeedId ?: return@LaunchedEffect
+        val stream = ui.streams.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        if (stream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)) {
+            engine.setAudioPlayer(id)
+        }
     }
 
-    LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
-        if (activeFeedId !in ui.selectedStreamIds) activeFeedId = ui.mainStreamId ?: ui.selectedStreamIds.firstOrNull()
-    }
-
-    val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
-    val activePlayer = if (openTiled) null else active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { engine.player(it.id) }
+    val active = ui.streams.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
+    val activePlayer = active?.takeIf {
+        it.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK, StreamKind.TRACK_MAP, StreamKind.F1_DASH, StreamKind.F1_DASH_DATA)
+    }?.let { engine.player(it.id) }
 
     LaunchedEffect(activePlayer, ui.session?.live) {
         if (activePlayer != null && ui.session?.live == false) {
@@ -1728,23 +1735,30 @@ private fun FullscreenMultiview(
     }
 
     val audioTracks = remember(activePlayer, trackVersion) {
-        activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->            if (group.type != C.TRACK_TYPE_AUDIO) emptyList()
-            else (0 until group.length).mapNotNull { index -> if (!group.isTrackSupported(index)) null else Triple(groupIndex, index, group.getTrackFormat(index)) }
+        activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) emptyList()
+            else (0 until group.length).mapNotNull { index ->
+                if (!group.isTrackSupported(index)) null else Triple(groupIndex, index, group.getTrackFormat(index))
+            }
         } ?: emptyList()
     }
     val textTracks = remember(activePlayer, trackVersion) {
         activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->
             if (group.type != C.TRACK_TYPE_TEXT) emptyList()
-            else (0 until group.length).mapNotNull { index -> if (!group.isTrackSupported(index)) null else Triple(groupIndex, index, group.getTrackFormat(index)) }
+            else (0 until group.length).mapNotNull { index ->
+                if (!group.isTrackSupported(index)) null else Triple(groupIndex, index, group.getTrackFormat(index))
+            }
         } ?: emptyList()
     }
 
-    fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { engine.play(it.id) }
-    fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { engine.pause(it.id) }
-    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { val p = engine.player(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
+    LaunchedEffect(controlsVisible) {
+        delay(80L)
+        if (controlsVisible) fullscreenBackFocusRequester.requestFocus()
+        else fullscreenShowControlsFocusRequester.requestFocus()
+    }
 
-    LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
-        if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
+    LaunchedEffect(controlsVisible, menu) {
+        if (controlsVisible && menu == null) {
             delay(5_000L)
             controlsVisible = false
         }
@@ -1761,32 +1775,25 @@ private fun FullscreenMultiview(
                     true
                 } else false
             }
-            .pointerInput(controlsVisible, feedPickerOpen, editSize, menu) {
+            .pointerInput(controlsVisible, menu) {
                 detectTapGestures {
-                    if (!feedPickerOpen && !editSize && menu == null) {
-                        controlsVisible = !controlsVisible
-                    }
+                    if (menu == null) controlsVisible = !controlsVisible
                 }
             }
     ) {
         Row(
             Modifier
                 .fillMaxSize()
-                .padding(top = if (controlsVisible) 62.dp else 0.dp, bottom = if (controlsVisible) 96.dp else 0.dp)
+                .padding(top = if (controlsVisible) 52.dp else 0.dp, bottom = if (controlsVisible) 80.dp else 0.dp)
         ) {
-            // F1-TV-style director view: one large active feed, with a persistent
-            // vertical feed rail. This avoids turning the fullscreen experience into
-            // the old generic grid and makes feed switching the primary interaction.
-            val activeStream = ui.streams.firstOrNull { it.id == activeFeedId }
-                ?: selected.firstOrNull()
-
-            if (activeStream != null) {
-                Box(
-                    Modifier
-                        .weight(0.73f)
-                        .fillMaxHeight()
-                        .padding(start = 8.dp, end = 5.dp, top = 8.dp, bottom = 8.dp)
-                ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(start = 7.dp, end = if (railOpen) 3.dp else 0.dp, top = 4.dp, bottom = 4.dp)
+            ) {
+                val activeStream = active ?: ui.streams.firstOrNull()
+                if (activeStream != null) {
                     if (openTiled) {
                         OpenTiledMultiviewWall(
                             engine = engine,
@@ -1803,894 +1810,130 @@ private fun FullscreenMultiview(
                             modifier = Modifier.fillMaxSize(),
                             onFocus = { activeFeedId = it; menu = null },
                             active = true,
-                            surfaceType = SURFACE_TYPE_SURFACE_VIEW
+                            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                            showOverlay = false
                         )
-                    }
-                    Surface(
-                        Modifier.align(Alignment.BottomStart).padding(12.dp),
-                        color = Color.Black.copy(alpha = .72f),
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(color = Red, shape = RoundedCornerShape(4.dp)) {
-                                Text(
-                                    if (activeStream.isLive) "LIVE" else "REPLAY",
-                                    color = White,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Black,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                activeStream.driver?.takeIf { it.isNotBlank() } ?: activeStream.title,
-                                color = White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                     }
                 }
             }
 
-            FullscreenFeedRail(
-                ui = ui,
-                engine = engine,
-                vm = vm,
-                activeId = activeFeedId ?: selected.firstOrNull()?.id.orEmpty(),
-                onSwitchStream = { id ->
-                    activeFeedId = id
-                    menu = null
-                    val stream = ui.streams.firstOrNull { it.id == id }
-                    if (stream != null && stream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) {
-                        engine.setAudioPlayer(id)
-                    }
-                },
-                modifier = Modifier
-                    .weight(0.27f)
-                    .fillMaxHeight()
-                    .padding(start = 5.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
-            )
-        }
-
-        if (!controlsVisible) {
-            // SurfaceView/TextureView can consume touch events underneath Compose.
-            // Keep a transparent Compose hit target over the whole fullscreen area so
-            // a normal tap always brings the controls back.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures { controlsVisible = true } }
-                    .zIndex(20f)
-            )
-            Surface(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .focusRequester(fullscreenShowControlsFocusRequester)
-                    .clickable { controlsVisible = true }.focusable()
-                    .onFocusChanged { fullscreenShowControlsFocused = it.isFocused }
-                    .border(2.dp, if (fullscreenShowControlsFocused) White else Color.Transparent, RoundedCornerShape(9.dp))
-                    .zIndex(21f),
-                color = Color.Black.copy(alpha = .78f),
-                shape = RoundedCornerShape(9.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
-            ) {
-                Text("SHOW CONTROLS", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+            if (railOpen) {
+                FullscreenFeedRail(
+                    ui = ui,
+                    engine = engine,
+                    vm = vm,
+                    activeId = activeFeedId ?: ui.mainStreamId.orEmpty(),
+                    onSwitchStream = { id ->
+                        activeFeedId = id
+                        menu = null
+                    },
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(0.29f)
+                        .padding(start = 3.dp, end = 7.dp, top = 4.dp, bottom = 4.dp)
+                )
+            } else {
+                Spacer(Modifier.width(30.dp))
             }
         }
 
-
+        RailCollapseButton(
+            open = railOpen,
+            onClick = { railOpen = !railOpen; menu = null }
+        )
 
         if (controlsVisible) {
-            Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).focusGroup().background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 9.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        Modifier
-                            .focusRequester(fullscreenBackFocusRequester)
-                            .clickable(onClick = onClose).focusable()
-                            .onFocusChanged { fullscreenBackFocused = it.isFocused }
-                            .border(2.dp, if (fullscreenBackFocused) White else Color.Transparent, RoundedCornerShape(8.dp)),
-                        color = Surface2,
-                        shape = RoundedCornerShape(8.dp)
-                    ) { Text("‹ BACK", color = White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) }
-                    Spacer(Modifier.width(7.dp))
-                    Text("MULTIVIEW", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
-                    Spacer(Modifier.width(6.dp))
-                    Text("${if (openTiled) tiledSelected.size else selected.size} FEEDS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                    Spacer(Modifier.weight(1f))
-                    Control(false, "SIDE OBC") { onPreset("side") }
-                    Spacer(Modifier.width(5.dp))
-                    Control(false, "QUAD") { onPreset("quad") }
-                    Spacer(Modifier.width(5.dp))
-                    listOf(LayoutPreset.SINGLE to "1", LayoutPreset.SPLIT_2 to "2", LayoutPreset.GRID_4 to "4").forEach { (preset, label) ->
-                        Control(layout == preset, "LAYOUT " + label) { layout = preset; onLayout(preset) }
-                        Spacer(Modifier.width(5.dp))
-                    }
-                    Control(editSize, if (editSize) "DONE RESIZE" else "RESIZE") { editSize = !editSize }
-                    Spacer(Modifier.width(5.dp))
-                    Control(false, "FEEDS ${ui.streams.size}") { feedPickerOpen = !feedPickerOpen }
-                    Spacer(Modifier.width(5.dp))
-                    if (openTiled) {
-                        Control(false, "PLAY") { engine.playAll() }
-                        Spacer(Modifier.width(4.dp))
-                        Control(false, "PAUSE") { engine.pauseAll() }
-                        Spacer(Modifier.width(4.dp))
-                        Control(false, "−10S") { engine.seekOpenTiled(-10_000L) }
-                        Spacer(Modifier.width(4.dp))
-                        Control(false, "+10S") { engine.seekOpenTiled(10_000L) }
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    Control(false, "SYNC ALL") {
-                        engine.playAll()
-                        val mainId = ui.mainStreamId ?: active?.id
-                        if (mainId != null) engine.syncToMain(mainId)
-                    }
-                    Spacer(Modifier.width(5.dp))
-                    Control(false, "HIDE") { controlsVisible = false }
-                }
-                if (feedPickerOpen) {
-                    Spacer(Modifier.height(8.dp))
-                    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        items(ui.streams) { stream ->
-                            val picked = stream.id in ui.selectedStreamIds
-                            val isMain = stream.id == ui.mainStreamId
-                            var feedFocused by remember(stream.id) { mutableStateOf(false) }
-                            Surface(Modifier.widthIn(min = 145.dp, max = 205.dp), shape = RoundedCornerShape(8.dp), color = if (isMain) Red else if (picked) Color(0xFF5A1012) else Surface2) {
-                                Column(Modifier.padding(8.dp)) {
-                                    Row(
-                                        Modifier.fillMaxWidth()
-                                            .clickable { onToggleStream(stream.id) }.focusable()
-                                            .onFocusChanged { feedFocused = it.isFocused }
-                                            .then(if (feedFocused) Modifier.border(2.dp, White, RoundedCornerShape(6.dp)) else Modifier),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(if (picked) "✓" else "+", color = White, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                                    }
-                                    Spacer(Modifier.height(4.dp))
-                                    var mainActionFocused by remember(stream.id) { mutableStateOf(false) }
-                                    Surface(
-                                        Modifier.fillMaxWidth().clickable { onSetMainStream(stream.id) }.focusable()
-                                            .onFocusChanged { mainActionFocused = it.isFocused },
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = if (isMain) Color.Black.copy(alpha = .28f) else Red.copy(alpha = .18f),
-                                        border = if (mainActionFocused) BorderStroke(2.dp, White) else BorderStroke(1.dp, Color.Transparent)
-                                    ) {
-                                        Text(if (isMain) "MAIN FEED" else "SET AS MAIN — REPLACE", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-
-        val fullscreenTiledSession = ui.tiledMultiviewSession
-        if (feedPickerOpen && openTiled && fullscreenTiledSession != null) {
-            Spacer(Modifier.height(6.dp))
-            LazyRow(
-                Modifier.fillMaxWidth().align(Alignment.BottomCenter).zIndex(15f).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 7.dp),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                items(fullscreenTiledSession.feeds, key = { it.index }) { feed ->
-                    val feedId = fullscreenTiledSession.feedIds[feed.index]
-                    val picked = feedId in tiledSelected
-                    Surface(
-                        Modifier.widthIn(min = 135.dp, max = 190.dp).clickable { vm.toggleTiledFeed(feedId) }.focusable(),
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (picked) Color(0xFF5A1012) else Surface2,
-                        border = BorderStroke(1.dp, if (picked) Red else Color.White.copy(alpha = .08f))
-                    ) {
-                        Row(Modifier.padding(horizontal = 9.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(feed.encoderId ?: feed.uuid ?: "FEED " + (feed.index + 1), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (picked) "✓" else "+", color = White, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                        }
-                    }
-                }
-            }
-        }
-        if (active != null && activePlayer != null && controlsVisible) {
-            Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
-                    stream = active, player = engine.player(active.id), engine = engine, audioTracks = audioTracks, textTracks = textTracks,
-                    speed = speed, quality = quality, fit = fit, menu = menu, onReplayPosition = onReplayPosition,
-                    onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
-                    onMute = { engine.setMuted(active.id, !engine.isMuted(active.id)) },
-                    onPlayAll = ::playAll, onPauseAll = ::pauseAll, onSeekAll = ::seekAll
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MultiviewFeedTile(
-    stream: StreamSource,
-    ui: UiState,
-    engine: UnifiedMultiviewEngine,
-    error: String?,
-    modifier: Modifier,
-    onFocus: (String) -> Unit,
-    active: Boolean,
-    surfaceType: Int
-) {
-    val context = LocalContext.current
-    val isTv = remember(context) { isTelevision(context) }
-    Box(
-        modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black)
-            .clickable { onFocus(stream.id) }.focusable()
-    ) {
-        when (stream.kind) {
-            StreamKind.TRACK_MAP -> TrackMapPanel(ui, isTv)
-            StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
-            else -> PlayerTile(
-                stream, engine, error, Modifier.fillMaxSize(), {}, onFocus,
-                active = active, surfaceType = surfaceType
-            )
-        }
-    }
-}
-
-@Composable
-private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
-    BoxWithConstraints(
-        modifier = modifier.fillMaxSize().background(Color(0xFF111214)),
-        contentAlignment = Alignment.Center
-    ) {
-        val designWidth = 832f
-        val designHeight = 480f
-        val scaleX = maxWidth.value / designWidth
-        val scaleY = maxHeight.value / designHeight
-        val uiScale = minOf(scaleX, scaleY).coerceIn(0.45f, 1f)
-
-        Box(
-            Modifier
-                .requiredWidth(designWidth.dp)
-                .requiredHeight(designHeight.dp)
-                .scale(uiScale)
-        ) {
-            F1DashReferenceLayout(ui, isTv)
-        }
-    }
-}
-
-private fun countryFlag(country: String): String {
-    val value = country.trim()
-    if (value.any { it.code in 0x1F1E6..0x1F1FF }) return value
-    return when (value.uppercase()) {
-        "AUSTRALIA" -> "🇦🇺"
-        "CHINA" -> "🇨🇳"
-        "JAPAN" -> "🇯🇵"
-        "BAHRAIN" -> "🇧🇭"
-        "SAUDI ARABIA" -> "🇸🇦"
-        "USA", "UNITED STATES", "UNITED STATES OF AMERICA" -> "🇺🇸"
-        "CANADA" -> "🇨🇦"
-        "MONACO" -> "🇲🇨"
-        "SPAIN" -> "🇪🇸"
-        "AUSTRIA" -> "🇦🇹"
-        "GREAT BRITAIN", "UNITED KINGDOM", "UK" -> "🇬🇧"
-        "BELGIUM" -> "🇧🇪"
-        "HUNGARY" -> "🇭🇺"
-        "NETHERLANDS" -> "🇳🇱"
-        "ITALY" -> "🇮🇹"
-        "AZERBAIJAN" -> "🇦🇿"
-        "SINGAPORE" -> "🇸🇬"
-        "MEXICO" -> "🇲🇽"
-        "BRAZIL" -> "🇧🇷"
-        "QATAR" -> "🇶🇦"
-        "ABU DHABI", "UNITED ARAB EMIRATES", "UAE" -> "🇦🇪"
-        else -> "🏁"
-    }
-}
-
-private fun formatWind(wind: String, direction: String): String {
-    val speed = wind.trim()
-    val dir = direction.trim()
-    if (speed.isBlank() || speed == "-") return if (dir.isBlank() || dir == "-") "-" else dir
-    if (dir.isBlank() || dir == "-") return if (speed.contains("km/h", true)) speed else "$speed km/h"
-    return if (speed.contains("km/h", true)) "$speed $dir" else "$speed km/h $dir"
-}
-
-private fun parseTeamColor(value: String): Color {
-    val hex = value.trim().removePrefix("#").let {
-        when (it.length) {
-            3 -> it.map { ch -> "$ch$ch" }.joinToString("")
-            6 -> it
-            8 -> it.takeLast(6)
-            else -> "55565D"
-        }
-    }
-    return try {
-        Color(android.graphics.Color.parseColor("#$hex"))
-    } catch (_: IllegalArgumentException) {
-        Color(0xFF55565D)
-    }
-}
-
-private fun isLightColor(color: Color): Boolean {
-    val luminance = 0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue
-    return luminance > 0.62f
-}
-
-private fun dashboardClock(value: String): String? {
-    val raw = value.trim()
-    if (raw.isBlank() || raw == "-") return null
-    val parts = raw.split(":").mapNotNull { it.toIntOrNull() }
-    return when {
-        parts.size == 3 -> "%02d:%02d".format(parts[1], parts[2])
-        parts.size == 2 -> "%02d:%02d".format(parts[0], parts[1])
-        else -> raw
-    }
-}
-
-@Composable
-private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
-    val rows = ui.timing.sortedBy { it.position }.take(5)
-    val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
-    val totalLaps = ui.totalLaps.takeIf { it > 0 }
-    val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
-    val status = ui.trackStatus.label.ifBlank { "GREEN" }
-
-    Column(Modifier.fillMaxSize().background(Color(0xFF111214))) {
-        Row(
-            Modifier.fillMaxWidth().height(62.dp).background(Color(0xFF17181A)).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(Modifier.size(46.dp, 38.dp).background(Color(0xFF101114), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
-                Text(countryFlag(ui.liveSessionInfo.country), fontSize = 24.sp)
-            }
-            Spacer(Modifier.width(9.dp))
-            Column(Modifier.weight(1f)) {
-                Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val clock = dashboardClock(ui.sessionClock)
-                if (clock != null) {
-                    Text(clock, color = White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                }
-                Text(
-                    (if (currentLap > 0) "LIVE  " else "") + "Lap: " + currentLap + (totalLaps?.let { "/$it" } ?: "") +
-                        (if (currentLap > 0 && totalLaps != null) " (" + (totalLaps - currentLap).coerceAtLeast(0) + " left)" else ""),
-                    color = if (clock != null) Muted else White,
-                    fontSize = if (clock != null) 9.sp else 15.sp,
-                    fontWeight = FontWeight.Black, maxLines = 1
-                )
-            }
-            Surface(
-                color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A),
-                shape = RoundedCornerShape(3.dp)
-            ) {
-                Text(
-                    if (status.equals("GREEN", true)) "Track Clear" else status,
-                    color = if (status.equals("GREEN", true)) Color(0xFF70C96D) else Color(0xFFFF8C82),
-                    fontSize = 9.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Wind", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                Text(formatWind(ui.weather.wind, ui.weather.windDirection), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Track", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                Text(if (ui.weather.track == "-") "-" else ui.weather.track + "°C", color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        if (rows.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
-            ) {
-                items(rows, key = { it.position }) { row ->
-                    val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
-                    val telemetry = ui.telemetry.firstOrNull {
-                        it.driver.equals(row.driverNumber, true) ||
-                            (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
-                    }
-                    val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
-                    val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
-
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .height(68.dp)
-                            .background(if (row.position % 2 == 0) Color(0xFF242526) else Color(0xFF151617))
-                            .padding(horizontal = 7.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // F1-style single team/position tag. This replaces the old separate position + TLA blocks.
-                        Surface(color = teamColor, shape = RoundedCornerShape(3.dp), modifier = Modifier.width(125.dp)) {
-                            Row(
-                                Modifier.height(42.dp).padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(27.dp))
-                                Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                            }
-                        }
-
-                        Spacer(Modifier.width(8.dp))
-
-                        // 2026 has no DRS. Use this slot for the actual tyre compound instead.
-                        Column(
-                            Modifier.width(48.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black)
-                            Text(
-                                row.tyre.take(4).uppercase().ifBlank { "-" },
-                                color = tyreDisplayColor(row.tyre),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                maxLines = 1
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = .68f),
+                                Color.Black.copy(alpha = .20f),
+                                Color.Transparent
                             )
-                            Text("L" + row.lap, color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        GearGauge(
-                            gear = telemetry?.gear ?: 0,
-                            rpm = telemetry?.rpm ?: 0,
-                            speed = telemetry?.speed ?: row.speed.toIntOrNull() ?: 0,
-                            modifier = Modifier.width(72.dp)
                         )
-
-                        Column(Modifier.width(118.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
-                                LapPill(row.lastLap, lapColor)
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
-                                if (row.position == 1) {
-                                    LapPill(row.bestLap, Color(0xFFD84BEB))
-                                } else {
-                                    Text(row.bestLap, color = White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                                }
-                            }
-                        }
-
-                        Column(Modifier.width(98.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("INT", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
-                                GapPill(row.interval, row.position != 1)
-                            }
-                            Spacer(Modifier.height(5.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("LDR", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
-                                Text(if (row.position == 1) "—" else row.leaderGap, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-
-                        Row(
-                            Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
-                            DashSectorColumn(row.sector2, row.sector2Status, row.sector2Segments)
-                            DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GearGauge(gear: Int, rpm: Int, speed: Int, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize()) {
-                val stroke = 4.dp.toPx()
-                drawArc(
-                    color = Color(0xFF4A4B50),
-                    startAngle = 135f,
-                    sweepAngle = 270f,
-                    useCenter = false,
-                    style = Stroke(stroke, cap = StrokeCap.Round)
-                )
-                val progress = (rpm / 12500f).coerceIn(0f, 1f)
-                drawArc(
-                    color = Color(0xFF2999EA),
-                    startAngle = 135f,
-                    sweepAngle = 270f * progress,
-                    useCenter = false,
-                    style = Stroke(stroke, cap = StrokeCap.Round)
-                )
-            }
-            Text(gear.toString(), color = White, fontSize = 12.sp, fontWeight = FontWeight.Black)
-        }
-        Text(rpm.toString(), color = White, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-        Text("$speed km/h", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun LapPill(value: String, color: Color) {
-    Box(
-        Modifier.width(69.dp).height(24.dp).background(color, RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(value, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
-    }
-}
-
-@Composable
-private fun GapPill(value: String, visible: Boolean) {
-    if (visible && value.isNotBlank() && value != "-") {
-        Box(
-            Modifier.border(1.dp, Color(0xFF7CCB82), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
-        ) {
-            Text(value, color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
-        }
-    } else {
-        Text("—", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun DashSectorColumn(value: String, status: String, segments: List<String>) {
-    Column(Modifier.widthIn(min = 56.dp, max = 76.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            val source = if (segments.isNotEmpty()) segments else List(8) { status }
-            source.take(10).forEach { seg ->
-                Box(
-                    Modifier.width(5.dp).height(6.dp)
-                        .background(segmentColor(seg), RoundedCornerShape(1.dp))
-                )
-            }
-        }
-        Text(value, color = sectorColor(status), fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-private fun tyreDisplayColor(tyre: String): Color = when (tyre.uppercase()) {
-    "SOFT", "S" -> Color(0xFFFF4B4B)
-    "MEDIUM", "M" -> Color(0xFFFFD34E)
-    "HARD", "H" -> Color(0xFFF4F4F4)
-    "INTERMEDIATE", "I" -> Color(0xFF4DB36B)
-    "WET", "W" -> Color(0xFF4C8DFF)
-    else -> Muted
-}
-
-private fun segmentColor(status: String): Color = when(status.uppercase()) {
-    "PURPLE" -> Color(0xFFD84BEB)
-    "GREEN" -> Color(0xFF59B35D)
-    "YELLOW" -> Color(0xFFF0C93B)
-    "BLUE" -> Color(0xFF4B9EEA)
-    else -> Color(0xFF55565C)
-}
-
-@Composable
-private fun SectorCell(label: String, value: String, status: String) {
-    Column(Modifier.widthIn(min = 43.dp, max = 62.dp)) {
-        Text(label, color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black)
-        Text(value, color = sectorColor(status), fontSize = 6.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-private fun sectorColor(status: String): Color = when (status.uppercase()) {
-    "PURPLE" -> Color(0xFFD14DFF)
-    "GREEN", "PERSONAL" -> Color(0xFF4CCB68)
-    "YELLOW", "SLOW" -> Color(0xFFFFD54A)
-    else -> Color(0xFFB8B9C0)
-}
-
-private fun tyreLabel(value: String): String = when {
-    value.contains("SOFT", true) -> "SOFT"
-    value.contains("MED", true) || value.contains("MEDIUM", true) -> "MED"
-    value.contains("HARD", true) -> "HARD"
-    value.isBlank() -> "-"
-    else -> value.take(5).uppercase()
-}
-
-private fun tyreColor(value: String): Color = when {
-    value.contains("SOFT", true) -> Color(0xFFE10600)
-    value.contains("MED", true) -> Color(0xFFFFD54A)
-    value.contains("HARD", true) -> Color(0xFFF2F2F2)
-    else -> White
-}
-
-@Composable
-private fun CanonicalMultiviewLayout(
-    ui: UiState,
-    selected: List<StreamSource>,
-    engine: UnifiedMultiviewEngine,
-    errors: Map<String, String>,
-    editSize: Boolean,
-    onFocus: (String) -> Unit,
-    activeId: String? = null,
-    modifier: Modifier = Modifier,
-    surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW
-) {
-    val gap = 6.dp
-    var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
-    var mainX by rememberSaveable { mutableFloatStateOf(.62f) }
-    var topX by rememberSaveable { mutableFloatStateOf(.33f) }
-    var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
-    var fourSideH2 by rememberSaveable { mutableFloatStateOf(.34f) }
-    var topX2 by rememberSaveable { mutableFloatStateOf(.5f) }
-    var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
-    var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
-    val firstResizeFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(editSize, selected.size) {
-        if (editSize && selected.size > 1) {
-            delay(60L)
-            firstResizeFocusRequester.requestFocus()
-        }
-    }
-
-    Box(modifier) {
-        when {
-            selected.isEmpty() ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
-                }
-            selected.size == 1 ->
-                MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
-            selected.size == 2 ->
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
-                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
-                }
-            selected.size == 3 ->
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
-                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
-                    Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
-                        ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
-                    }
-                }
-            selected.size == 4 ->
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    // Four-feed layout: the main feed gets the large left pane;
-                    // feeds 2-4 are stacked vertically on the right.
-                    MultiviewFeedTile(
-                        selected[0],
-                        ui,
-                        engine,
-                        errors[selected[0].id],
-                        Modifier.weight(mainX).fillMaxHeight(),
-                        onFocus,
-                        active = activeId == selected[0].id,
-                        surfaceType = surfaceType
                     )
-                    ResizeHandle(
-                        Orientation.Horizontal,
-                        editSize,
-                        firstResizeFocusRequester
-                    ) {
-                        mainX = (mainX + it / 1000f).coerceIn(.45f, .78f)
-                    }
-                    Column(
-                        Modifier.weight(1f - mainX).fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(gap)
-                    ) {
-                        MultiviewFeedTile(
-                        selected[1],
-                        ui,
-                            engine,
-                            errors[selected[1].id],
-                            Modifier.weight(fourSideH1).fillMaxWidth(),
-                            onFocus,
-                            active = activeId == selected[1].id,
-                            surfaceType = surfaceType
-                        )
-                        ResizeHandle(Orientation.Vertical, editSize) {
-                            val delta = it / 900f
-                            fourSideH1 = (fourSideH1 + delta).coerceIn(.16f, .58f)
-                            fourSideH2 = (fourSideH2 - delta).coerceIn(.16f, .58f)
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().focusGroup(), verticalAlignment = Alignment.CenterVertically) {
+                    ChromeButton(
+                        label = "‹",
+                        onClick = onClose,
+                        focusRequester = fullscreenBackFocusRequester,
+                        onFocus = { fullscreenBackFocused = it }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("MULTIVIEW", color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (openTiled) "TILED" else "DIRECTOR", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    CompactLayoutPicker(selected = ui.layout, onSelect = vm::setLayout)
+                    Spacer(Modifier.width(7.dp))
+                    SmallPlayerButton("SYNC") {
+                        engine.playAll()
+                        val mainId = active?.takeIf {
+                            it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+                        }?.id
+                        if (mainId != null) {
+                            engine.setAudioPlayer(mainId)
+                            engine.syncToMain(mainId)
                         }
-                        MultiviewFeedTile(
-                        selected[2],
-                        ui,
-                            engine,
-                            errors[selected[2].id],
-                            Modifier.weight(fourSideH2).fillMaxWidth(),
-                            onFocus,
-                            active = activeId == selected[2].id,
-                            surfaceType = surfaceType
-                        )
-                        ResizeHandle(Orientation.Vertical, editSize) {
-                            val delta = it / 900f
-                            fourSideH2 = (fourSideH2 + delta).coerceIn(.16f, .58f)
-                        }
-                        MultiviewFeedTile(
-                        selected[3],
-                        ui,
-                            engine,
-                            errors[selected[3].id],
-                            Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
-                            onFocus,
-                            active = activeId == selected[3].id,
-                            surfaceType = surfaceType
-                        )
                     }
+                    Spacer(Modifier.width(6.dp))
+                    SmallPlayerButton("HIDE") { controlsVisible = false }
                 }
-            else ->
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                    Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
-                    }
-                    ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
-                    Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[5], ui, engine, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
-                    }
-                }
-        }
-    }
-}
-@OptIn(UnstableApi::class)
-@Composable
-private fun FullscreenFeedControls(
-    stream: StreamSource,
-    player: EnginePlayerHandle,
-    engine: UnifiedMultiviewEngine,
-    audioTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
-    textTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
-    speed: Float,
-    quality: Quality,
-    fit: Boolean,
-    menu: String?,
-    onReplayPosition: (Long) -> Unit,
-    onSpeed: (Float) -> Unit,
-    onQuality: (Quality) -> Unit,
-    onFit: (Boolean) -> Unit,
-    onMenu: (String?) -> Unit,
-    onMute: () -> Unit,
-    onPlayAll: () -> Unit,
-    onPauseAll: () -> Unit,
-    onSeekAll: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    val activity = context as? Activity
-    val displayHdr = displaySupportsHdr(context)
-    var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
-    var position by remember(stream.id) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0L)) }
-    var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
-    var trackVersion by remember(stream.id) { mutableIntStateOf(0) }
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(value: Boolean) { playing = value }
-            override fun onPlaybackStateChanged(state: Int) { playing = player.isPlaying; duration = player.duration.takeIf { it > 0 } ?: 0L }
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { trackVersion++ }
-        }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener) }
-    }
-    LaunchedEffect(player) {
-        while (true) {
-            position = player.currentPosition.coerceAtLeast(0L)
-            onReplayPosition(position)
-            duration = player.duration.takeIf { it > 0 } ?: 0L
-            delay(250L)
-        }
-    }
-    Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .96f)))).padding(horizontal = 12.dp, vertical = 10.dp)) {
-        if (duration > 0L) {
-            Slider(value = position.toFloat().coerceIn(0f, duration.toFloat()), onValueChange = { position = it.toLong() }, onValueChangeFinished = { player.seekTo(position.coerceIn(0L, duration)) }, valueRange = 0f..duration.toFloat(), colors = SliderDefaults.colors(thumbColor = Red, activeTrackColor = Red, inactiveTrackColor = Color.White.copy(alpha = .28f)))
+            }
         } else {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("LIVE", color = Red, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.weight(1f))
-                PlayerControlButton("GO LIVE") { player.seekToDefaultPosition(); player.play() }
+            Box(Modifier.align(Alignment.TopStart).padding(9.dp).zIndex(21f)) {
+                ChromeButton(
+                    label = "⌄",
+                    onClick = { controlsVisible = true },
+                    focusRequester = fullscreenShowControlsFocusRequester,
+                    onFocus = { fullscreenShowControlsFocused = it }
+                )
             }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PlayerControlButton("↶ 10") { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)) }
-            PlayerControlButton(if (playing) "PAUSE" else "PLAY") { if (playing) player.pause() else player.play() }
-            PlayerControlButton("10 ↷") { player.seekTo(player.currentPosition + 10_000L) }
-            Spacer(Modifier.weight(1f))
-            MenuButton(if (engine.isMuted(stream.id)) "UNMUTE" else "MUTE") { onMute() }
-            MenuButton("PIP") {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {                    val w = player.videoSize.width.coerceAtLeast(16)
-                    val h = player.videoSize.height.coerceAtLeast(9)
-                    val ratio = Rational(w, h)
-                    activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio).build())
-                }
-            }
-            MenuButton("RETRY") { player.prepare(); player.play() }
-            MenuButton("SPEED " + "%.2f".format(speed) + "x") { onMenu(if (menu == "speed") null else "speed") }
-            MenuButton("QUALITY " + quality.label()) { onMenu(if (menu == "quality") null else "quality") }
-            MenuButton("AUDIO") { onMenu(if (menu == "audio") null else "audio") }
-            MenuButton("SUBS") { onMenu(if (menu == "text") null else "text") }
-            MenuButton(if (fit) "FIT" else "FILL") { onFit(!fit); player.videoScalingMode = if (!fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING }
-        }
-        if (menu != null) {
-            Surface(Modifier.fillMaxWidth().padding(top = 7.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFF17181F).copy(alpha = .98f), border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))) {
-                Column(Modifier.padding(9.dp)) {
-                    when (menu) {
-                        "speed" -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { v -> Control(speed == v, v.toString() + "x") { onSpeed(v); player.setPlaybackParameters(PlaybackParameters(v)); onMenu(null) } }
-                        }
-                        "quality" -> {
-                            val resolutions = remember(trackVersion) { engine.availableVideoResolutionsForQualityMenu(stream.id) }
-                            val diagnostics = remember(trackVersion) { engine.currentVideoDiagnostics(stream.id) }
-                            Text(
-                                (
-                                    if (diagnostics != null) {
-                                        "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
-                                            if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
-                                    } else if (resolutions.isNotEmpty()) {
-                                        "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
-                                    } else "TRACKS NOT READY"
-                                ) + if (diagnostics?.hdr == true) {
-                                    if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
-                                } else "",
-                                color=White.copy(alpha=.72f), fontSize=7.sp, fontWeight=FontWeight.Bold,
-                                modifier=Modifier.padding(bottom=5.dp)
-                            )
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (q, label) ->
-                                    val available = engine.qualityAvailable(stream.id, q)
-                                    Control(quality == q, if (available || q == Quality.AUTO) label else "$label — N/A") {
-                                        if (available || q == Quality.AUTO) {
-                                            onQuality(q)
-                                            engine.setQuality(stream.id, q)
-                                            onMenu(null)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        "audio" -> {
-                            Text("AUDIO TRACKS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                audioTracks.forEachIndexed { index, (gi, ti, f) ->
-                                    Control(false, f.label ?: f.language?.uppercase() ?: "Audio " + (index + 1)) {
-                                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).setOverrideForType(TrackSelectionOverride(player.currentTracks.groups[gi].mediaTrackGroup, ti)).build()
-                                        onMenu(null)
-                                    }
-                                }
-                                if (audioTracks.isEmpty()) Text("No alternate audio tracks reported by F1 TV.", color = Muted, fontSize = 9.sp)
-                            }
-                        }
-                        "text" -> {
-                            Text("SUBTITLES", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Control(false, "Off") { player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build(); onMenu(null) }
-                                textTracks.forEachIndexed { index, (gi, ti, f) ->
-                                    Control(false, f.label ?: f.language?.uppercase() ?: "Subtitle " + (index + 1)) {
-                                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(TrackSelectionOverride(player.currentTracks.groups[gi].mediaTrackGroup, ti)).build()
-                                        onMenu(null)
-                                    }
-                                }
-                                if (textTracks.isEmpty()) Text("No subtitle tracks reported by F1 TV.", color = Muted, fontSize = 9.sp)
-                            }
-                        }
-                    }
-                }
+
+        if (activePlayer != null && controlsVisible) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = .42f), Color.Black.copy(alpha = .78f))
+                        )
+                    )
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            ) {
+                FullscreenFeedControls(
+                    stream = active!!,
+                    player = activePlayer,
+                    engine = engine,
+                    audioTracks = audioTracks,
+                    textTracks = textTracks,
+                    speed = speed,
+                    quality = quality,
+                    fit = fit,
+                    menu = menu,
+                    displayHdr = displayHdr,
+                    onReplayPosition = onReplayPosition,
+                    onSpeed = { speed = it },
+                    onQuality = { quality = it },
+                    onFit = { fit = it },
+                    onMenu = { menu = it },
+                    onMute = { muted -> engine.setMuted(active!!.id, muted) },
+                    muted = engine.isMuted(active!!.id),
+                    playing = activePlayer.isPlaying,
+                    onPlay = { activePlayer.play() },
+                    onPause = { activePlayer.pause() },
+                    onSeek = { delta -> activePlayer.seekTo((activePlayer.currentPosition + delta).coerceAtLeast(0L)) }
+                )
             }
         }
-        Text(formatPosition(position) + if (duration > 0L) " / " + formatPosition(duration) else "  •  LIVE", color = Color.White.copy(alpha = .72f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -3014,6 +2257,85 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
         Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=7.dp))
     }
 }
+@Composable
+private fun RailCollapseButton(open: Boolean, onClick: () -> Unit) {
+    Surface(
+        Modifier
+            .align(Alignment.CenterEnd)
+            .width(30.dp)
+            .height(64.dp)
+            .clickable(onClick = onClick)
+            .focusable()
+            .zIndex(25f),
+        color = Color.Black.copy(alpha = .68f),
+        shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(if (open) "›" else "‹", color = White, fontSize = 18.sp, fontWeight = FontWeight.Light)
+        }
+    }
+}
+
+@Composable
+private fun ChromeButton(
+    label: String,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
+    onFocus: ((Boolean) -> Unit)? = null
+) {
+    var focused by remember { mutableStateOf(false) }
+    Surface(
+        Modifier
+            .size(30.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .clickable(onClick = onClick)
+            .focusable()
+            .onFocusChanged {
+                focused = it.isFocused
+                onFocus?.invoke(it.isFocused)
+            },
+        color = Color.Black.copy(alpha = .54f),
+        shape = RoundedCornerShape(50.dp),
+        border = BorderStroke(1.dp, if (focused) White else Color.White.copy(alpha = .10f))
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(label, color = White, fontSize = 15.sp, fontWeight = FontWeight.Light)
+        }
+    }
+}
+
+@Composable
+private fun CompactLayoutPicker(selected: LayoutPreset, onSelect: (LayoutPreset) -> Unit) {
+    Surface(
+        color = Color.White.copy(alpha = .13f),
+        shape = RoundedCornerShape(50.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .06f))
+    ) {
+        Row(
+            Modifier.padding(horizontal = 4.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf(LayoutPreset.SINGLE, LayoutPreset.SPLIT_2, LayoutPreset.GRID_4, LayoutPreset.GRID_6).forEach { preset ->
+                Surface(
+                    Modifier
+                        .size(30.dp, 24.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                        .clickable { onSelect(preset) }
+                        .focusable(),
+                    color = if (selected == preset) Color.White else Color.Transparent,
+                    shape = RoundedCornerShape(50.dp)
+                ) {
+                    Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
+                        LayoutGlyph(preset, selected == preset)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable private fun PlayerControlButton(label:String,onClick:()->Unit){
     var focused by remember { mutableStateOf(false) }
     Surface(
@@ -3082,7 +2404,7 @@ private fun LayoutGlyph(preset: LayoutPreset, selected: Boolean) {
     val c = if (selected) Color.Black.copy(alpha = .9f) else Color.White.copy(alpha = .9f)
     val gap = 2.dp
     when (preset) {
-        LayoutPreset.SINGLE -> Box(Modifier.fillMaxSize().border(2.dp, c, RoundedCornerShape(2.dp)))
+        LayoutPreset.SINGLE -> Box(Modifier.fillMaxSize().border(1.dp, c, RoundedCornerShape(2.dp)))
         LayoutPreset.SPLIT_2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Box(Modifier.weight(1f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
             Box(Modifier.weight(1f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
