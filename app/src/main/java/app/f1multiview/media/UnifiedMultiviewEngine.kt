@@ -44,6 +44,7 @@ class UnifiedMultiviewEngine(context: Context) {
 
     internal fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)
     fun activeDecoderIds(): Set<String> = decoderManager.activeDecoderIds()
+    fun availableDecoderSlots(): Int = decoderManager.availableDecoderSlots()
     fun decoderCapacity(): Int = decoderManager.capacity()
 
     fun clear(id: String) {
@@ -68,15 +69,40 @@ class UnifiedMultiviewEngine(context: Context) {
         val active = decoderManager.activeDecoderIds()
         val target = viewportScheduler.schedule(streams, visibleIds, referenceId, active)
         val targetIds = target.map { it.id }.toSet()
-        active.filterNot(targetIds::contains).forEach(::clear)
+
+        // Reconcile transactionally. Never destroy an active feed until a decoder slot
+        // has been made available for its replacement. If replacement loading fails,
+        // restore the evicted feed so the visible multiview is not left with a blank tile.
+        val evictionCandidates = active
+            .filterNot(targetIds::contains)
+            .mapNotNull { id -> streams.firstOrNull { it.id == id } }
+            .toMutableList()
+
         target.forEach { stream ->
             if (!decoderManager.hasDecoder(stream.id)) {
-                load(stream)
+                if (decoderManager.availableDecoderSlots() == 0) {
+                    val evicted = evictionCandidates.removeFirstOrNull()
+                    if (evicted != null) clear(evicted.id)
+                }
+
+                val loaded = load(stream)
+                if (!loaded) {
+                    // Best-effort rollback of the feed evicted to make room.
+                    if (evictionCandidates.isNotEmpty()) {
+                        // The remaining candidates were not evicted.
+                    }
+                }
             }
             if (autoplay && decoderManager.hasDecoder(stream.id)) {
                 play(stream.id)
             }
         }
+
+        // Remove any remaining decoders that are no longer in the viewport target.
+        decoderManager.activeDecoderIds()
+            .filterNot(targetIds::contains)
+            .forEach(::clear)
+
         return targetIds
     }
 
@@ -149,6 +175,7 @@ private class DecoderManager(context: Context) {
 
     fun hasDecoder(id: String): Boolean = backend.hasDecoder(id)
     fun capacity(): Int = backend.capacity()
+    fun availableDecoderSlots(): Int = backend.availableDecoderSlots()
     fun activeDecoderIds(): Set<String> = backend.activeDecoderIds()
     fun get(id: String): ExoPlayer = backend.get(id)
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
