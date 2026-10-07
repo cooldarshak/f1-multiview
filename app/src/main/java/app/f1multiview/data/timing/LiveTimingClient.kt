@@ -33,7 +33,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val _sessionInfo=MutableStateFlow(app.f1multiview.model.LiveSessionInfo());val sessionInfo:StateFlow<app.f1multiview.model.LiveSessionInfo> = _sessionInfo.asStateFlow()
     private val _trackPositions=MutableStateFlow<List<TrackDriverPosition>>(emptyList())
     val trackPositions:StateFlow<List<TrackDriverPosition>> = _trackPositions.asStateFlow()
-    private val _trackStatus=MutableStateFlow(TrackStatusInfo())\n    private val _lapCount=MutableStateFlow(0 to 0)\n    val lapCount:StateFlow<Pair<Int,Int>> = _lapCount.asStateFlow()
+    private val _trackStatus=MutableStateFlow(TrackStatusInfo())
+    private val _lapCount=MutableStateFlow(0 to 0)
+    val lapCount:StateFlow<Pair<Int,Int>> = _lapCount.asStateFlow()
     val trackStatus:StateFlow<TrackStatusInfo> = _trackStatus.asStateFlow()
     private val driverMeta=mutableMapOf<String,DriverMeta>()
     private val timingMeta=mutableMapOf<String,TimingMeta>()
@@ -223,7 +225,12 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         }
         if(out.isNotEmpty()) _raceControl.value=out.takeLast(30)
     }
-    private fun parseLapCount(data:JSONObject?) {\n        if(data==null)return\n        val root=data.optJSONObject("LapCount") ?: data\n        _lapCount.value=root.optInt("CurrentLap",0) to root.optInt("TotalLaps",0)\n    }\n    private fun parseWeather(data:JSONObject?) {
+    private fun parseLapCount(data:JSONObject?) {
+        if(data==null)return
+        val root=data.optJSONObject("LapCount") ?: data
+        _lapCount.value=root.optInt("CurrentLap",0) to root.optInt("TotalLaps",0)
+    }
+    private fun parseWeather(data:JSONObject?) {
         if(data==null)return
         fun v(vararg n:String)=n.firstNotNullOfOrNull{data.optString(it).takeIf{v->v.isNotBlank()}}?:"-"
         _weather.value=TimingWeather(v("AirTemp","AirTemperature"),v("TrackTemp","TrackTemperature"),v("Humidity"),v("WindSpeed","Wind"),v("Rainfall","RainfallIntensity"),v("WindDirection"))
