@@ -87,6 +87,7 @@ class Media3DecoderManager(context: Context) {
         .build()
 
     fun hasDecoder(id: String): Boolean = players.containsKey(id)
+    fun activeDecoderIds(): Set<String> = players.keys.toSet()
 
     fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
 
