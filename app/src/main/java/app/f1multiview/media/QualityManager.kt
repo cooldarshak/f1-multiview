@@ -115,6 +115,15 @@ class QualityManager {
         return best?.let { it.width to it.height } ?: (fallbackWidth to fallbackHeight)
     }
 
+    fun recoveryQuality(requested: Quality, isReference: Boolean): Quality = when {
+        requested == Quality.UHD -> Quality.FHD
+        requested == Quality.FHD && !isReference -> Quality.HD
+        requested == Quality.HD && !isReference -> Quality.SD
+        requested == Quality.AUTO && !isReference -> Quality.SD
+        requested == Quality.AUTO && isReference -> Quality.FHD
+        else -> Quality.AUTO
+    }
+
     fun minimumHeight(quality: Quality): Int = when (quality) {
         Quality.AUTO -> 0
         Quality.UHD -> 2160
