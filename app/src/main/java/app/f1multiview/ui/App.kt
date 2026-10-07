@@ -68,6 +68,7 @@ import app.f1multiview.media.EnginePlayerHandle
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.DebugPresentationSettings
+import app.f1multiview.media.OpenTiledSecureSurfaceView
 import app.f1multiview.BuildConfig
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
@@ -1083,12 +1084,23 @@ private fun PitWall(
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
         if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
-            OpenTiledMultiviewWall(
-                engine = engine,
-                feedIds = selected.map { it.id },
-                protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null,
-                modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
-            )
+            val protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null
+            val protectedCompositorSupported = remember(protectedSource) {
+                !protectedSource || engine.protectedTiledCompositorSupported()
+            }
+            if (protectedSource && !protectedCompositorSupported) {
+                OpenTiledSecureFallbackWall(
+                    engine = engine,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
+                )
+            } else {
+                OpenTiledMultiviewWall(
+                    engine = engine,
+                    feedIds = selected.map { it.id },
+                    protectedSource = protectedSource,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
+                )
+            }
         } else {
             CanonicalMultiviewLayout(
                 ui,
