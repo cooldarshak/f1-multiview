@@ -184,8 +184,9 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         // Only real video feeds enter UnifiedMultiviewEngine.
         ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
-                engine.load(stream)
-                startedFeeds[stream.id] = true
+                if (engine.load(stream)) {
+                    startedFeeds[stream.id] = true
+                }
             }
         }
     }
