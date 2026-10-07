@@ -19,7 +19,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val playbackClock = PlaybackClock()
-    private val surfaceManager = SurfaceManager(context)
+    private val surfaceManager = MultiviewSurfaceManager(context)
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
 
