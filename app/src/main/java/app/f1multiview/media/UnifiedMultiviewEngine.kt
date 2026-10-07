@@ -128,6 +128,10 @@ class UnifiedMultiviewEngine(context: Context) {
     fun detachSurface(feedId: String, player: EnginePlayerHandle) =
         surfaceManager.detach(feedId, player)
 
+    fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = surfaceManager.renderSlots()
+
+    fun isGpuComposable(feedId: String): Boolean = surfaceManager.isGpuComposable(feedId)
+
     fun release() {
         surfaceManager.clear()
         feedRegistry.clear()
