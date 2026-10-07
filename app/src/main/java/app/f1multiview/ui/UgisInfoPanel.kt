@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import app.f1multiview.model.*
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.DebugPresentationSettings
+import app.f1multiview.media.AppLogger
 import app.f1multiview.BuildConfig
 import app.f1multiview.core.update.AppUpdateManager
 import kotlinx.coroutines.launch
@@ -99,6 +100,8 @@ fun UgisInfoPanel(
             }
             if(section=="settings"){
                 var screenshotMode by remember { mutableStateOf(DebugPresentationSettings.isScreenshotModeEnabled(context)) }
+                var loggingEnabled by remember { mutableStateOf(AppLogger.isEnabled(context)) }
+                val logEntries by AppLogger.entries.collectAsState()
                 Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
                     Text("PLAYBACK SETTINGS",color=InfoWhite,fontSize=14.sp,fontWeight=FontWeight.ExtraBold)
                     Surface(color=InfoSurface,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth()){
@@ -128,6 +131,52 @@ fun UgisInfoPanel(
                         "For F1 TV Widevine playback, Screenshot Mode cannot capture the protected video frame. It will keep playback visible instead of switching the protected feed to a black TextureView.",
                         color=InfoMuted,fontSize=10.sp
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text("DIAGNOSTICS",color=InfoWhite,fontSize=14.sp,fontWeight=FontWeight.ExtraBold)
+                    Surface(color=InfoSurface,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth()){
+                        Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                                Column(Modifier.weight(1f)){
+                                    Text("App Logging",color=InfoWhite,fontWeight=FontWeight.Bold)
+                                    Text(
+                                        if(loggingEnabled) "ON · logs are stored in-app and also sent to Logcat."
+                                        else "OFF · no new diagnostic entries are recorded.",
+                                        color=InfoMuted,fontSize=10.sp
+                                    )
+                                }
+                                Switch(
+                                    checked=loggingEnabled,
+                                    onCheckedChange={
+                                        loggingEnabled=it
+                                        AppLogger.setEnabled(context,it)
+                                    }
+                                )
+                            }
+                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                                InfoButton(false,"COPY LOGS"){ AppLogger.copyToClipboard(context) }
+                                InfoButton(false,"CLEAR LOGS"){ AppLogger.clear() }
+                            }
+                            Surface(
+                                color=Color.Black.copy(alpha=.35f),
+                                shape=RoundedCornerShape(6.dp),
+                                modifier=Modifier.fillMaxWidth().heightIn(min=100.dp,max=300.dp)
+                            ){
+                                LazyColumn(
+                                    Modifier.fillMaxWidth().padding(8.dp),
+                                    verticalArrangement=Arrangement.spacedBy(2.dp)
+                                ){
+                                    items(logEntries){ line ->
+                                        Text(
+                                            line,
+                                            color=InfoMuted,
+                                            fontSize=8.sp,
+                                            lineHeight=10.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if(section=="updates"){
