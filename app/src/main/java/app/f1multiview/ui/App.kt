@@ -1342,7 +1342,7 @@ private fun ScreenshotPlaceholder(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier.zIndex(20f),
+        modifier = modifier,
         color = Color(0xFF101116),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
