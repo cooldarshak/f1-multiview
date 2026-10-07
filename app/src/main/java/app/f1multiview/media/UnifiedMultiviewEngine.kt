@@ -83,7 +83,7 @@ class UnifiedMultiviewEngine(context: Context) {
 
 /** Decoder/resource ownership boundary. Media3 is the first backend implementation. */
 private class DecoderManager(context: Context) {
-    private val backend = PlayerPool(context)
+    private val backend = Media3DecoderManager(context)
 
     val errors: StateFlow<Map<String, String>> = backend.errors
 

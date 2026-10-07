@@ -41,7 +41,7 @@ data class VideoDiagnostics(
     val bitDepth: Int
 )
 
-class PlayerPool(context: Context) {
+class Media3DecoderManager(context: Context) {
     // Four simultaneous video feeds are the validated safe ceiling on the current
     // target device. Keep this guard here as well as in the ViewModel so an accidental
     // caller cannot instantiate a fifth decoder and crash the process.
@@ -134,7 +134,7 @@ class PlayerPool(context: Context) {
                             _errors.value = _errors.value - id
                             startupRequestedAtMs[id]?.let { startedAt ->
                                 val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
-                                Log.i("PlayerPool", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
+                                Log.i("Media3DecoderManager", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
                             }
                             if (playAllRequested) desiredPlaying.add(id)
                             if (id in desiredPlaying) {
@@ -157,7 +157,7 @@ class PlayerPool(context: Context) {
                             firstFrameRendered.add(id)
                             startupFirstFrameAtMs[id] = firstFrameAt
                             startupRequestedAtMs[id]?.let { requestedAt ->
-                                Log.i("PlayerPool", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
+                                Log.i("Media3DecoderManager", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
                             }
                             val referenceId = syncMainId
                             if (referenceId != null && referenceId != id && firstFrameRendered.contains(referenceId)) {
@@ -170,7 +170,7 @@ class PlayerPool(context: Context) {
                                 val playingAt = android.os.SystemClock.elapsedRealtime()
                                 startupPlayingAtMs[id] = playingAt
                                 startupRequestedAtMs.remove(id)?.let { requestedAt ->
-                                    Log.i("PlayerPool", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
+                                    Log.i("Media3DecoderManager", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
                                 }
                             }
                         }
@@ -185,7 +185,7 @@ class PlayerPool(context: Context) {
             _errors.value = _errors.value + (
                 stream.id to "4 simultaneous video feeds is the safe limit; 5th feed blocked to prevent decoder crash"
             )
-            Log.w("PlayerPool", "Blocked feed " + stream.id + ": maxVideoFeeds=" + maxVideoFeeds)
+            Log.w("Media3DecoderManager", "Blocked feed " + stream.id + ": maxVideoFeeds=" + maxVideoFeeds)
             return
         }
         streamKinds[stream.id] = stream.kind
@@ -249,7 +249,7 @@ class PlayerPool(context: Context) {
                                 runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
                             }
                             android.util.Log.i(
-                                "PlayerPool",
+                                "Media3DecoderManager",
                                 "Secondary " + stream.id + ": Widevine security level=" +
                                     runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown")
                             )
@@ -280,7 +280,7 @@ class PlayerPool(context: Context) {
         startupFirstFrameAtMs.remove(stream.id)
         startupPlayingAtMs.remove(stream.id)
         firstFrameRendered.remove(stream.id)
-        Log.i("PlayerPool", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
+        Log.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
     }
@@ -563,7 +563,7 @@ class PlayerPool(context: Context) {
         ).any(evidence::contains)
 
         Log.w(
-            "PlayerPool",
+            "Media3DecoderManager",
             "Decoder failure id=$id players=${players.size} drm=true capacityEvidence=$resourceEvidence " +
                 "code=${error.errorCodeName} message=${error.message}"
         )
@@ -831,7 +831,7 @@ class PlayerPool(context: Context) {
             player.playWhenReady = true
             player.play()
             Log.i(
-                "PlayerPool",
+                "Media3DecoderManager",
                 "STARTUP_PLAY id=" + id + " immediate=true players=" + players.size
             )
         }
