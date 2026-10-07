@@ -150,10 +150,6 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
             feeds.forEachIndexed { outputIndex, feedId ->
                 val binding = plan.binding(feedId) ?: return@forEachIndexed
-                val sourceIndex = binding.logicalIndex
-
-                val sourceColumn = sourceIndex % sourceColumns
-                val sourceRow = sourceIndex / sourceColumns
                 val left = outputIndex % outputColumns
                 val top = outputIndex / outputColumns
                 val viewportWidth = width / outputColumns
@@ -166,10 +162,10 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
                     viewportHeight
                 )
 
-                val u0 = sourceColumn.toFloat() / sourceColumns
-                val u1 = (sourceColumn + 1).toFloat() / sourceColumns
-                val v0 = 1f - (sourceRow + 1).toFloat() / sourceRows
-                val v1 = 1f - sourceRow.toFloat() / sourceRows
+                val u0 = binding.sourceRect.left
+                val u1 = binding.sourceRect.right
+                val v0 = 1f - binding.sourceRect.bottom
+                val v1 = 1f - binding.sourceRect.top
 
                 setQuad(u0, v0, u1, v1)
                 drawQuad()
