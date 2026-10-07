@@ -54,6 +54,11 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
         requestRender()
     }
 
+    fun setSourceVideoSize(width: Int, height: Int) {
+        renderer.setSourceVideoSize(width, height)
+        requestRender()
+    }
+
     fun releaseOutput() {
         queueEvent { renderer.releaseOutput() }
     }
@@ -71,6 +76,8 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
         private var texBuffer: FloatBuffer? = null
         private var width = 0
         private var height = 0
+        private var sourceVideoWidth = 0
+        private var sourceVideoHeight = 0
 
         private val vertexShader = """
             attribute vec2 aPosition;
@@ -137,8 +144,16 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
             val outputColumns = max(1, kotlin.math.ceil(kotlin.math.sqrt(feeds.size.toDouble())).toInt())
             val outputRows = max(1, kotlin.math.ceil(feeds.size.toDouble() / outputColumns).toInt())
-            val sourceColumns = max(1, kotlin.math.ceil(kotlin.math.sqrt(current.feeds.size.toDouble())).toInt())
-            val sourceRows = max(1, kotlin.math.ceil(current.feeds.size.toDouble() / sourceColumns).toInt())
+            val sourceColumns = if (sourceVideoWidth > 0 && current.tileWidth != null) {
+                (sourceVideoWidth / current.tileWidth).coerceAtLeast(1)
+            } else {
+                max(1, kotlin.math.ceil(kotlin.math.sqrt(current.feeds.size.toDouble())).toInt())
+            }
+            val sourceRows = if (sourceVideoHeight > 0 && current.tileHeight != null) {
+                (sourceVideoHeight / current.tileHeight).coerceAtLeast(1)
+            } else {
+                max(1, kotlin.math.ceil(current.feeds.size.toDouble() / sourceColumns).toInt())
+            }
 
             feeds.forEachIndexed { outputIndex, feedId ->
                 val sourceIndex = current.feeds.indexOfFirst { feed ->
@@ -218,6 +233,11 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
         fun setSelectedFeedIds(value: List<String>) {
             selected = value.distinct()
+        }
+
+        fun setSourceVideoSize(width: Int, height: Int) {
+            sourceVideoWidth = width
+            sourceVideoHeight = height
         }
 
         fun releaseOutput() {
