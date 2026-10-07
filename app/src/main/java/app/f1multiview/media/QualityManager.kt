@@ -38,7 +38,6 @@ class QualityManager {
     fun parameters(
         player: ExoPlayer,
         quality: Quality,
-        isReference: Boolean,
         autoBudget: Budget
     ): TrackSelectionParameters {
         val builder = player.trackSelectionParameters.buildUpon()
