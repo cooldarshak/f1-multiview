@@ -1398,10 +1398,11 @@ private fun FullscreenFeedRail(
                         val previewPlayer = remember(candidate.id) { engine.player(candidate.id) }
                         if (candidate.url != null && candidate.id in previewIds) {
                             F1HdrPlayerSurface(
+                                engine = engine,
                                 player = previewPlayer,
+                                stream = candidate,
                                 modifier = Modifier.fillMaxSize(),
-                                source = "feed-rail-" + candidate.id,
-                                protectedContent = candidate.drmLicenseUrl != null
+                                source = "feed-rail-" + candidate.id
                             )
                         } else {
                             F1Artwork(
@@ -2500,8 +2501,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
                     player = player,
                     stream = stream,
                     modifier = Modifier.fillMaxSize(),
-                    source = "fullscreen-" + stream.id,
-                    protectedContent = stream.drmLicenseUrl != null
+                    source = "fullscreen-" + stream.id
                 )
             }
             if (ui.streams.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) } > 1) {
