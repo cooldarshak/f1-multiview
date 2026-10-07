@@ -19,6 +19,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val playbackClock = PlaybackClock()
+    private val surfaceManager = SurfaceManager(context)
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
 
@@ -84,7 +85,17 @@ class UnifiedMultiviewEngine(context: Context) {
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
 
+    fun attachSurface(feedId: String, player: EnginePlayerHandle, stream: StreamSource, source: String, screenshotMode: Boolean = false): android.widget.FrameLayout =
+        surfaceManager.attach(feedId, player, stream, source, screenshotMode)
+
+    fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) =
+        surfaceManager.update(feedId, player, source)
+
+    fun detachSurface(feedId: String, player: EnginePlayerHandle) =
+        surfaceManager.detach(feedId, player)
+
     fun release() {
+        surfaceManager.clear()
         playbackClock.clear()
         feedRegistry.clear()
         decoderManager.release()
