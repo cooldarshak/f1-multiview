@@ -18,6 +18,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     )
 
     private val bindings = linkedMapOf<String, SurfaceBinding>()
+    private val renderCoordinator = MultiviewRenderCoordinator()
 
     fun attach(feedId: String, player: EnginePlayerHandle, stream: StreamSource, source: String, screenshotMode: Boolean = false): FrameLayout {
         bindings[feedId]?.let { existing ->
@@ -26,8 +27,9 @@ class MultiviewSurfaceManager(private val context: Context) {
         }
         val container = FrameLayout(context)
         val params = FrameLayout.LayoutParams(-1, -1)
-        val protectedContent = stream.drmLicenseUrl != null
-        if (screenshotMode && !protectedContent) {
+        val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
+        val protectedContent = renderSlot.protectedContent
+        if (renderSlot.path == MultiviewRenderCoordinator.RenderPath.GPU_TEXTURE) {
             val texture = TextureView(context)
             container.addView(texture, params)
             player.setVideoTextureView(texture)
@@ -49,15 +51,25 @@ class MultiviewSurfaceManager(private val context: Context) {
 
     fun detach(feedId: String, player: EnginePlayerHandle) {
         val binding = bindings.remove(feedId) ?: return
+        renderCoordinator.unbind(feedId)
         binding.surfaceView?.let(player::clearVideoSurfaceView)
         binding.textureView?.let(player::clearVideoTextureView)
         binding.container.removeAllViews()
     }
 
-    fun binding(feedId: String): SurfaceBinding? = bindings[feedId]\n\n    fun boundFeedIds(): Set<String> = bindings.keys.toSet()
+    fun binding(feedId: String): SurfaceBinding? = bindings[feedId]
+
+    fun boundFeedIds(): Set<String> = bindings.keys.toSet()
+
+    fun renderSlot(feedId: String): MultiviewRenderCoordinator.RenderSlot? = renderCoordinator.slot(feedId)
+
+    fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = renderCoordinator.slots()
+
+    fun isGpuComposable(feedId: String): Boolean = renderCoordinator.isGpuComposable(feedId)
 
     fun clear() {
         bindings.clear()
+        renderCoordinator.clear()
     }
 
     private fun attachExisting(binding: SurfaceBinding, player: EnginePlayerHandle, source: String) {
