@@ -33,6 +33,7 @@ class QualityManager {
         videoFormats(tracks)
             .filter { it.width > 0 && it.height > 0 }
             .distinctBy { it.width to it.height }
+            .map { it.width to it.height }
             .sortedByDescending { it.second }
 
     fun parameters(
