@@ -51,4 +51,35 @@ class OpenTiledDecoderPlanTest {
         )
         assertNull(plan)
     }
+    @Test
+    fun twentyFourLogicalFeedsStillUseOnePhysicalDecoder() {
+        val urls = List(24) { "https://cdn/mosaic.mpd" }
+        val plan = OpenTiledDecoderPlan.from(
+            session(urls),
+            sourceVideoWidth = 3840,
+            sourceVideoHeight = 2160
+        )
+        assertNotNull(plan)
+        assertEquals(1, plan!!.physicalDecoderCount)
+        assertEquals(24, plan.logicalFeedCount)
+        assertEquals(4, plan.tileColumns)
+        assertEquals(6, plan.tileRows)
+        assertEquals(24, plan.selectedBindings(plan.bindings.map { it.feedId }).size)
+    }
+
+    @Test
+    fun sourceGeometryProducesNormalizedTileRectangles() {
+        val plan = OpenTiledDecoderPlan.from(
+            session(listOf("https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd")),
+            sourceVideoWidth = 1920,
+            sourceVideoHeight = 1080
+        )
+        assertNotNull(plan)
+        assertEquals(0f, plan!!.bindings[0].sourceRect.left, 0.0001f)
+        assertEquals(0.5f, plan.bindings[0].sourceRect.right, 0.0001f)
+        assertEquals(0.5f, plan.bindings[0].sourceRect.left, 0.0001f)
+        assertEquals(1f, plan.bindings[3].sourceRect.right, 0.0001f)
+        assertEquals(1f, plan.bindings[3].sourceRect.bottom, 0.0001f)
+    }
+
 }
