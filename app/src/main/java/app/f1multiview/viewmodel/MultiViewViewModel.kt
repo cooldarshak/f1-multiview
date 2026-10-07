@@ -285,7 +285,9 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     else _ui.value.tiledMultiviewSession,
                 selectedTiledFeedIds = if (isReference) {
                     val tiled = playback.tiledMultiview
-                    if (tiled != null) tiled.feedIds.take(24) else _ui.value.selectedTiledFeedIds
+                    // One logical feed is the starting state. Layout selection and feed-rail
+                    // interactions add additional logical tiles without allocating players.
+                    if (tiled != null) tiled.feedIds.take(1) else _ui.value.selectedTiledFeedIds
                 } else _ui.value.selectedTiledFeedIds,
                 streams=_ui.value.streams.map{
                     if(it.id==source.id) it.copy(
@@ -340,8 +342,30 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     }
 
     fun setLayout(layout:LayoutPreset){
-    val maxFeeds=maxLogicalFeeds(layout)
-    _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=_ui.value.selectedStreamIds.take(maxFeeds))
+    val current = _ui.value
+    if (openTiledCapable()) {
+        val tiledIds = current.tiledMultiviewSession?.feedIds.orEmpty().take(24)
+        val capacity = when (layout) {
+            LayoutPreset.SINGLE -> 1
+            LayoutPreset.SPLIT_2 -> 2
+            LayoutPreset.GRID_4 -> 4
+            LayoutPreset.GRID_6 -> 6
+        }
+        val selectedTiled = (current.selectedTiledFeedIds.filter { it in tiledIds } + tiledIds)
+            .distinct()
+            .take(capacity)
+        _ui.value = current.copy(
+            layout = layout,
+            selectedTiledFeedIds = selectedTiled,
+            providerError = null
+        )
+    } else {
+        val maxFeeds=maxLogicalFeeds(layout)
+        _ui.value=current.copy(
+            layout=layout,
+            selectedStreamIds=current.selectedStreamIds.take(maxFeeds)
+        )
+    }
     persist()
 }
 fun toggleStream(id:String)=viewModelScope.launch{
@@ -376,6 +400,33 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) resolveSource(source)
 }
+    fun ensureTiledFeedSelected(feedId: String) {
+        val session = _ui.value.tiledMultiviewSession ?: return
+        val validIds = session.feedIds.take(24)
+        if (feedId !in validIds) return
+        val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
+        if (feedId in current) return
+
+        val needed = current.size + 1
+        val targetLayout = when {
+            needed <= 1 -> LayoutPreset.SINGLE
+            needed <= 2 -> LayoutPreset.SPLIT_2
+            needed <= 4 -> LayoutPreset.GRID_4
+            else -> LayoutPreset.GRID_6
+        }
+        val capacity = when (targetLayout) {
+            LayoutPreset.SINGLE -> 1
+            LayoutPreset.SPLIT_2 -> 2
+            LayoutPreset.GRID_4 -> 4
+            LayoutPreset.GRID_6 -> 6
+        }
+        _ui.value = _ui.value.copy(
+            layout = targetLayout,
+            selectedTiledFeedIds = (current + feedId).distinct().take(capacity),
+            providerError = null
+        )
+    }
+
     fun toggleTiledFeed(feedId: String) {
         val session = _ui.value.tiledMultiviewSession ?: return
         val validIds = session.feedIds
