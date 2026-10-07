@@ -338,8 +338,14 @@ class UnifiedMultiviewEngine(context: Context) {
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
 
-    fun attachSurface(feedId: String, player: EnginePlayerHandle, stream: StreamSource, source: String, screenshotMode: Boolean = false): android.widget.FrameLayout =
-        surfaceManager.attach(feedId, player, stream, source, screenshotMode)
+    fun attachSurface(
+        feedId: String,
+        player: EnginePlayerHandle,
+        stream: StreamSource,
+        source: String,
+        container: android.widget.FrameLayout,
+        screenshotMode: Boolean = false
+    ) = surfaceManager.bind(feedId, player, stream, source, container, screenshotMode)
 
     fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) =
         surfaceManager.update(feedId, player, source)
