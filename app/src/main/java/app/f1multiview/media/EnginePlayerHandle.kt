@@ -17,11 +17,7 @@ class EnginePlayerHandle internal constructor(
     val id: String
 ) {
     private val player: ExoPlayer?
-        get() = try {
-            engine.backendPlayer(id)
-        } catch (_: IllegalStateException) {
-            null
-        }
+        get() = engine.backendPlayerOrNull(id) ?: engine.openTiledPlayerOrNull(id)
 
     val currentPosition: Long get() = player?.currentPosition ?: 0L
     val duration: Long get() = player?.duration ?: C.TIME_UNSET
