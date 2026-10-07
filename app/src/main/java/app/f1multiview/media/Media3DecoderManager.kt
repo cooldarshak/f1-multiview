@@ -182,14 +182,14 @@ class Media3DecoderManager(context: Context) {
             }
     }
 
-    fun load(stream: StreamSource, forceReload: Boolean = false) {
-        val url = stream.url ?: return
+    fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
+        val url = stream.url ?: return false
         if (!forceReload && stream.id !in players && players.size >= maxVideoFeeds) {
             _errors.value = _errors.value + (
                 stream.id to "4 simultaneous video feeds is the safe limit; 5th feed blocked to prevent decoder crash"
             )
             Log.w("Media3DecoderManager", "Blocked feed " + stream.id + ": maxVideoFeeds=" + maxVideoFeeds)
-            return
+            return false
         }
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
@@ -301,6 +301,7 @@ class Media3DecoderManager(context: Context) {
         Log.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         player.prepare()
+        return true
     }
 
     fun setQuality(id: String, quality: Quality) {
