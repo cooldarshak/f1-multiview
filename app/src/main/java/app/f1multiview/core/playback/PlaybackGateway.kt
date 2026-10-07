@@ -21,7 +21,11 @@ data class PlaybackSession(
     val ascendonToken: String? = null,
     val entitlementToken: String? = null,
     val drmType: String? = null,
-    val playToken: String? = null
+    val playToken: String? = null,
+    /** Raw TME payload returned by F1 CONTENT/PLAY when the content uses Tiledmedia Multiview. */
+    val tmeJson: String? = null,
+    /** F1/TME channel view mode when supplied by CONTENT/PLAY. */
+    val channelViewMode: String? = null
 )
 data class VodSeason(val year: Int, val pageId: Int)
 data class VodEvent(
