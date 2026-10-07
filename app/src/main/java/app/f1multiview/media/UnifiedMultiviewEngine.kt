@@ -33,6 +33,8 @@ class UnifiedMultiviewEngine(context: Context) {
     }
     private val openTiledBackend = OpenTiledMultiviewBackend(openTiledEngine)
     private var selectedMultiviewBackend: MultiviewPlaybackBackend = media3FallbackBackend
+    private val _backendStatus = MutableStateFlow(media3FallbackBackend.status)
+    val backendStatus: StateFlow<MultiviewBackendStatus> = _backendStatus
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val surfaceManager = MultiviewSurfaceManager(context)
@@ -51,6 +53,7 @@ class UnifiedMultiviewEngine(context: Context) {
             media3FallbackBackend
         }
         tiledMultiviewController.configure(session)
+        _backendStatus.value = selectedMultiviewBackend.status
     }
 
     fun tiledMultiviewState(): TiledMultiviewController.State = tiledMultiviewController.state()
@@ -142,6 +145,7 @@ class UnifiedMultiviewEngine(context: Context) {
                     val prepared = openTiledBackend.prepare(tme, source, referenceId)
                     if (prepared) {
                         selectedMultiviewBackend = openTiledBackend
+                        _backendStatus.value = selectedMultiviewBackend.status
                         TiledMultiviewSessionParser.parse(source.tmeJson)
                         ?.also { tiledMultiviewController.configure(it) }
                     } else {
@@ -149,6 +153,7 @@ class UnifiedMultiviewEngine(context: Context) {
                     }
                 } else {
                     selectedMultiviewBackend = media3FallbackBackend
+                    _backendStatus.value = selectedMultiviewBackend.status
                     configureTiledMultiview(tme.toModel())
                 }
             }
