@@ -206,6 +206,7 @@ class OpenTiledCompositorView(
         private var sourceVideoHeight = 0
         private var decoderPlan: OpenTiledDecoderPlan? = null
         private var outputSlots = emptyList<OpenTiledMultiviewEngine.OutputSlot>()
+        private var renderSlots = emptyList<OpenTiledMultiviewEngine.OutputSlot>()
 
         private val vertexShader = """
             attribute vec2 aPosition;
@@ -230,6 +231,10 @@ class OpenTiledCompositorView(
         override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: javax.microedition.khronos.egl.EGLConfig?) {
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             program = ShaderProgram(vertexShader, fragmentShader)
+            vertexBuffer = floatBuffer(
+                floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+            )
+            texBuffer = floatBuffer(FloatArray(8))
 
             val texture = IntArray(1)
             GLES20.glGenTextures(1, texture, 0)
@@ -273,27 +278,25 @@ class OpenTiledCompositorView(
             val plan = decoderPlan ?: OpenTiledDecoderPlan.from(current, sourceVideoWidth, sourceVideoHeight)
                 ?: return
             decoderPlan = plan
-            val slots = outputSlots
-                .filter { it.feedId in feeds }
-                .ifEmpty {
-                    val columns = when {
-                        feeds.size <= 1 -> 1
-                        feeds.size <= 4 -> 2
-                        else -> 3
-                    }
-                    val rows = (feeds.size + columns - 1) / columns
-                    feeds.mapIndexed { index, feedId ->
-                        OpenTiledMultiviewEngine.OutputSlot(
-                            feedId = feedId,
-                            x = (index % columns).toFloat() / columns,
-                            y = (index / columns).toFloat() / rows,
-                            width = 1f / columns,
-                            height = 1f / rows,
-                            zIndex = index
-                        )
-                    }
+            val slots = renderSlots.ifEmpty {
+                // Keep the fallback allocation-free during steady-state rendering.
+                val columns = when {
+                    feeds.size <= 1 -> 1
+                    feeds.size <= 4 -> 2
+                    else -> 3
                 }
-                .sortedBy { it.zIndex }
+                val rows = (feeds.size + columns - 1) / columns
+                feeds.mapIndexed { index, feedId ->
+                    OpenTiledMultiviewEngine.OutputSlot(
+                        feedId = feedId,
+                        x = (index % columns).toFloat() / columns,
+                        y = (index / columns).toFloat() / rows,
+                        width = 1f / columns,
+                        height = 1f / rows,
+                        zIndex = index
+                    )
+                }
+            }
 
             slots.forEach { slot ->
                 val binding = plan.binding(slot.feedId) ?: return@forEach
@@ -321,12 +324,10 @@ class OpenTiledCompositorView(
         }
 
         private fun setQuad(u0: Float, v0: Float, u1: Float, v1: Float) {
-            vertexBuffer = floatBuffer(
-                floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
-            )
-            texBuffer = floatBuffer(
-                floatArrayOf(u0, v0, u1, v0, u0, v1, u1, v1)
-            )
+            val textures = texBuffer ?: return
+            textures.clear()
+            textures.put(floatArrayOf(u0, v0, u1, v0, u0, v1, u1, v1))
+            textures.position(0)
         }
 
         private fun drawQuad() {
@@ -366,10 +367,12 @@ class OpenTiledCompositorView(
 
         fun setSelectedFeedIds(value: List<String>) {
             selected = value.distinct()
+            renderSlots = outputSlots.filter { it.feedId in selected }
         }
 
         fun setOutputSlots(value: List<OpenTiledMultiviewEngine.OutputSlot>) {
             outputSlots = value.distinctBy { it.feedId }.sortedBy { it.zIndex }
+            renderSlots = outputSlots.filter { it.feedId in selected }
         }
 
         fun feedAt(normalizedX: Float, normalizedY: Float): String? =
