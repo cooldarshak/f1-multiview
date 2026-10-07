@@ -19,7 +19,7 @@ data class SyncDecision(
 /**
  * Shared multiview synchronization policy.
  *
- * The engine intentionally stays independent of ExoPlayer timing sources. PlayerPool supplies
+ * The engine intentionally stays independent of ExoPlayer timing sources. the decoder manager supplies
  * either media-position deltas (VOD) or live-offset deltas (live). This keeps the policy
  * testable while allowing the playback layer to choose the correct clock.
  */
@@ -64,7 +64,7 @@ class SyncEngine(private val players: () -> Collection<Player> = { emptyList() }
     }
 
     /**
-     * One-shot convergence for legacy callers. Phase 4's continuous PlayerPool watcher uses
+     * One-shot convergence for legacy callers. Phase 4's continuous decoder-manager watcher uses
      * decide() so the same policy is applied repeatedly without replacing this API.
      */
     fun synchronize() {
