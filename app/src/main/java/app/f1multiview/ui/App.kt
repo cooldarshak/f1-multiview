@@ -1341,9 +1341,10 @@ private fun FullscreenFeedRail(
     onSwitchStream: (String) -> Unit,
     modifier: Modifier
 ) {
-    val candidates = remember(ui.streams) {
-        ui.streams.filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
-    }
+    // The rail contains both video feeds and native F1 data views. Only video
+    // feeds participate in the physical decoder viewport; data/tracker remain
+    // decoder-free and can still become the active main view.
+    val candidates = remember(ui.streams) { ui.streams }
     val listState = rememberLazyListState()
     val previewIds = remember { mutableStateListOf<String>() }
 
@@ -1367,11 +1368,18 @@ private fun FullscreenFeedRail(
             if (id !in previewIds) previewIds.add(id)
             vm.prepareStream(id)
         }
-        val viewportStreams = candidates.filter { it.id == activeId || it.id in preloadIds }
+        val viewportStreams = candidates
+            .filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+            .filter { it.id == activeId || it.id in preloadIds }
+        val referenceId = activeId.takeIf { id ->
+            candidates.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+        }
         engine.updateViewport(
             streams = viewportStreams,
-            visibleIds = visibleIds.toSet(),
-            referenceId = activeId,
+            visibleIds = visibleIds
+                .filter { id -> candidates.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+                .toSet(),
+            referenceId = referenceId,
             autoplay = true
         )
     }
@@ -1405,16 +1413,19 @@ private fun FullscreenFeedRail(
                 ) {
                     Box(Modifier.fillMaxSize()) {
                         val previewPlayer = remember(candidate.id) { engine.player(candidate.id) }
-                        if (candidate.url != null && candidate.id in previewIds) {
-                            F1HdrPlayerSurface(
-                                engine = engine,
-                                player = previewPlayer,
-                                stream = candidate,
-                                modifier = Modifier.fillMaxSize(),
-                                source = "feed-rail-" + candidate.id
-                            )
-                        } else {
-                            F1Artwork(
+                        when {
+                            candidate.kind == StreamKind.TRACK_MAP -> TrackMapPanel(ui, isTv, Modifier.fillMaxSize())
+                            candidate.kind == StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
+                            candidate.url != null && candidate.id in previewIds -> {
+                                F1HdrPlayerSurface(
+                                    engine = engine,
+                                    player = previewPlayer,
+                                    stream = candidate,
+                                    modifier = Modifier.fillMaxSize(),
+                                    source = "feed-rail-" + candidate.id
+                                )
+                            }
+                            else -> F1Artwork(
                                 url = null,
                                 title = candidate.title,
                                 modifier = Modifier.fillMaxSize(),
@@ -1439,7 +1450,13 @@ private fun FullscreenFeedRail(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                if (active) "PLAYING" else if (candidate.url != null) "LIVE PREVIEW" else "LOAD PREVIEW",
+                                when {
+                                    active -> "ACTIVE"
+                                    candidate.kind == StreamKind.TRACK_MAP -> "DRIVER TRACKER"
+                                    candidate.kind == StreamKind.F1_DASH_DATA -> "LIVE DATA"
+                                    candidate.url != null -> "LIVE PREVIEW"
+                                    else -> "LOAD PREVIEW"
+                                },
                                 color = if (active) Color.White else Color.White.copy(alpha = .68f),
                                 fontSize = 7.sp,
                                 fontWeight = FontWeight.Bold,
@@ -1582,17 +1599,86 @@ private fun FullscreenMultiview(
                 }
             }
     ) {
-        CanonicalMultiviewLayout(
-            ui,
-            selected,
-            engine,
-            errors,
-            editSize,
-            { activeFeedId = it; menu = null },
-            activeId = activeFeedId,
-            modifier = Modifier.fillMaxSize(),
-            surfaceType = SURFACE_TYPE_SURFACE_VIEW
-        )
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(top = if (controlsVisible) 62.dp else 0.dp, bottom = if (controlsVisible) 96.dp else 0.dp)
+        ) {
+            // F1-TV-style director view: one large active feed, with a persistent
+            // vertical feed rail. This avoids turning the fullscreen experience into
+            // the old generic grid and makes feed switching the primary interaction.
+            val activeStream = ui.streams.firstOrNull { it.id == activeFeedId }
+                ?: selected.firstOrNull()
+
+            if (activeStream != null) {
+                Box(
+                    Modifier
+                        .weight(0.73f)
+                        .fillMaxHeight()
+                        .padding(start = 8.dp, end = 5.dp, top = 8.dp, bottom = 8.dp)
+                ) {
+                    MultiviewFeedTile(
+                        stream = activeStream,
+                        ui = ui,
+                        engine = engine,
+                        error = errors[activeStream.id],
+                        modifier = Modifier.fillMaxSize(),
+                        onFocus = { activeFeedId = it; menu = null },
+                        active = true,
+                        surfaceType = SURFACE_TYPE_SURFACE_VIEW
+                    )
+                    Surface(
+                        Modifier.align(Alignment.BottomStart).padding(12.dp),
+                        color = Color.Black.copy(alpha = .72f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(color = Red, shape = RoundedCornerShape(4.dp)) {
+                                Text(
+                                    if (activeStream.isLive) "LIVE" else "REPLAY",
+                                    color = White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                activeStream.driver?.takeIf { it.isNotBlank() } ?: activeStream.title,
+                                color = White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            FullscreenFeedRail(
+                ui = ui,
+                engine = engine,
+                vm = vm,
+                activeId = activeFeedId ?: selected.firstOrNull()?.id.orEmpty(),
+                onSwitchStream = { id ->
+                    activeFeedId = id
+                    menu = null
+                    val stream = ui.streams.firstOrNull { it.id == id }
+                    if (stream != null && stream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) {
+                        engine.setAudioPlayer(id)
+                    }
+                },
+                modifier = Modifier
+                    .weight(0.27f)
+                    .fillMaxHeight()
+                    .padding(start = 5.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
+            )
+        }
 
         if (!controlsVisible) {
             // SurfaceView/TextureView can consume touch events underneath Compose.
