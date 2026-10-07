@@ -1652,53 +1652,46 @@ private fun MultiviewFeedTile(
 
 @Composable
 private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
-    val rows = ui.timing
-    val lap = rows.maxOfOrNull { it.lap }?.takeIf { it > 0 }
-        ?: ui.telemetry.maxOfOrNull { it.lap }?.takeIf { it > 0 }
-    Column(modifier.fillMaxSize().background(Color(0xFF101114)).padding(if (isTv) 5.dp else 3.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+    val rows = ui.timing.sortedBy { it.position }
+    val lap = rows.maxOfOrNull { it.lap }?.takeIf { it > 0 } ?: ui.telemetry.maxOfOrNull { it.lap }?.takeIf { it > 0 }
+    val sessionName = ui.liveSessionInfo.name.ifBlank { "F1 LIVE" }
+    val meeting = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" }
+    val trackStatus = ui.trackStatus.label.ifBlank { "GREEN" }
+    Column(modifier.fillMaxSize().background(Color(0xFF101114)).padding(if (isTv) 4.dp else 3.dp)) {
+        Row(Modifier.fillMaxWidth().background(Color(0xFF17181C)).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = Color(0xFF18233A), shape = RoundedCornerShape(3.dp)) { Text("F1", color = White, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)) }
+            Spacer(Modifier.width(7.dp))
             Column(Modifier.weight(1f)) {
-                Text("F1 DASH DATA", color = White, fontSize = if (isTv) 10.sp else 8.sp, fontWeight = FontWeight.Black)
-                Text(
-                    ui.liveSessionInfo.name.ifBlank { "F1 SESSION" }.uppercase() + "  ·  " + ui.timingStatus +
-                        (lap?.let { "  ·  LAP " + it } ?: ""),
-                    color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1
-                )
+                Text(meeting, color = Color(0xFFB9BBC2), fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(sessionName + (if (lap != null) "  ·  LAP " + lap else ""), color = White, fontSize = if (isTv) 10.sp else 8.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Text(rows.size.toString() + " DRIVERS", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+            Surface(color = if (trackStatus.equals("GREEN", true)) Color(0xFF315F36) else Color(0xFF5B2525), shape = RoundedCornerShape(3.dp)) { Text(trackStatus.uppercase(), color = if (trackStatus.equals("GREEN", true)) Color(0xFF69C56F) else Color(0xFFFF8A80), fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)) }
+            Spacer(Modifier.width(10.dp))
+            Column(horizontalAlignment = Alignment.End) { Text("WIND", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black); Text(ui.weather.wind, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.width(10.dp))
+            Column(horizontalAlignment = Alignment.End) { Text("TRACK", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black); Text(ui.weather.track, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold) }
         }
-        Row(Modifier.fillMaxWidth().background(Color(0xFF1F2025)).padding(horizontal = 5.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("P", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
-            Text("DRIVER", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-            Text("SPD", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(34.dp))
-            Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(47.dp))
-            Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(47.dp))
-            Text("GAP", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(43.dp))
-            Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(36.dp))
+        Row(Modifier.fillMaxWidth().background(Color(0xFF242529)).padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("P", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(19.dp)); Text("DRIVER", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(54.dp)); Text("SPD", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(31.dp)); Text("LAST", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(45.dp)); Text("INT", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(39.dp)); Text("BEST", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(45.dp)); Text("LDR", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(39.dp)); Text("SECTORS", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Black)
         }
         if (rows.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("WAITING FOR TIMING DATA", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
         } else {
             LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 items(rows, key = { it.position }) { row ->
-                    Column(Modifier.fillMaxWidth().background(if (row.position % 2 == 0) Color(0xFF191A1E) else Color.Transparent).padding(horizontal = 5.dp, vertical = 3.dp)) {
+                    val telemetry = ui.telemetry.firstOrNull { t -> t.driver.equals(row.driver, true) || t.driver.contains(row.driver, true) }
+                    val teamColor = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }?.teamColor?.let { parseTeamColor(it) } ?: Color(0xFF5B5D66)
+                    Column(Modifier.fillMaxWidth().background(if (row.position % 2 == 0) Color(0xFF1C1D21) else Color(0xFF121316)).padding(horizontal = 5.dp, vertical = 3.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(row.position.toString(), color = if (row.position == 1) Red else White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
-                            Text(row.driver.uppercase(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(row.speed, color = White, fontSize = 7.sp, modifier = Modifier.width(34.dp), maxLines = 1)
-                            Text(row.lastLap, color = White, fontSize = 7.sp, modifier = Modifier.width(47.dp), maxLines = 1)
-                            Text(row.bestLap, color = Color(0xFFBBBBBF), fontSize = 7.sp, modifier = Modifier.width(47.dp), maxLines = 1)
-                            Text(row.gap, color = White, fontSize = 7.sp, modifier = Modifier.width(43.dp), maxLines = 1)
-                            Text(tyreLabel(row.tyre), color = tyreColor(row.tyre), fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(36.dp), maxLines = 1)
+                            Surface(color = teamColor, shape = RoundedCornerShape(2.dp)) { Text(row.position.toString(), color = Color.Black, fontSize = 7.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(22.dp).padding(vertical = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                            Spacer(Modifier.width(4.dp))
+                            Column(Modifier.width(47.dp)) { Text(row.driver.uppercase(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1); Text(if (telemetry != null) "TELEMETRY" else tyreLabel(row.tyre), color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
+                            Text(if (telemetry != null) telemetry.speed.toString() else row.speed, color = White, fontSize = 7.sp, modifier = Modifier.width(31.dp)); Text(row.lastLap, color = sectorColor(if (row.position == 1) "PURPLE" else "NORMAL"), fontSize = 7.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(45.dp), maxLines = 1); Text(if (row.position == 1) "—" else row.gap, color = White, fontSize = 7.sp, modifier = Modifier.width(39.dp), maxLines = 1); Text(row.bestLap, color = if (row.position == 1) Color(0xFFD14DFF) else White, fontSize = 7.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(45.dp), maxLines = 1); Text(if (row.position == 1) "LDR" else row.gap, color = Muted, fontSize = 6.sp, modifier = Modifier.width(39.dp), maxLines = 1)
+                            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) { DashSector(row.sector1, row.sector1Status); DashSector(row.sector2, row.sector2Status); DashSector(row.sector3, row.sector3Status) }
                         }
-                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 1.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            SectorCell("S1", row.sector1, row.sector1Status)
-                            SectorCell("S2", row.sector2, row.sector2Status)
-                            SectorCell("S3", row.sector3, row.sector3Status)
-                            Text(if (row.drs) "DRS" else "", color = Color(0xFF5FA8FF), fontSize = 5.5.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 2.dp))
-                            Text(if (row.lap > 0) "L" + row.lap else "", color = Muted, fontSize = 5.5.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 2.dp))
+                        Row(Modifier.fillMaxWidth().padding(start = 26.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("LAST", color = Muted, fontSize = 4.5.sp, fontWeight = FontWeight.Black); Spacer(Modifier.width(3.dp)); Text(row.lastLap, color = sectorColor(row.sector1Status), fontSize = 5.5.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Text("BEST", color = Muted, fontSize = 4.5.sp, fontWeight = FontWeight.Black); Spacer(Modifier.width(3.dp)); Text(row.bestLap, color = sectorColor(row.sector2Status), fontSize = 5.5.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Text(tyreLabel(row.tyre), color = tyreColor(row.tyre), fontSize = 5.5.sp, fontWeight = FontWeight.Black)
+                            if (row.drs) { Spacer(Modifier.width(8.dp)); Text("DRS", color = Color(0xFF5FA8FF), fontSize = 5.5.sp, fontWeight = FontWeight.Black) }; Spacer(Modifier.weight(1f)); Text("L" + row.lap, color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1707,6 +1700,15 @@ private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modi
     }
 }
 
+@Composable
+private fun DashSector(value: String, status: String) {
+    Column(Modifier.widthIn(min = 31.dp, max = 43.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) { repeat(6) { Box(Modifier.width(4.dp).height(5.dp).background(sectorColor(status), RoundedCornerShape(1.dp))) } }
+        Text(value, color = sectorColor(status), fontSize = 5.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+private fun parseTeamColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor("#" + value.removePrefix("#").padStart(6, "F"))) }.getOrDefault(Color(0xFF5B5D66))
 @Composable
 private fun SectorCell(label: String, value: String, status: String) {
     Column(Modifier.widthIn(min = 43.dp, max = 62.dp)) {
