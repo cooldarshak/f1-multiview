@@ -126,22 +126,22 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     val isPortrait = configuration.screenHeightDp > configuration.screenWidthDp
     val compactPhone = !isTv && configuration.screenWidthDp < 600
 
-    val pool = remember(context) { UnifiedMultiviewEngine(context) }
+    val engine = remember(context) { UnifiedMultiviewEngine(context) }
     LaunchedEffect(context) { HdrPresentationDiagnostics.log(context, "multiview-enter") }
     val radioPlayer = remember(context) { RadioPlayer(context) }
-    val errors by pool.errors.collectAsState()
+    val errors by engine.errors.collectAsState()
     var fullscreenStreamId by rememberSaveable { mutableStateOf<String?>(null) }
     var fullscreenMultiview by rememberSaveable { mutableStateOf(false) }
 
-    DisposableEffect(pool, radioPlayer) { onDispose { pool.release(); radioPlayer.release() } }
-    val startedFeeds = remember(pool) { mutableStateMapOf<String, Boolean>() }
+    DisposableEffect(engine, radioPlayer) { onDispose { engine.release(); radioPlayer.release() } }
+    val startedFeeds = remember(engine) { mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(ui.session?.id, ui.mainStreamId, ui.session?.live) {
         val session = ui.session ?: return@LaunchedEffect
         if (session.live) return@LaunchedEffect
         while (true) {
             val mainId = ui.mainStreamId ?: break
-            val player = pool.player(mainId)
+            val player = engine.player(mainId)
             val position = player.currentPosition.coerceAtLeast(0L)
             val duration = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
             if (player.currentMediaItem != null && position >= 10_000L) {
@@ -154,7 +154,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     LaunchedEffect(ui.pendingResume?.contentId, ui.mainStreamId) {
         val pending = ui.pendingResume ?: return@LaunchedEffect
         val mainId = ui.mainStreamId ?: return@LaunchedEffect
-        val player = pool.player(mainId)
+        val player = engine.player(mainId)
         repeat(40) {
             if (player.currentMediaItem != null && player.duration > 0L) {
                 val target = pending.positionMs.coerceIn(0L, (player.duration - 15_000L).coerceAtLeast(0L))
@@ -174,17 +174,17 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val videoSelectedIds = ui.selectedStreamIds.filter { id ->
             ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
         }.toSet()
-        pool.retain(videoSelectedIds)
+        engine.retain(videoSelectedIds)
         val ordered = ui.selectedStreamIds.mapNotNull { id ->
             ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
         }
         val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
-        pool.setAudioPlayer(mainId)
+        engine.setAudioPlayer(mainId)
         // Timing and Driver Tracker are native data feeds, not video decoders.
         // Only real video feeds enter UnifiedMultiviewEngine.
         ordered.forEach { stream ->
             if (startedFeeds[stream.id] != true) {
-                pool.load(stream)
+                engine.load(stream)
                 startedFeeds[stream.id] = true
             }
         }
@@ -197,9 +197,9 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             // UnifiedMultiviewEngine will automatically attach each later-ready feed to this clock.
             val mainId = ui.mainStreamId ?: ui.selectedStreamIds.firstOrNull()
             if (mainId != null) {
-                pool.syncToMain(mainId)
+                engine.syncToMain(mainId)
             }
-            pool.playAll()
+            engine.playAll()
         }
     }
 
@@ -214,7 +214,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             // Do not wait 1.5s for a one-shot sync. The UnifiedMultiviewEngine continuously watches
             // the reference and newly-ready feeds now join automatically.
             ui.mainStreamId?.let { mainId ->
-                pool.syncToMain(
+                engine.syncToMain(
                     mainId,
                     ui.streams.associate {
                         it.id to (it.channelId?.let { cid -> ui.replayChannelDiffs[cid] } ?: 0L)
@@ -240,13 +240,13 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
     if (fullscreenMultiview) {
-        FullscreenMultiview(ui, pool, errors, { pool.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
+        FullscreenMultiview(ui, engine, errors, { engine.stopAll(); fullscreenMultiview = false }, vm::updateReplayTiming, vm::toggleStream, vm::setMainStream, vm::setLayout, vm::applyPreset)
         return
     }
 
     val fullscreenStream = ui.streams.firstOrNull { it.id == fullscreenStreamId }
     if (fullscreenStream != null) {
-        FullscreenPlayer(fullscreenStream, ui, pool, errors[fullscreenStream.id], vm, { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { pool.stopAll(); fullscreenStreamId = null }
+        FullscreenPlayer(fullscreenStream, ui, engine, errors[fullscreenStream.id], vm, { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { engine.stopAll(); fullscreenStreamId = null }
         return
     }
 
@@ -271,11 +271,11 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
                             .mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
                             .take(4)
                             .forEach { stream ->
-                                pool.clear(stream.id)
-                                pool.load(stream)
+                                engine.clear(stream.id)
+                                engine.load(stream)
                             }
-                        pool.playAll()
-                        ui.mainStreamId?.let { pool.syncToMain(it) }
+                        engine.playAll()
+                        ui.mainStreamId?.let { engine.syncToMain(it) }
                     }
                 }
             )
@@ -942,7 +942,7 @@ private fun SessionCard(selected: Boolean, title: String, type: String, artworkU
 @Composable
 private fun PitWall(
     ui: UiState,
-    pool: UnifiedMultiviewEngine,
+    engine: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     isTv: Boolean,
     compactPhone: Boolean,
@@ -955,7 +955,7 @@ private fun PitWall(
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
             val id = ui.mainStreamId ?: selected.firstOrNull()?.id
-            val d = id?.let(pool::currentVideoDiagnostics)
+            val d = id?.let(engine::currentVideoDiagnostics)
             if (d != null && d.width > 0 && d.height > 0) {
                 wallAspect = (d.width.toFloat() / d.height.toFloat()).coerceIn(1.2f, 2.4f)
                 return@LaunchedEffect
@@ -1054,9 +1054,9 @@ private fun PitWall(
                 tvResizeMode = !tvResizeMode
             }
             Control(false, "SYNC ALL") {
-                pool.playAll()
+                engine.playAll()
                 val mainId = ui.mainStreamId ?: selected.firstOrNull()?.id
-                if (mainId != null) pool.syncToMain(mainId)
+                if (mainId != null) engine.syncToMain(mainId)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -1078,7 +1078,7 @@ private fun PitWall(
         CanonicalMultiviewLayout(
             ui,
             selected,
-            pool,
+            engine,
             errors,
             if (isTv) tvResizeMode else false,
             {},
@@ -1087,66 +1087,66 @@ private fun PitWall(
     }
 }
 @Composable
-private fun ResizableCompactWall(selected: List<StreamSource>, pool: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
+private fun ResizableCompactWall(selected: List<StreamSource>, engine: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
     var splitY by rememberSaveable { mutableFloatStateOf(.55f) }
     val gap=7.dp
     if(selected.size==2){
         Row(Modifier.fillMaxWidth().height(300.dp),horizontalArrangement=Arrangement.spacedBy(gap)){
-            PlayerTile(selected[0],pool,errors[selected[0].id],Modifier.weight(splitX).fillMaxHeight(),onFullscreen)
+            PlayerTile(selected[0],engine,errors[selected[0].id],Modifier.weight(splitX).fillMaxHeight(),onFullscreen)
             ResizeHandle(Orientation.Horizontal,editSize){delta->splitX=(splitX+delta/700f).coerceIn(.25f,.75f)}
-            PlayerTile(selected[1],pool,errors[selected[1].id],Modifier.weight(1f-splitX).fillMaxHeight(),onFullscreen)
+            PlayerTile(selected[1],engine,errors[selected[1].id],Modifier.weight(1f-splitX).fillMaxHeight(),onFullscreen)
         }
     } else {
         Column(Modifier.fillMaxWidth().height(390.dp),verticalArrangement=Arrangement.spacedBy(gap)){
-            PlayerTile(selected[0],pool,errors[selected[0].id],Modifier.weight(splitY).fillMaxWidth(),onFullscreen)
+            PlayerTile(selected[0],engine,errors[selected[0].id],Modifier.weight(splitY).fillMaxWidth(),onFullscreen)
             ResizeHandle(Orientation.Vertical,editSize){delta->splitY=(splitY+delta/900f).coerceIn(.28f,.72f)}
             Row(Modifier.weight(1f-splitY).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(gap)){
-                PlayerTile(selected[1],pool,errors[selected[1].id],Modifier.weight(splitX).fillMaxHeight(),onFullscreen)
+                PlayerTile(selected[1],engine,errors[selected[1].id],Modifier.weight(splitX).fillMaxHeight(),onFullscreen)
                 ResizeHandle(Orientation.Horizontal,editSize){delta->splitX=(splitX+delta/700f).coerceIn(.2f,.8f)}
-                PlayerTile(selected[2],pool,errors[selected[2].id],Modifier.weight(1f-splitX).fillMaxHeight(),onFullscreen)
+                PlayerTile(selected[2],engine,errors[selected[2].id],Modifier.weight(1f-splitX).fillMaxHeight(),onFullscreen)
                 if(selected.size>3){                    // Additional feeds stay visible in a second compact row.
                 }
             }
         }
         if(selected.size>3){
             Row(Modifier.fillMaxWidth().height(190.dp).padding(top=gap),horizontalArrangement=Arrangement.spacedBy(gap)){
-                selected.drop(3).forEach{stream->PlayerTile(stream,pool,errors[stream.id],Modifier.weight(1f).fillMaxHeight(),onFullscreen)}
+                selected.drop(3).forEach{stream->PlayerTile(stream,engine,errors[stream.id],Modifier.weight(1f).fillMaxHeight(),onFullscreen)}
             }
         }
     }
 }
 @Composable
-private fun ResizableSplitWall(selected:List<StreamSource>,pool:UnifiedMultiviewEngine,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
+private fun ResizableSplitWall(selected:List<StreamSource>,engine:UnifiedMultiviewEngine,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
     if(selected.size<2)return
     var split by rememberSaveable { mutableFloatStateOf(.5f) }
     Row(Modifier.fillMaxWidth().height(360.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){
-        PlayerTile(selected[0],pool,errors[selected[0].id],Modifier.weight(split).fillMaxHeight(),onFullscreen)
+        PlayerTile(selected[0],engine,errors[selected[0].id],Modifier.weight(split).fillMaxHeight(),onFullscreen)
         ResizeHandle(Orientation.Horizontal,editSize){delta->split=(split+delta/900f).coerceIn(.25f,.75f)}
-        PlayerTile(selected[1],pool,errors[selected[1].id],Modifier.weight(1f-split).fillMaxHeight(),onFullscreen)
+        PlayerTile(selected[1],engine,errors[selected[1].id],Modifier.weight(1f-split).fillMaxHeight(),onFullscreen)
     }
 }
 @Composable
-private fun ResizableDesktopWall(selected:List<StreamSource>,pool:UnifiedMultiviewEngine,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
+private fun ResizableDesktopWall(selected:List<StreamSource>,engine:UnifiedMultiviewEngine,errors:Map<String,String>,onFullscreen:(String)->Unit,editSize:Boolean){
     var mainWeight by rememberSaveable { mutableFloatStateOf(.62f) }
     var h1 by rememberSaveable { mutableFloatStateOf(.34f) }
     var h2 by rememberSaveable { mutableFloatStateOf(.33f) }
     val side=selected.drop(1)
-    if(side.isEmpty()){PlayerTile(selected[0],pool,errors[selected[0].id],Modifier.fillMaxWidth().height(430.dp),onFullscreen);return}
+    if(side.isEmpty()){PlayerTile(selected[0],engine,errors[selected[0].id],Modifier.fillMaxWidth().height(430.dp),onFullscreen);return}
     Row(Modifier.fillMaxWidth().height(430.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){
-        PlayerTile(selected[0],pool,errors[selected[0].id],Modifier.weight(mainWeight).fillMaxHeight(),onFullscreen)
+        PlayerTile(selected[0],engine,errors[selected[0].id],Modifier.weight(mainWeight).fillMaxHeight(),onFullscreen)
         ResizeHandle(Orientation.Horizontal,editSize){delta->mainWeight=(mainWeight+delta/900f).coerceIn(.35f,.78f)}
         Column(Modifier.weight(1f-mainWeight).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(7.dp)){
-            if(side.size>=1)PlayerTile(side[0],pool,errors[side[0].id],Modifier.weight(h1).fillMaxWidth(),onFullscreen)
+            if(side.size>=1)PlayerTile(side[0],engine,errors[side[0].id],Modifier.weight(h1).fillMaxWidth(),onFullscreen)
             if(side.size>=2){
                 ResizeHandle(Orientation.Vertical,editSize){delta->h1=(h1+delta/700f).coerceIn(.18f,.62f);h2=(h2-delta/700f).coerceIn(.18f,.62f)}
-                PlayerTile(side[1],pool,errors[side[1].id],Modifier.weight(h2).fillMaxWidth(),onFullscreen)
+                PlayerTile(side[1],engine,errors[side[1].id],Modifier.weight(h2).fillMaxWidth(),onFullscreen)
             }
             if(side.size>=3){
                 ResizeHandle(Orientation.Vertical,editSize){delta->h2=(h2+delta/700f).coerceIn(.18f,.62f)}
-                PlayerTile(side[2],pool,errors[side[2].id],Modifier.weight((1f-h1-h2).coerceIn(.12f,.64f)).fillMaxWidth(),onFullscreen)
+                PlayerTile(side[2],engine,errors[side[2].id],Modifier.weight((1f-h1-h2).coerceIn(.12f,.64f)).fillMaxWidth(),onFullscreen)
             }
-            side.drop(3).forEach{stream->PlayerTile(stream,pool,errors[stream.id],Modifier.weight(1f).fillMaxWidth(),onFullscreen)}
+            side.drop(3).forEach{stream->PlayerTile(stream,engine,errors[stream.id],Modifier.weight(1f).fillMaxWidth(),onFullscreen)}
         }
     }
 }
@@ -1261,8 +1261,8 @@ private fun F1HdrPlayerSurface(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, pool: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
-    val player = remember(stream.id) { pool.player(stream.id) }
+private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
+    val player = remember(stream.id) { engine.player(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
@@ -1318,7 +1318,7 @@ private fun PlayerTile(stream: StreamSource, pool: UnifiedMultiviewEngine, error
                 }
                 Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
-                Text(if (pool.isMuted(stream.id)) "MUTED" else "AUDIO ON", color = if (pool.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A), fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                Text(if (engine.isMuted(stream.id)) "MUTED" else "AUDIO ON", color = if (engine.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A), fontSize = 7.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
                 Text(when { error != null -> "ERROR"; !ready -> "LOADING"; playing -> "PLAYING"; else -> "PAUSED" }, color = if (error != null) Color(0xFFFF7777) else Color.White.copy(alpha = .6f), fontSize = 7.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(7.dp))
@@ -1332,7 +1332,7 @@ private fun PlayerTile(stream: StreamSource, pool: UnifiedMultiviewEngine, error
                         Spacer(Modifier.height(8.dp))
                         run { var retryFocused by remember { mutableStateOf(false) }
                         Surface(
-                            Modifier.clickable { pool.clear(stream.id); pool.load(stream); pool.play(stream.id) }.focusable()
+                            Modifier.clickable { engine.clear(stream.id); engine.load(stream); engine.play(stream.id) }.focusable()
                                 .onFocusChanged { retryFocused = it.isFocused },
                             color = Red,
                             shape = RoundedCornerShape(50),
@@ -1353,7 +1353,7 @@ private fun PlayerTile(stream: StreamSource, pool: UnifiedMultiviewEngine, error
 @Composable
 private fun FullscreenFeedRail(
     ui: UiState,
-    pool: UnifiedMultiviewEngine,
+    engine: UnifiedMultiviewEngine,
     vm: MultiViewViewModel,
     activeId: String,
     onSwitchStream: (String) -> Unit,
@@ -1371,7 +1371,7 @@ private fun FullscreenFeedRail(
             .filter { it != activeId }
             .take(3)
         previewIds.filterNot { it in visibleIds }.toList().forEach {
-            pool.clear(it)
+            engine.clear(it)
             previewIds.remove(it)
         }
         visibleIds.forEach { id ->
@@ -1379,8 +1379,8 @@ private fun FullscreenFeedRail(
             vm.prepareStream(id)
         }
         candidates.filter { it.id in previewIds && it.url != null }.forEach {
-            pool.load(it)
-            pool.play(it.id)
+            engine.load(it)
+            engine.play(it.id)
         }
     }
 
@@ -1412,7 +1412,7 @@ private fun FullscreenFeedRail(
                     )
                 ) {
                     Box(Modifier.fillMaxSize()) {
-                        val previewPlayer = remember(candidate.id) { pool.player(candidate.id) }
+                        val previewPlayer = remember(candidate.id) { engine.player(candidate.id) }
                         if (candidate.url != null && candidate.id in previewIds) {
                             F1HdrPlayerSurface(
                                 player = previewPlayer,
@@ -1475,7 +1475,7 @@ private val HomeFeedRed = Color(0xFFE10600)
 @Composable
 private fun FullscreenMultiview(
     ui: UiState,
-    pool: UnifiedMultiviewEngine,
+    engine: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     onClose: () -> Unit,
     onReplayPosition: (Long) -> Unit,
@@ -1496,8 +1496,8 @@ private fun FullscreenMultiview(
     var menu by rememberSaveable { mutableStateOf<String?>(null) }
     var trackVersion by remember { mutableIntStateOf(0) }
     var speed by rememberSaveable(activeFeedId) { mutableFloatStateOf(1f) }
-    var quality by remember(activeFeedId, pool) {
-        mutableStateOf(activeFeedId?.let(pool::getQuality) ?: Quality.AUTO)
+    var quality by remember(activeFeedId, engine) {
+        mutableStateOf(activeFeedId?.let(engine::getQuality) ?: Quality.AUTO)
     }
     var fit by rememberSaveable(activeFeedId) { mutableStateOf(false) }
     val fullscreenBackFocusRequester = remember { FocusRequester() }
@@ -1527,7 +1527,7 @@ private fun FullscreenMultiview(
     }
 
     val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
-    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { pool.player(it.id) }
+    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { engine.player(it.id) }
 
     LaunchedEffect(activePlayer, ui.session?.live) {
         if (activePlayer != null && ui.session?.live == false) {
@@ -1559,9 +1559,9 @@ private fun FullscreenMultiview(
         } ?: emptyList()
     }
 
-    fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { pool.play(it.id) }
-    fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { pool.pause(it.id) }
-    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { val p = pool.player(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
+    fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { engine.play(it.id) }
+    fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { engine.pause(it.id) }
+    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { val p = engine.player(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
     LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
         if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
@@ -1592,7 +1592,7 @@ private fun FullscreenMultiview(
         CanonicalMultiviewLayout(
             ui,
             selected,
-            pool,
+            engine,
             errors,
             editSize,
             { activeFeedId = it; menu = null },
@@ -1661,9 +1661,9 @@ private fun FullscreenMultiview(
                     Control(false, "FEEDS ${ui.streams.size}") { feedPickerOpen = !feedPickerOpen }
                     Spacer(Modifier.width(5.dp))
                     Control(false, "SYNC ALL") {
-                        pool.playAll()
+                        engine.playAll()
                         val mainId = ui.mainStreamId ?: active?.id
-                        if (mainId != null) pool.syncToMain(mainId)
+                        if (mainId != null) engine.syncToMain(mainId)
                     }
                     Spacer(Modifier.width(5.dp))
                     Control(false, "HIDE") { controlsVisible = false }
@@ -1709,10 +1709,10 @@ private fun FullscreenMultiview(
 
         if (active != null && activePlayer != null && controlsVisible) {
             Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
-                    stream = active, player = pool.player(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
+                    stream = active, player = engine.player(active.id), engine = engine, audioTracks = audioTracks, textTracks = textTracks,
                     speed = speed, quality = quality, fit = fit, menu = menu, onReplayPosition = onReplayPosition,
                     onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
-                    onMute = { pool.setMuted(active.id, !pool.isMuted(active.id)) },
+                    onMute = { engine.setMuted(active.id, !engine.isMuted(active.id)) },
                     onPlayAll = ::playAll, onPauseAll = ::pauseAll, onSeekAll = ::seekAll
                 )
             }
@@ -1724,7 +1724,7 @@ private fun FullscreenMultiview(
 private fun MultiviewFeedTile(
     stream: StreamSource,
     ui: UiState,
-    pool: UnifiedMultiviewEngine,
+    engine: UnifiedMultiviewEngine,
     error: String?,
     modifier: Modifier,
     onFocus: (String) -> Unit,
@@ -1741,7 +1741,7 @@ private fun MultiviewFeedTile(
             StreamKind.TRACK_MAP -> TrackMapPanel(ui, isTv)
             StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
             else -> PlayerTile(
-                stream, pool, error, Modifier.fillMaxSize(), {}, onFocus,
+                stream, engine, error, Modifier.fillMaxSize(), {}, onFocus,
                 active = active, surfaceType = surfaceType
             )
         }
@@ -2117,7 +2117,7 @@ private fun tyreColor(value: String): Color = when {
 private fun CanonicalMultiviewLayout(
     ui: UiState,
     selected: List<StreamSource>,
-    pool: UnifiedMultiviewEngine,
+    engine: UnifiedMultiviewEngine,
     errors: Map<String, String>,
     editSize: Boolean,
     onFocus: (String) -> Unit,
@@ -2152,21 +2152,21 @@ private fun CanonicalMultiviewLayout(
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
             selected.size == 1 ->
-                MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    MultiviewFeedTile(selected[1], ui, pool, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[1], ui, pool, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        MultiviewFeedTile(selected[2], ui, pool, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                 }
             selected.size == 4 ->
@@ -2176,7 +2176,7 @@ private fun CanonicalMultiviewLayout(
                     MultiviewFeedTile(
                         selected[0],
                         ui,
-                        pool,
+                        engine,
                         errors[selected[0].id],
                         Modifier.weight(mainX).fillMaxHeight(),
                         onFocus,
@@ -2197,7 +2197,7 @@ private fun CanonicalMultiviewLayout(
                         MultiviewFeedTile(
                         selected[1],
                         ui,
-                            pool,
+                            engine,
                             errors[selected[1].id],
                             Modifier.weight(fourSideH1).fillMaxWidth(),
                             onFocus,
@@ -2212,7 +2212,7 @@ private fun CanonicalMultiviewLayout(
                         MultiviewFeedTile(
                         selected[2],
                         ui,
-                            pool,
+                            engine,
                             errors[selected[2].id],
                             Modifier.weight(fourSideH2).fillMaxWidth(),
                             onFocus,
@@ -2226,7 +2226,7 @@ private fun CanonicalMultiviewLayout(
                         MultiviewFeedTile(
                         selected[3],
                         ui,
-                            pool,
+                            engine,
                             errors[selected[3].id],
                             Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
                             onFocus,
@@ -2238,19 +2238,19 @@ private fun CanonicalMultiviewLayout(
             else ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[0], ui, pool, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[1], ui, pool, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[2], ui, pool, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[3], ui, pool, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[4], ui, pool, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[5], ui, pool, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[5], ui, engine, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
                     }
                 }
         }
@@ -2261,7 +2261,7 @@ private fun CanonicalMultiviewLayout(
 private fun FullscreenFeedControls(
     stream: StreamSource,
     player: EnginePlayerHandle,
-    pool: UnifiedMultiviewEngine,
+    engine: UnifiedMultiviewEngine,
     audioTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
     textTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
     speed: Float,
@@ -2317,7 +2317,7 @@ private fun FullscreenFeedControls(
             PlayerControlButton(if (playing) "PAUSE" else "PLAY") { if (playing) player.pause() else player.play() }
             PlayerControlButton("10 ↷") { player.seekTo(player.currentPosition + 10_000L) }
             Spacer(Modifier.weight(1f))
-            MenuButton(if (pool.isMuted(stream.id)) "UNMUTE" else "MUTE") { onMute() }
+            MenuButton(if (engine.isMuted(stream.id)) "UNMUTE" else "MUTE") { onMute() }
             MenuButton("PIP") {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {                    val w = player.videoSize.width.coerceAtLeast(16)
                     val h = player.videoSize.height.coerceAtLeast(9)
@@ -2340,8 +2340,8 @@ private fun FullscreenFeedControls(
                             listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { v -> Control(speed == v, v.toString() + "x") { onSpeed(v); player.setPlaybackParameters(PlaybackParameters(v)); onMenu(null) } }
                         }
                         "quality" -> {
-                            val resolutions = remember(trackVersion) { pool.availableVideoResolutionsForQualityMenu(stream.id) }
-                            val diagnostics = remember(trackVersion) { pool.currentVideoDiagnostics(stream.id) }
+                            val resolutions = remember(trackVersion) { engine.availableVideoResolutionsForQualityMenu(stream.id) }
+                            val diagnostics = remember(trackVersion) { engine.currentVideoDiagnostics(stream.id) }
                             Text(
                                 (
                                     if (diagnostics != null) {
@@ -2358,11 +2358,11 @@ private fun FullscreenFeedControls(
                             )
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (q, label) ->
-                                    val available = pool.qualityAvailable(stream.id, q)
+                                    val available = engine.qualityAvailable(stream.id, q)
                                     Control(quality == q, if (available || q == Quality.AUTO) label else "$label — N/A") {
                                         if (available || q == Quality.AUTO) {
                                             onQuality(q)
-                                            pool.setQuality(stream.id, q)
+                                            engine.setQuality(stream.id, q)
                                             onMenu(null)
                                         }
                                     }
@@ -2404,11 +2404,11 @@ private fun FullscreenFeedControls(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMultiviewEngine, error: String?, vm: MultiViewViewModel, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
+private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedMultiviewEngine, error: String?, vm: MultiViewViewModel, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
-    val player = remember(stream.id) { pool.player(stream.id) }
+    val player = remember(stream.id) { engine.player(stream.id) }
 
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
@@ -2416,8 +2416,8 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMul
     var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
     var controlsVisible by rememberSaveable(stream.id) { mutableStateOf(true) }
     var speed by rememberSaveable(stream.id) { mutableFloatStateOf(1f) }
-    var quality by remember(stream.id, pool) {
-        mutableStateOf(pool.getQuality(stream.id))
+    var quality by remember(stream.id, engine) {
+        mutableStateOf(engine.getQuality(stream.id))
     }
     var fit by rememberSaveable(stream.id) { mutableStateOf(false) }
     var muted by rememberSaveable(stream.id) { mutableStateOf(false) }
@@ -2522,7 +2522,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMul
             if (ui.streams.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) } > 1) {
                 FullscreenFeedRail(
                     ui = ui,
-                    pool = pool,
+                    engine = engine,
                     vm = vm,
                     activeId = stream.id,
                     onSwitchStream = onSwitchStream,
@@ -2649,8 +2649,8 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMul
                                         }
                                     }
                                     "quality"->{
-                                        val resolutions = pool.availableVideoResolutionsForQualityMenu(stream.id)
-                                        val diagnostics = pool.currentVideoDiagnostics(stream.id)
+                                        val resolutions = engine.availableVideoResolutionsForQualityMenu(stream.id)
+                                        val diagnostics = engine.currentVideoDiagnostics(stream.id)
                                         Text("VIDEO QUALITY",color=Muted,fontSize=8.sp,fontWeight=FontWeight.Black)
                                         Text(
                                             (
@@ -2668,11 +2668,11 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMul
                                         )
                                         Row(Modifier.horizontalScroll(rememberScrollState()).padding(top=7.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
                                             listOf(Quality.AUTO to "Auto",Quality.UHD to "4K",Quality.FHD to "1080p",Quality.HD to "720p",Quality.SD to "480p").forEach{(q,l)->
-                                                val available = pool.qualityAvailable(stream.id,q)
+                                                val available = engine.qualityAvailable(stream.id,q)
                                                 Control(quality==q, if (available || q==Quality.AUTO) l else "$l — N/A") {
                                                     if (available || q==Quality.AUTO) {
                                                         quality=q
-                                                        pool.setQuality(stream.id,q)
+                                                        engine.setQuality(stream.id,q)
                                                         menu=null
                                                     }
                                                 }
