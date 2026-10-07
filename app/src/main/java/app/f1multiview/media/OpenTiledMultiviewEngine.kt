@@ -2,6 +2,8 @@ package app.f1multiview.media
 
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
@@ -34,7 +36,7 @@ import kotlin.math.max
  * Protected F1 content remains on Media3's secure SurfaceView path.
  */
 class OpenTiledMultiviewEngine(
-    private val playerFactory: () -> ExoPlayer
+    private val playerFactory: (StreamSource) -> ExoPlayer
 ) {
     data class Tile(
         val feedId: String,
@@ -82,7 +84,7 @@ class OpenTiledMultiviewEngine(
         release()
         this.source = source
         this.referenceFeedId = referenceFeedId ?: tme.feeds.firstOrNull()?.uuid
-        this.player = playerFactory().also { p ->
+        this.player = playerFactory(source).also { p ->
             val builder = MediaItem.Builder()
                 .setUri(url)
                 .setMediaId("tme-mosaic-" + (tme.contentId ?: "unknown"))
@@ -201,6 +203,25 @@ class OpenTiledMultiviewEngine(
     }
 
     fun player(): ExoPlayer? = player
+
+    fun attachTo(view: OpenTiledCompositorView) {
+        view.setSession(session ?: return)
+        view.setSelectedFeedIds(_state.value.selectedFeedIds)
+        view.setListener(object : OpenTiledCompositorView.Listener {
+            override fun onOutputSurfaceReady(surface: android.view.Surface) {
+                val p = player ?: return
+                p.setVideoSurface(surface)
+            }
+
+            override fun onOutputSurfaceReleased() {
+                player?.clearVideoSurface()
+            }
+        })
+    }
+
+    fun selectVisibleFeeds(feedIds: List<String>) {
+        selectFeeds(feedIds)
+    }
 
     fun release() {
         player?.release()
