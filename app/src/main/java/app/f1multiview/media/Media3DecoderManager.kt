@@ -86,7 +86,7 @@ class Media3DecoderManager(context: Context) {
         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
         .build()
 
-    fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
+    fun hasDecoder(id: String): Boolean = players.containsKey(id)\n\n    fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
 
     private fun createPlayer(id: String): ExoPlayer = players.getOrPut(id) {
         ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
