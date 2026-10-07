@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.TiledMultiviewSessionParser
+import app.f1multiview.data.f1tv.TmePlaybackParser
 import app.f1multiview.core.playback.toModel
 import app.f1multiview.model.StreamSource
 
@@ -157,7 +158,7 @@ class UnifiedMultiviewEngine(context: Context) {
         var openTiledPrepared = false
         reference
             ?.tmeJson
-            ?.let(TiledMultiviewSessionParser::parse)
+            ?.let(TmePlaybackParser::parse)
             ?.let { tme ->
                 val source = reference ?: return@let
                 if (openTiledBackend.canHandle(tme, source)) {
@@ -165,8 +166,7 @@ class UnifiedMultiviewEngine(context: Context) {
                     if (openTiledPrepared) {
                         selectedMultiviewBackend = openTiledBackend
                         _backendStatus.value = selectedMultiviewBackend.status
-                        TiledMultiviewSessionParser.parse(source.tmeJson)
-                            ?.also { tiledMultiviewController.configure(it) }
+                        tiledMultiviewController.configure(tme.toModel())
                     } else {
                         selectedMultiviewBackend = media3FallbackBackend
                         _backendStatus.value = selectedMultiviewBackend.status
@@ -181,7 +181,7 @@ class UnifiedMultiviewEngine(context: Context) {
         // A genuine single-source tiled session owns the only physical video player.
         // Do not preload, allocate, suspend, or reactivate the independent-feed
         // decoder manager after the open tiled backend has been selected.
-        if (openTiledPrepared) return
+        if (openTiledPrepared) return streams.map { it.id }.toSet()
 
         if (referenceId != null) setAudioPlayer(referenceId)
 
@@ -353,7 +353,6 @@ private class DecoderManager(context: Context) {
     fun playbackStartupDiagnostics() = backend.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics() = backend.decoderResourceDiagnostics()
     fun release() {
-        openTiledEngine.release()
         backend.release()
     }
 }
