@@ -301,6 +301,13 @@ class UnifiedMultiviewEngine(context: Context) {
     fun playAll() { if (isOpenTiledActive()) openTiledEngine.play() else decoderManager.playAll() }
     fun pauseAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.pauseAll() }
     fun stopAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.stopAll() }
+    fun seekOpenTiled(deltaMs: Long) {
+        if (isOpenTiledActive()) {
+            val p = openTiledEngine.player() ?: return
+            openTiledEngine.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L))
+        }
+    }
+
 
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
