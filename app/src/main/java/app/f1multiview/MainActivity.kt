@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.f1multiview.ui.App
 import app.f1multiview.viewmodel.MultiViewViewModel
+import app.f1multiview.media.AppLogger
 import app.f1multiview.media.HdrPresentationDiagnostics
 
 class MainActivity : ComponentActivity() {
@@ -17,6 +18,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        AppLogger.initialize(this)
         HdrPresentationDiagnostics.log(this, "MainActivity")
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
