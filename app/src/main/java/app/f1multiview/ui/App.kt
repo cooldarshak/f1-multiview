@@ -257,7 +257,11 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             isTv = isTv,
             compactPhone = compactPhone,
             onOpenMultiview = { fullscreenMultiview = true },
-            onOpenEditorial = { fullscreenMultiview = true }
+            onOpenEditorial = { fullscreenMultiview = true },
+            onOpenSession = { session ->
+                vm.selectVodSession(session)
+                fullscreenMultiview = true
+            }
         )
         if (ui.selectedPanel != null) {
             UgisInfoPanel(
