@@ -32,7 +32,8 @@ import kotlin.math.max
  * It does NOT turn independent feed URLs into one decoder. Such a source is
  * rejected by canHandle(), because doing otherwise would be technically false.
  *
- * Protected F1 content remains on Media3's secure SurfaceView path.
+ * Protected F1 content uses the protected compositor when the public EGL capability exists,
+ * with the secure SurfaceView retained as the fallback path.
  */
 class OpenTiledMultiviewEngine(
     private val playerFactory: (StreamSource) -> ExoPlayer
