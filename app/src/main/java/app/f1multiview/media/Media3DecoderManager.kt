@@ -951,6 +951,15 @@ class Media3DecoderManager(context: Context) {
         firstFrameRendered.clear()
     }
 
+    fun decoderResourceDiagnostics(): Map<String, String> = buildMap {
+        put("capacity", resourceManager.capacity().toString())
+        put("active", resourceManager.activeLeases().size.toString())
+        put("available", resourceManager.availableSlots().toString())
+        resourceManager.activeLeases().forEach { lease ->
+            put("slot." + lease.slotId, lease.feedId + ":priority=" + lease.priority + ":reference=" + lease.isReference)
+        }
+    }
+
     /** Lightweight runtime diagnostics used to measure startup impact on-device. */
     fun playbackStartupDiagnostics(): Map<String, String> =
         players.mapValues { (id, player) ->
