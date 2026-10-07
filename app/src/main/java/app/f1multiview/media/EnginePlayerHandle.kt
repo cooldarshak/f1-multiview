@@ -58,10 +58,6 @@ class EnginePlayerHandle internal constructor(
     fun addListener(listener: Player.Listener) = player.addListener(listener)
     fun removeListener(listener: Player.Listener) = player.removeListener(listener)
 
-    fun setTrackSelectionParameters(value: TrackSelectionParameters) {
-        player.trackSelectionParameters = value
-    }
-
     fun setVideoSurfaceView(surfaceView: SurfaceView) = engine.attachSurfaceView(id, surfaceView)
     fun clearVideoSurfaceView(surfaceView: SurfaceView) = engine.detachSurfaceView(id, surfaceView)
     fun setVideoTextureView(textureView: TextureView) = engine.attachTextureView(id, textureView)
