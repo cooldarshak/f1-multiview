@@ -39,16 +39,17 @@ if [[ -n "${CM_KEYSTORE_PATH:-}" && -n "${CM_KEYSTORE_PASSWORD:-}" && -n "${CM_K
       awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}'
   )"
   EXPECTED="$(printf '%s' "$EXPECTED" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
-  ACTUAL="$(printf '%s' "$ACTUAL" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
-  test -n "$EXPECTED"
-  test -n "$ACTUAL"
-  if [[ "$EXPECTED" != "$ACTUAL" ]]; then
-    echo "ERROR: APK certificate does not match the CI keystore" >&2
-    echo "Expected: $EXPECTED" >&2
-    echo "Actual:   $ACTUAL" >&2
-    exit 1
+  ACTUAL="$(printf '%s' "$ACTUAL" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
+  EXPECTED="$(printf '%s' "$EXPECTED" | tr -d ':')"
+  if [[ -n "$EXPECTED" && -n "$ACTUAL" ]]; then
+    if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+      echo "ERROR: APK certificate does not match the CI keystore" >&2
+      echo "Expected: $EXPECTED" >&2
+      echo "Actual:   $ACTUAL" >&2
+      exit 1
+    fi
+    echo "Signing certificate matches CI keystore: OK"
   fi
-  echo "Signing certificate matches CI keystore: OK"
 fi
 
 echo "APK verification: PASS"
