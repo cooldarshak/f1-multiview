@@ -1041,7 +1041,7 @@ private fun PitWall(
         Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(170.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
             Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
                 Text("CHOOSE YOUR FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
-                Text("Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                Text(if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) "Choose up to 24 logical feeds. Mark any feed as MAIN to replace the current main feed." else "Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
         return
