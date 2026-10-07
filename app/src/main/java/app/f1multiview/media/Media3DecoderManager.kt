@@ -358,7 +358,6 @@ class Media3DecoderManager(context: Context) {
         return qualityManager.parameters(
             player = player,
             quality = quality,
-            isReference = isMain,
             autoBudget = budget
         )
     }
