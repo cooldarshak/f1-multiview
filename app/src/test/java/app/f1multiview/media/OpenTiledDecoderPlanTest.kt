@@ -62,8 +62,8 @@ class OpenTiledDecoderPlanTest {
         assertNotNull(plan)
         assertEquals(1, plan!!.physicalDecoderCount)
         assertEquals(24, plan.logicalFeedCount)
-        assertEquals(4, plan.tileColumns)
-        assertEquals(6, plan.tileRows)
+        assertEquals(6, plan.tileColumns)
+        assertEquals(4, plan.tileRows)
         assertEquals(24, plan.selectedBindings(plan.bindings.map { it.feedId }).size)
     }
 
