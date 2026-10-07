@@ -19,7 +19,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val surfaceManager = MultiviewSurfaceManager(context)
-    private val viewportScheduler = ViewportScheduler(maxDecoders = 4)
+    private val viewportScheduler = ViewportScheduler(maxDecoders = decoderManager.capacity())
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
 
@@ -44,6 +44,7 @@ class UnifiedMultiviewEngine(context: Context) {
 
     internal fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)
     fun activeDecoderIds(): Set<String> = decoderManager.activeDecoderIds()
+    fun decoderCapacity(): Int = decoderManager.capacity()
 
     fun clear(id: String) {
         if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
@@ -147,6 +148,7 @@ private class DecoderManager(context: Context) {
     val errors: StateFlow<Map<String, String>> = backend.errors
 
     fun hasDecoder(id: String): Boolean = backend.hasDecoder(id)
+    fun capacity(): Int = backend.capacity()
     fun activeDecoderIds(): Set<String> = backend.activeDecoderIds()
     fun get(id: String): ExoPlayer = backend.get(id)
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
