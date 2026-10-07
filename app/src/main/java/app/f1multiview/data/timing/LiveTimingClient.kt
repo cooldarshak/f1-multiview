@@ -142,9 +142,38 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
 
     private fun parseCarData(data:JSONObject?) {
-        // CarData formats have changed over time. Accept the common per-driver object
-        // representation without making the live timing connection dependent on it.
-        parseTelemetryObject(data)
+        if(data==null)return
+        val entries=data.optJSONArray("Entries") ?: return
+        for(i in 0 until entries.length()){
+            val entry=entries.optJSONObject(i) ?: continue
+            val cars=entry.optJSONObject("Cars") ?: continue
+            val keys=cars.keys()
+            val out=mutableListOf<app.f1multiview.model.DriverTelemetry>()
+            while(keys.hasNext()){
+                val number=keys.next()
+                val car=cars.optJSONObject(number) ?: continue
+                val channels=car.optJSONObject("Channels") ?: car
+                val speed=channels.optInt("2",0)
+                val rpm=channels.optInt("0",0)
+                val gear=channels.optInt("3",0)
+                val throttle=channels.optInt("4",0)
+                val brake=channels.optInt("5",0)
+                val drs=channels.optInt("45",0)>0
+                val existing=_telemetry.value.firstOrNull{it.driver==number}
+                out += app.f1multiview.model.DriverTelemetry(
+                    driver=number,
+                    speed=speed,
+                    rpm=rpm,
+                    gear=gear,
+                    throttle=throttle,
+                    brake=brake,
+                    drs=drs,
+                    lap=existing?.lap ?: 0,
+                    lapTime=existing?.lapTime ?: "-"
+                )
+            }
+            if(out.isNotEmpty()) _telemetry.value=out
+        }
     }
 
     private fun parsePosition(data:JSONObject?) {
