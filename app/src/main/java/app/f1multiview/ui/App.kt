@@ -1348,18 +1348,26 @@ private fun FullscreenFeedRail(
     val previewIds = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(listState.firstVisibleItemIndex, candidates, ui.streams) {
-        val visibleIds = listState.layoutInfo.visibleItemsInfo
+        val visibleItems = listState.layoutInfo.visibleItemsInfo
+        val visibleIds = visibleItems
             .mapNotNull { candidates.getOrNull(it.index)?.id }
             .filter { it != activeId }
             .take(3)
-        previewIds.filterNot { it in visibleIds }.toList().forEach {
+        val firstVisibleIndex = visibleItems.minOfOrNull { it.index } ?: listState.firstVisibleItemIndex
+        val lastVisibleIndex = visibleItems.maxOfOrNull { it.index } ?: listState.firstVisibleItemIndex
+        // Keep a small logical runway around the actual viewport. These extra feeds are
+        // source-preloaded but do not receive decoder leases unless they enter the viewport.
+        val preloadIds = (firstVisibleIndex - 2..lastVisibleIndex + 2)
+            .mapNotNull { candidates.getOrNull(it)?.id }
+            .distinct()
+        previewIds.filterNot { it in preloadIds }.toList().forEach {
             previewIds.remove(it)
         }
-        visibleIds.forEach { id ->
+        preloadIds.forEach { id ->
             if (id !in previewIds) previewIds.add(id)
             vm.prepareStream(id)
         }
-        val viewportStreams = candidates.filter { it.id == activeId || it.id in visibleIds }
+        val viewportStreams = candidates.filter { it.id == activeId || it.id in preloadIds }
         engine.updateViewport(
             streams = viewportStreams,
             visibleIds = visibleIds,
