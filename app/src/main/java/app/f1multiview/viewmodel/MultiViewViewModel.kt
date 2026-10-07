@@ -223,6 +223,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
              vodSessions = sessions.sortedBy { it.startTime },
              session = session,
              streams = emptyList(),
+             tiledMultiviewSession = null,
              selectedStreamIds = emptyList(),
              mainStreamId = null,
              providerError = null,
@@ -231,7 +232,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadStreams(session)
          loadReplayTiming(session)
      }
-    fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
+    fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),tiledMultiviewSession=null,providerError=null);loadStreams(session)}
     private suspend fun loadStreams(session:Session, autoSelectFeeds:Boolean = false){
         provider.streams(session.id).fold(
             {sources->
@@ -268,8 +269,13 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private suspend fun resolveSource(source:StreamSource){
         val contentId=source.contentId?:return
         provider.resolve(PlaybackRequest(contentId,source.channelId,_ui.value.quality)).onSuccess{playback->
+            // TME describes the multiview playback session, not an arbitrary
+            // secondary feed. Only the current reference/main feed may establish or
+            // replace the session-level TME contract.
+            val isReference = source.id == _ui.value.mainStreamId
             _ui.value=_ui.value.copy(
-                tiledMultiviewSession = playback.tiledMultiview,
+                tiledMultiviewSession = if (isReference) playback.tiledMultiview
+                    else _ui.value.tiledMultiviewSession,
                 streams=_ui.value.streams.map{
                     if(it.id==source.id) it.copy(
                         url=playback.manifestUrl,
