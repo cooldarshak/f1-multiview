@@ -33,7 +33,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun retain(ids: Set<String>) {
-        feedRegistry.retain(ids)
+        surfaceManager.boundFeedIds().filterNot(ids::contains).forEach { id ->\n            surfaceManager.binding(id)?.let { binding ->\n                decoderManager.hasDecoder(id)?.let { if (it) surfaceManager.detach(id, player(id)) }\n            }\n        }\n        feedRegistry.retain(ids)
         decoderManager.retain(ids)
     }
 
