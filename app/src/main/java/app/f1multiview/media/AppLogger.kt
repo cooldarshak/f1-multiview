@@ -113,7 +113,10 @@ object AppLogger {
     fun snapshot(): String = _entries.value.joinToString("
 ")
 
-    fun currentLogLocation(): String = logUri?.toString() ?: "Log file unavailable"
+    fun currentLogLocation(): String {
+        val uri = logUri ?: return "Download/F1 MultiView Logs/<date>/<launch>.log"
+        return uri.toString()
+    }
 
     fun copyToClipboard(context: Context): Boolean {
         val text = snapshot()
