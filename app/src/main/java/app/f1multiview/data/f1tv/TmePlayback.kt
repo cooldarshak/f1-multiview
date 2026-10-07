@@ -39,9 +39,12 @@ data class TmePlayback(
 ) {
     val topology: TmeTopology
         get() {
-            val urls = feeds.mapNotNull { it.url?.trim()?.takeIf(String::isNotBlank) }.distinct()
+            if (feeds.size <= 1) return TmeTopology.UNKNOWN
+            val normalizedUrls = feeds.map { it.url?.trim()?.takeIf(String::isNotBlank) }
+            if (normalizedUrls.any { it == null }) return TmeTopology.UNKNOWN
+            val urls = normalizedUrls.filterNotNull().distinct()
             if (urls.isEmpty()) return TmeTopology.UNKNOWN
-            if (urls.size == 1 && tileWidth != null && tileHeight != null && feeds.size > 1) {
+            if (urls.size == 1 && tileWidth != null && tileWidth > 0 && tileHeight != null && tileHeight > 0) {
                 return TmeTopology.SINGLE_MOSAIC_SOURCE
             }
             return TmeTopology.INDEPENDENT_FEED_SOURCES
