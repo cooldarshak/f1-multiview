@@ -51,18 +51,18 @@ private val HomeText = Color(0xFFF7F7F9)
 private val HomeMuted = Color(0xFFA6A8B2)
 
 private enum class HomeDestination(val label: String) {
-    HOME("Home"), SEASON("2026 Season"), ARCHIVE("Archive"),
+    HOME("Home"), SEASON("2026 Season"), ARCHIVE("Archive"), EVENT_DETAIL("Grand Prix"),
     SHOWS("Shows"), DOCUMENTARIES("Documentaries"), MY_LIST("My List")
 }
 
 @Composable
-fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean, onOpenMultiview: () -> Unit, onOpenEditorial: (EditorialItem) -> Unit) {
+fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhone: Boolean, onOpenMultiview: () -> Unit, onOpenEditorial: (EditorialItem) -> Unit, onOpenSession: (VodSession) -> Unit) {
     var drawer by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf(false) }
     var destination by rememberSaveable { mutableStateOf(HomeDestination.HOME) }
 
     Box(Modifier.fillMaxSize().background(HomeBg)) {
-        F1HomeBody(ui, vm, isTv, compactPhone, destination, { drawer = true }, { search = true }, onOpenMultiview, onOpenEditorial)
+        F1HomeBody(ui, vm, isTv, compactPhone, destination, { drawer = true }, { search = true }, onOpenMultiview, onOpenEditorial, onOpenSession, { destination = HomeDestination.EVENT_DETAIL; vm.selectVodEvent(it) })
         AnimatedVisibility(drawer, enter=fadeIn(tween(180)), exit=fadeOut(tween(140)), modifier=Modifier.fillMaxSize().zIndex(50f)) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.58f)).clickable { drawer=false })
         }
@@ -70,13 +70,13 @@ fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhon
             F1Drawer(isTv, destination, { destination=it; drawer=false }) { drawer=false }
         }
         AnimatedVisibility(search, enter=fadeIn(tween(160)), exit=fadeOut(tween(120)), modifier=Modifier.fillMaxSize().zIndex(60f)) {
-            F1Search(ui, vm) { search=false }
+            F1Search(ui, vm, { item -> vm.playEditorial(item); onOpenEditorial(item) }, { event -> onOpenEvent(event) }) { search=false }
         }
     }
 }
 
 @Composable
-private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactPhone:Boolean, destination:HomeDestination, onMenu:()->Unit, onSearch:()->Unit, onOpenMultiview:()->Unit, onOpenEditorial:(EditorialItem)->Unit) {
+private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactPhone:Boolean, destination:HomeDestination, onMenu:()->Unit, onSearch:()->Unit, onOpenMultiview:()->Unit, onOpenEditorial:(EditorialItem)->Unit, onOpenSession:(VodSession)->Unit, onOpenEvent:(VodEvent)->Unit) {
     val side=if(compactPhone)16.dp else if(isTv)38.dp else 24.dp
     Column(Modifier.fillMaxSize()) {
         F1TopBar(compactPhone,onMenu,onSearch,onOpenMultiview)
@@ -87,7 +87,7 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
                     ui.vodSessions.firstOrNull{it.eventPageId==event.pageId && it.stage=="race"}?.let(vm::selectVodSession)
                 }}
                 if(ui.continueWatching.isNotEmpty()) item { F1RailTitle("Continue Watching","View all",side); ContinueRail(ui.continueWatching,compactPhone,vm::resumeContinueWatching) }
-                item { F1RailTitle((ui.selectedSeason?.year ?: 2026).toString()+" Season","View all",side); SeasonRail(ui.vodEvents,compactPhone,vm::selectVodEvent) }
+                item { F1RailTitle((ui.selectedSeason?.year ?: 2026).toString()+" Season","View all",side); SeasonRail(ui.vodEvents,compactPhone,onOpenEvent) }
                 item { F1RailTitle("Multiview","Open",side); MultiviewCard(compactPhone,onOpenMultiview) }
                 if(ui.showsDocs.isNotEmpty()) item { F1RailTitle("Shows","View all",side); EditorialRail(ui.showsDocs.filter{it.pageId!=413}.take(12),compactPhone){item->vm.playEditorial(item);onOpenEditorial(item)} }
                 item { F1RailTitle("Documentaries","View all",side); EditorialRail(ui.showsDocs.filter{it.pageId==413}.take(12),compactPhone){item->vm.playEditorial(item);onOpenEditorial(item)} }
@@ -95,22 +95,23 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
             }
             HomeDestination.SEASON -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
                 item{F1PageHeader((ui.selectedSeason?.year?:2026).toString()+" Season","Every Grand Prix and session.",side)}
-                item{SeasonRail(ui.vodEvents,compactPhone,vm::selectVodEvent)}
-                item{WeekendRail(ui.vodSessions,compactPhone,vm::selectVodSession,side)}
+                item{SeasonRail(ui.vodEvents,compactPhone,onOpenEvent)}
+                item{WeekendRail(ui.vodSessions,compactPhone,onOpenSession,side)}
             }
             HomeDestination.ARCHIVE -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
                 item{F1PageHeader("Archive","Browse seasons and Grand Prix.",side)}
                 item{SeasonSelector(ui,vm,side)}
-                item{SeasonRail(ui.vodEvents,compactPhone,vm::selectVodEvent)}
-                item{WeekendRail(ui.vodSessions,compactPhone,vm::selectVodSession,side)}
+                item{SeasonRail(ui.vodEvents,compactPhone,onOpenEvent)}
+                item{WeekendRail(ui.vodSessions,compactPhone,onOpenSession,side)}
             }
+            HomeDestination.EVENT_DETAIL -> GrandPrixDetail(ui, vm, isTv, compactPhone, side, onOpenSession, { destination = HomeDestination.HOME })
             HomeDestination.SHOWS -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
                 item{F1PageHeader("Shows","Analysis, tech and F1 TV originals.",side)}
-                item{EditorialGrid(ui.showsDocs.filter{it.pageId!=413},compactPhone)}
+                item{EditorialGrid(ui.showsDocs.filter{it.pageId!=413},compactPhone){ item -> vm.playEditorial(item); onOpenEditorial(item) }}
             }
             HomeDestination.DOCUMENTARIES -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
                 item{F1PageHeader("Documentaries","Stories from Formula 1.",side)}
-                item{EditorialGrid(ui.showsDocs.filter{it.pageId==413},compactPhone)}
+                item{EditorialGrid(ui.showsDocs.filter{it.pageId==413},compactPhone){ item -> vm.playEditorial(item); onOpenEditorial(item) }}
             }
             HomeDestination.MY_LIST -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
                 item{F1PageHeader("My List","Saved race-view configurations.",side)}
@@ -162,12 +163,97 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
     }
 }
 
-@Composable private fun F1Search(ui:UiState,vm:MultiViewViewModel,onClose:()->Unit) {
+@Composable private fun F1Search(ui:UiState,vm:MultiViewViewModel,onOpenEditorial:(EditorialItem)->Unit,onOpenEvent:(VodEvent)->Unit,onClose:()->Unit) {
     var query by rememberSaveable{mutableStateOf("")};val q=query.trim().lowercase()
     val events=ui.vodEvents.filter{q.isBlank()||it.meetingName.lowercase().contains(q)}.take(12)
     val sessions=ui.vodSessions.filter{q.isBlank()||it.title.lowercase().contains(q)}.take(12)
     val editorial=ui.showsDocs.filter{q.isBlank()||it.title.lowercase().contains(q)}.take(12)
-    Surface(Modifier.fillMaxSize(),color=HomeBg){Column(Modifier.fillMaxSize().padding(18.dp)){Row(verticalAlignment=Alignment.CenterVertically){IconButton(onClick=onClose){Icon(Icons.Default.ArrowBack,"Back",tint=HomeText)};Spacer(Modifier.width(6.dp));Text("Search F1 TV",color=HomeText,fontSize=24.sp,fontWeight=FontWeight.Black)};Spacer(Modifier.height(14.dp));OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),leadingIcon={Icon(Icons.Default.Search,null)},placeholder={Text("Search races, shows, documentaries…")});Spacer(Modifier.height(20.dp));LazyColumn(verticalArrangement=Arrangement.spacedBy(18.dp)){if(events.isNotEmpty())item{F1RailTitle("Grand Prix","",18.dp);SearchRail(events.map{it.meetingName to it.artworkUrl}){t->ui.vodEvents.firstOrNull{it.meetingName==t}?.let(vm::selectVodEvent)}};if(sessions.isNotEmpty())item{F1RailTitle("Videos","",18.dp);SearchRail(sessions.map{it.title to it.artworkUrl}){t->ui.vodSessions.firstOrNull{it.title==t}?.let(vm::selectVodSession)}};if(editorial.isNotEmpty())item{F1RailTitle("Shows & Documentaries","",18.dp);EditorialRail(editorial,false)};if(events.isEmpty()&&sessions.isEmpty()&&editorial.isEmpty())item{Text("No results",color=HomeMuted)}}}}
+    Surface(Modifier.fillMaxSize(),color=HomeBg){Column(Modifier.fillMaxSize().padding(18.dp)){Row(verticalAlignment=Alignment.CenterVertically){IconButton(onClick=onClose){Icon(Icons.Default.ArrowBack,"Back",tint=HomeText)};Spacer(Modifier.width(6.dp));Text("Search F1 TV",color=HomeText,fontSize=24.sp,fontWeight=FontWeight.Black)};Spacer(Modifier.height(14.dp));OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),leadingIcon={Icon(Icons.Default.Search,null)},placeholder={Text("Search races, shows, documentaries…")});Spacer(Modifier.height(20.dp));LazyColumn(verticalArrangement=Arrangement.spacedBy(18.dp)){if(events.isNotEmpty())item{F1RailTitle("Grand Prix","",18.dp);SearchRail(events.map{it.meetingName to it.artworkUrl}){t->ui.vodEvents.firstOrNull{it.meetingName==t}?.let(onOpenEvent)}};if(sessions.isNotEmpty())item{F1RailTitle("Videos","",18.dp);SearchRail(sessions.map{it.title to it.artworkUrl}){t->ui.vodSessions.firstOrNull{it.title==t}?.let(vm::selectVodSession)}};if(editorial.isNotEmpty())item{F1RailTitle("Shows & Documentaries","",18.dp);EditorialRail(editorial,false){ item -> vm.playEditorial(item); onOpenEditorial(item) }};if(events.isEmpty()&&sessions.isEmpty()&&editorial.isEmpty())item{Text("No results",color=HomeMuted)}}}}
+}
+
+@Composable
+private fun GrandPrixDetail(
+    ui: UiState,
+    vm: MultiViewViewModel,
+    isTv: Boolean,
+    compactPhone: Boolean,
+    side: androidx.compose.ui.unit.Dp,
+    onOpenSession: (VodSession) -> Unit,
+    onBack: () -> Unit
+) {
+    val event = ui.selectedEvent
+    val sessions = ui.vodSessions
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 42.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compactPhone) 20.dp else 28.dp)
+    ) {
+        item {
+            Box(Modifier.fillMaxWidth().height(if (compactPhone) 250.dp else 330.dp)) {
+                F1Artwork(event?.backgroundArtworkUrl, event?.meetingName ?: "Grand Prix", Modifier.fillMaxSize(), ContentScale.Crop, "gp-" + (event?.pageId ?: 0))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .05f), Color.Black.copy(alpha = .45f), HomeBg.copy(alpha = .98f)))))
+                Column(Modifier.align(Alignment.BottomStart).padding(horizontal = side, vertical = if (compactPhone) 22.dp else 30.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(color = HomeRed, shape = RoundedCornerShape(6.dp)) {
+                            Text("2026", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(if ((event?.meetingNumber ?: 0) > 0) "ROUND \${event?.meetingNumber}" else "GRAND PRIX", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    }
+                    Spacer(Modifier.height(9.dp))
+                    Text(prettyEvent(event?.meetingName ?: "Grand Prix"), color = HomeText, fontSize = if (compactPhone) 27.sp else 36.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("PRACTICE  •  QUALIFYING  •  RACE  •  F1 TV SHOWS  •  MULTIVIEW", color = HomeMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 7.dp))
+                }
+                Surface(Modifier.align(Alignment.TopStart).padding(horizontal = side, vertical = 18.dp).clickable(onClick = onBack), color = Color.Black.copy(alpha = .62f), shape = RoundedCornerShape(50.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = .14f))) {
+                    Text("‹  BACK TO F1 TV", color = HomeText, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp))
+                }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = side), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                MetricChip("SESSIONS", sessions.size.toString(), Modifier.weight(1f))
+                MetricChip("WEEKEND", if (sessions.any { it.stage.equals("race", true) }) "COMPLETE" else "UPCOMING", Modifier.weight(1f))
+                MetricChip("MULTIVIEW", "AVAILABLE", Modifier.weight(1f))
+            }
+        }
+        item {
+            Text("Weekend sessions", color = HomeText, fontSize = if (compactPhone) 20.sp else 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = side))
+        }
+        if (sessions.isEmpty()) {
+            item {
+                Surface(Modifier.fillMaxWidth().padding(horizontal = side), shape = RoundedCornerShape(22.dp), color = HomeSurface, border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))) {
+                    Column(Modifier.padding(22.dp)) {
+                        Text("Loading weekend content…", color = HomeText, fontWeight = FontWeight.Bold)
+                        Text("F1 TV is loading the sessions for this Grand Prix.", color = HomeMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+        } else {
+            val groups = listOf(
+                "Practice" to sessions.filter { it.stage.startsWith("practice", true) },
+                "Qualifying" to sessions.filter { it.stage.contains("qualifying", true) },
+                "Sprint" to sessions.filter { it.stage.equals("sprint", true) || it.stage.equals("sprint-qualifying", true) },
+                "Race" to sessions.filter { it.stage.equals("race", true) },
+                "Shows & Extras" to sessions.filter { it.stage !in setOf("practice-1","practice-2","practice-3","practice","qualifying","sprint","sprint-qualifying","race") }
+            )
+            groups.filter { it.second.isNotEmpty() }.forEach { (title, group) ->
+                item {
+                    F1RailTitle(title, "\${group.size} VIDEOS", side)
+                    WeekendRail(group, compactPhone, onOpenSession, side)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricChip(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier, shape = RoundedCornerShape(16.dp), color = HomeSurface, border = BorderStroke(1.dp, Color.White.copy(alpha = .07f))) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 11.dp)) {
+            Text(label, color = HomeMuted, fontSize = 8.sp, fontWeight = FontWeight.Black)
+            Text(value, color = HomeText, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
 }
 
 @Composable private fun F1PageHeader(title:String,subtitle:String,side:androidx.compose.ui.unit.Dp){Column(Modifier.padding(start=side,end=side,top=28.dp,bottom=18.dp)){Text(title,color=HomeText,fontSize=30.sp,fontWeight=FontWeight.Black);Text(subtitle,color=HomeMuted,fontSize=12.sp,modifier=Modifier.padding(top=6.dp))}}
@@ -180,7 +266,7 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
 @Composable private fun ContentCard(title:String,url:String?,meta:String,compact:Boolean,onClick:()->Unit){var focused by remember{mutableStateOf(false)};val scale by animateFloatAsState(if(focused)1.035f else 1f,label="cardScale");Surface(Modifier.width(if(compact)205.dp else 250.dp).scale(scale).clickable(onClick=onClick).focusable().onFocusChanged{focused=it.isFocused},shape=RoundedCornerShape(16.dp),color=HomeSurface,border=BorderStroke(if(focused)2.dp else 1.dp,if(focused)HomeRed else Color.White.copy(alpha=.06f))){Column{Box(Modifier.fillMaxWidth().height(if(compact)118.dp else 142.dp)){F1Artwork(url,title,Modifier.fillMaxSize(),ContentScale.Crop,title);Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent,Color.Black.copy(alpha=.78f)))));Text(meta,color=Color.White.copy(alpha=.84f),fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.align(Alignment.BottomStart).padding(9.dp))};Text(title,color=HomeText,fontSize=13.sp,fontWeight=FontWeight.ExtraBold,maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(11.dp))}}}
 @Composable private fun MultiviewCard(compact:Boolean,onOpen:()->Unit){Surface(Modifier.fillMaxWidth().padding(horizontal=if(compact)16.dp else 24.dp).clickable(onClick=onOpen),shape=RoundedCornerShape(22.dp),color=HomeSurface,border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))){Row(Modifier.padding(if(compact)16.dp else 22.dp),verticalAlignment=Alignment.CenterVertically){Surface(color=HomeRed.copy(alpha=.16f),shape=RoundedCornerShape(18.dp)){Icon(Icons.Default.GridView,null,tint=HomeRed,modifier=Modifier.padding(16.dp).size(28.dp))};Spacer(Modifier.width(16.dp));Column(Modifier.weight(1f)){Text("F1 MultiView",color=HomeText,fontSize=18.sp,fontWeight=FontWeight.Black);Text("World feed • onboards • timing • driver tracker • data",color=HomeMuted,fontSize=11.sp)};Button(onClick=onOpen,shape=RoundedCornerShape(50.dp),colors=ButtonDefaults.buttonColors(containerColor=HomeRed)){Text("OPEN")}}}}
 @Composable private fun SeasonSelector(ui:UiState,vm:MultiViewViewModel,side:androidx.compose.ui.unit.Dp){LazyRow(contentPadding=PaddingValues(horizontal=side,vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.focusGroup()){items(ui.vodSeasons){s->FilterChip(selected=ui.selectedSeason==s,onClick={vm.selectVodSeason(s)},label={Text(s.year.toString())})}}}
-@Composable private fun EditorialGrid(items:List<EditorialItem>,compact:Boolean){Column(Modifier.padding(horizontal=if(compact)16.dp else 24.dp)){items.chunked(if(compact)2 else 3).forEach{row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){row.forEach{e->Box(Modifier.weight(1f)){ContentCard(e.title,e.artworkUrl,"F1 TV",compact){}};};repeat((if(compact)2 else 3)-row.size){Spacer(Modifier.weight(1f))}};Spacer(Modifier.height(14.dp))}}}
+@Composable private fun EditorialGrid(items:List<EditorialItem>,compact:Boolean,onClick:(EditorialItem)->Unit){Column(Modifier.padding(horizontal=if(compact)16.dp else 24.dp)){items.chunked(if(compact)2 else 3).forEach{row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){row.forEach{e->Box(Modifier.weight(1f)){ContentCard(e.title,e.artworkUrl,"F1 TV",compact){onClick(e)}};};repeat((if(compact)2 else 3)-row.size){Spacer(Modifier.weight(1f))}};Spacer(Modifier.height(14.dp))}}}
 @Composable private fun SavedSetupRail(items:List<SavedSetup>,compact:Boolean,onLoad:(SavedSetup)->Unit){if(items.isEmpty())Text("No saved views yet. Save a layout from Multiview.",color=HomeMuted,modifier=Modifier.padding(18.dp)) else LazyRow(contentPadding=PaddingValues(horizontal=if(compact)16.dp else 24.dp,vertical=10.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){items(items){s->ContentCard(s.name,null,s.layout.name.replace("_"," "),compact){onLoad(s)}}}}
 private fun prettyEvent(v:String)=v.replace(Regex("(?i)formula 1|formula one"),"F1").replace(Regex("\\s+")," ").trim()
 private fun time(ms:Long):String{val s=(ms/1000).coerceAtLeast(0);return "%02d:%02d".format(s/60,s%60)}
