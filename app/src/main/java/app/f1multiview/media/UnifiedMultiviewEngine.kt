@@ -18,7 +18,6 @@ import app.f1multiview.model.StreamSource
 class UnifiedMultiviewEngine(context: Context) {
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
-    private val playbackClock = PlaybackClock()
     private val surfaceManager = MultiviewSurfaceManager(context)
     private val viewportScheduler = ViewportScheduler(maxDecoders = 4)
 
@@ -49,7 +48,6 @@ class UnifiedMultiviewEngine(context: Context) {
     fun clear(id: String) {
         if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
         feedRegistry.remove(id)
-        playbackClock.onFeedRemoved(id)
         decoderManager.clear(id)
     }
 
@@ -91,7 +89,6 @@ class UnifiedMultiviewEngine(context: Context) {
     fun qualityAvailable(id: String, quality: Quality): Boolean = decoderManager.qualityAvailable(id, quality)
 
     fun setAudioPlayer(id: String?) {
-        playbackClock.setReference(id)
         decoderManager.setAudioPlayer(id)
     }
 
@@ -101,7 +98,6 @@ class UnifiedMultiviewEngine(context: Context) {
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
 
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
-        playbackClock.setReference(mainId)
         decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
 
@@ -134,7 +130,6 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun release() {
         surfaceManager.clear()
-        playbackClock.clear()
         feedRegistry.clear()
         decoderManager.release()
     }
@@ -193,12 +188,3 @@ private class FeedRegistry {
     fun clear() { feeds.clear() }
 }
 
-/** Central reference-clock state. Decoder scheduling remains a backend concern for now. */
-private class PlaybackClock {
-    var referenceFeedId: String? = null
-        private set
-
-    fun setReference(id: String?) { referenceFeedId = id }
-    fun onFeedRemoved(id: String) { if (referenceFeedId == id) referenceFeedId = null }
-    fun clear() { referenceFeedId = null }
-}
