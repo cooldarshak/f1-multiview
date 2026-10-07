@@ -1140,13 +1140,30 @@ private fun OpenTiledMultiviewWall(
         AndroidView(
             modifier = modifier.clip(RoundedCornerShape(14.dp)),
             factory = {
-                engine.openTiledView(context, protectedOutput = protectedSource).also { created ->
-                    engine.attachOpenTiledView(created)
+                FrameLayout(context).apply {
+                    val tiledView = engine.openTiledView(
+                        context,
+                        protectedOutput = protectedSource
+                    )
+                    addView(
+                        tiledView,
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                    engine.attachOpenTiledView(tiledView)
                 }
             },
-            update = { engine.selectOpenTiledFeeds(feedIds) },
+            update = { container ->
+                engine.selectOpenTiledFeeds(feedIds)
+            },
             onRelease = { released ->
-                engine.detachOpenTiledView(released)
+                val tiledView = released.getChildAt(0) as? OpenTiledCompositorView
+                if (tiledView != null) {
+                    engine.detachOpenTiledView(tiledView)
+                }
+                released.removeAllViews()
             }
         )
     }
@@ -1163,17 +1180,32 @@ private fun OpenTiledSecureWall(
     AndroidView(
         modifier = modifier.clip(RoundedCornerShape(14.dp)),
         factory = {
-            OpenTiledSecureSurfaceView(context).also { created ->
-                created.setSession(session)
-                engine.attachOpenTiledSecureView(created)
+            FrameLayout(context).apply {
+                val secureView = OpenTiledSecureSurfaceView(context)
+                secureView.setSession(session)
+                addView(
+                    secureView,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+                engine.attachOpenTiledSecureView(secureView)
             }
         },
-        update = { view ->
-            view.setSession(session)
+        update = { container ->
+            val secureView = container.getChildAt(0) as? OpenTiledSecureSurfaceView
+            if (secureView != null) {
+                secureView.setSession(session)
+            }
             engine.selectOpenTiledFeeds(session.feedIds.take(24))
         },
         onRelease = { released ->
-            engine.detachOpenTiledSecureView(released)
+            val secureView = released.getChildAt(0) as? OpenTiledSecureSurfaceView
+            if (secureView != null) {
+                engine.detachOpenTiledSecureView(secureView)
+            }
+            released.removeAllViews()
         }
     )
 }
