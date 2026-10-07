@@ -133,7 +133,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         _sessionInfo.value=LiveSessionInfo(
             name=info.optString("Name").ifBlank{info.optString("MeetingName")}.ifBlank{"-"},
             meeting=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{"-"},
-            country=info.optString("Country").ifBlank{info.optString("Location")}.ifBlank{"-"},
+            country=meeting.optJSONObject("Country")?.optString("Name").ifBlank{meeting.optJSONObject("Country")?.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{info.optString("Location")}.ifBlank{"-"},
             sessionType=info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"},
             status=info.optString("Status").ifBlank{_status.value},
             circuitKey=circuit.optInt("Key",0).takeIf{it>0},
