@@ -81,7 +81,13 @@ class DecoderResourceManager(
     fun activeLeases(): List<DecoderLease> = leases.values.toList()
     fun availableSlots(): Int = maxVideoDecoders - leases.size
     fun capacity(): Int = maxVideoDecoders
-\n    fun autoVideoBudget(isReference: Boolean, activeDecoderCount: Int): VideoBudget {\n        if (isReference) return VideoBudget(1920, 1080)\n        return if (activeDecoderCount >= maxVideoDecoders) VideoBudget(640, 360)\n        else VideoBudget(854, 480)\n    }\n
+
+    fun autoVideoBudget(isReference: Boolean, activeDecoderCount: Int): VideoBudget {
+        if (isReference) return VideoBudget(1920, 1080)
+        return if (activeDecoderCount >= maxVideoDecoders) VideoBudget(640, 360)
+        else VideoBudget(854, 480)
+    }
+
     fun reset() {
         leases.clear()
         requests.clear()
