@@ -1865,6 +1865,8 @@ private fun FullscreenMultiview(
         val stream = ui.streams.firstOrNull { it.id == id } ?: return@LaunchedEffect
         if (stream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)) {
             engine.setAudioPlayer(id)
+        } else {
+            engine.setAudioPlayer(null)
         }
     }
 
@@ -1951,7 +1953,7 @@ private fun FullscreenMultiview(
             ) {
                 val activeStream = active ?: ui.streams.firstOrNull()
                 if (activeStream != null) {
-                    if (openTiled) {
+                    if (openTiled && activeStream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)) {
                         OpenTiledMultiviewWall(
                             engine = engine,
                             feedIds = tiledSelected,
