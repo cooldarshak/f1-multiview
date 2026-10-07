@@ -2037,15 +2037,6 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.weight(1f))
                     CompactLayoutPicker(selected = ui.layout, onSelect = vm::setLayout)
                     Spacer(Modifier.width(7.dp))
-                    SmallPlayerButton("RESIZE") {
-                        // Resize remains a first-class feature in the normal multiview wall.
-                        // The genuine TME mosaic currently owns a fixed decoder grid, so do
-                        // not fake per-tile resizing here. This control intentionally routes
-                        // the user back to the editable wall instead of silently doing nothing.
-                        controlsVisible = false
-                        onClose()
-                    }
-                    Spacer(Modifier.width(6.dp))
                     SmallPlayerButton("SYNC ALL") {
                         engine.playAll()
                         val mainId = active?.takeIf {
