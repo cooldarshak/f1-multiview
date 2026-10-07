@@ -179,6 +179,11 @@ class OpenTiledCompositorView(
         requestRender()
     }
 
+    fun setOutputSlots(value: List<OpenTiledMultiviewEngine.OutputSlot>) {
+        renderer.setOutputSlots(value)
+        requestRender()
+    }
+
     fun setSourceVideoSize(width: Int, height: Int) {
         renderer.setSourceVideoSize(width, height)
         requestRender()
@@ -326,7 +331,14 @@ class OpenTiledCompositorView(
         private fun setQuad(u0: Float, v0: Float, u1: Float, v1: Float) {
             val textures = texBuffer ?: return
             textures.clear()
-            textures.put(floatArrayOf(u0, v0, u1, v0, u0, v1, u1, v1))
+            textures.put(u0)
+            textures.put(v0)
+            textures.put(u1)
+            textures.put(v0)
+            textures.put(u0)
+            textures.put(v1)
+            textures.put(u1)
+            textures.put(v1)
             textures.position(0)
         }
 
