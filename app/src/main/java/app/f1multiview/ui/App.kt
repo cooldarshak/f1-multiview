@@ -244,7 +244,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
 
     val fullscreenStream = ui.streams.firstOrNull { it.id == fullscreenStreamId }
     if (fullscreenStream != null) {
-        FullscreenPlayer(fullscreenStream, ui, pool, errors[fullscreenStream.id], { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { pool.stopAll(); fullscreenStreamId = null }
+        FullscreenPlayer(fullscreenStream, ui, pool, errors[fullscreenStream.id], vm, { id -> fullscreenStreamId = id; vm.setMainStream(id) }) { pool.stopAll(); fullscreenStreamId = null }
         return
     }
 
@@ -2280,7 +2280,7 @@ private fun FullscreenFeedControls(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool, error: String?, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
+private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool, error: String?, vm: MultiViewViewModel, onSwitchStream: (String) -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
