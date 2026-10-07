@@ -87,8 +87,8 @@ class OpenTiledMultiviewBackend(
 
     override fun canHandle(session: TiledMultiviewSession): Boolean =
         session.feeds.size > 1 &&
-            session.tileWidth > 0 &&
-            session.tileHeight > 0 &&
+            session.tileWidth != null && session.tileWidth > 0 &&
+            session.tileHeight != null && session.tileHeight > 0 &&
             session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct().size == 1
 
     fun canHandle(tme: TmePlayback, source: StreamSource): Boolean =
