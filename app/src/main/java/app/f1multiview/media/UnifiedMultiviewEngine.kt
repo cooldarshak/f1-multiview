@@ -4,6 +4,8 @@ import android.content.Context
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
@@ -21,6 +23,14 @@ class UnifiedMultiviewEngine(context: Context) {
     private val tiledMultiviewController = TiledMultiviewController()
     private val nativeTmeBackend = NativeTmePlaybackBackend()
     private val media3FallbackBackend = Media3MultiPlayerFallbackBackend()
+    private val openTiledEngine = OpenTiledMultiviewEngine { source ->
+        val dataSourceFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(source.requestHeaders)
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
+            .build()
+    }
+    private val openTiledBackend = OpenTiledMultiviewBackend(openTiledEngine)
     private var selectedMultiviewBackend: MultiviewPlaybackBackend = media3FallbackBackend
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
@@ -50,6 +60,16 @@ class UnifiedMultiviewEngine(context: Context) {
      * Tiledmedia playback.
      */
     fun multiviewBackendStatus(): MultiviewBackendStatus = selectedMultiviewBackend.status
+
+    fun isOpenTiledActive(): Boolean =
+        selectedMultiviewBackend === openTiledBackend
+
+    fun openTiledView(context: Context): OpenTiledCompositorView =
+        OpenTiledCompositorView(context)
+
+    fun selectOpenTiledFeeds(feedIds: List<String>) {
+        openTiledEngine.selectVisibleFeeds(feedIds)
+    }
 
     fun setTiledFeeds(feedIds: List<String>) = tiledMultiviewController.setFeeds(feedIds)
 
@@ -111,10 +131,26 @@ class UnifiedMultiviewEngine(context: Context) {
         // payload rather than whichever secondary feed happened to resolve first.
         // This prevents a later feed resolution from silently replacing the
         // multiview session definition.
-        streams.firstOrNull { it.id == referenceId }
+        val reference = streams.firstOrNull { it.id == referenceId }
+        reference
             ?.tmeJson
             ?.let(TiledMultiviewSessionParser::parse)
-            ?.let(::configureTiledMultiview)
+            ?.let { tme ->
+                if (openTiledBackend.canHandle(tme, reference)) {
+                    val prepared = openTiledBackend.prepare(tme, reference, referenceId)
+                    if (prepared) {
+                        selectedMultiviewBackend = openTiledBackend
+                        tiledMultiviewController.configure(
+                            TiledMultiviewSessionParser.parse(reference.tmeJson!!).toSession()
+                        )
+                    } else {
+                        selectedMultiviewBackend = media3FallbackBackend
+                    }
+                } else {
+                    selectedMultiviewBackend = media3FallbackBackend
+                    configureTiledMultiview(tme.toSession())
+                }
+            }
         if (referenceId != null) setAudioPlayer(referenceId)
 
         // Warm logical feed sources before decoder scheduling. This is the key feed-rail
