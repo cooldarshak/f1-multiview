@@ -21,7 +21,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         private const val WS="wss://livetiming.formula1.com/signalrcore?id="
         private const val RS='\u001e'
         private const val KEEPALIVE_MS=15000L
-        private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingAppData","TimingStats","CarData.z","Position.z","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree","TeamRadio")
+        private val FEEDS=listOf("SessionInfo","DriverList","TimingData","TimingDataF1","TimingAppData","TimingStats","CarData.z","Position.z","WeatherData","TrackStatus","RaceControlMessages","LapCount","TopThree","TeamRadio")
     }
     private val http=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(0,TimeUnit.MILLISECONDS).build()
     private val _rows=MutableStateFlow<List<TimingRow>>(emptyList());val rows: StateFlow<List<TimingRow>> = _rows.asStateFlow()
@@ -33,7 +33,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val _sessionInfo=MutableStateFlow(app.f1multiview.model.LiveSessionInfo());val sessionInfo:StateFlow<app.f1multiview.model.LiveSessionInfo> = _sessionInfo.asStateFlow()
     private val _trackPositions=MutableStateFlow<List<TrackDriverPosition>>(emptyList())
     val trackPositions:StateFlow<List<TrackDriverPosition>> = _trackPositions.asStateFlow()
-    private val _trackStatus=MutableStateFlow(TrackStatusInfo())
+    private val _trackStatus=MutableStateFlow(TrackStatusInfo())\n    private val _lapCount=MutableStateFlow(0 to 0)\n    val lapCount:StateFlow<Pair<Int,Int>> = _lapCount.asStateFlow()
     val trackStatus:StateFlow<TrackStatusInfo> = _trackStatus.asStateFlow()
     private val driverMeta=mutableMapOf<String,DriverMeta>()
     private val timingMeta=mutableMapOf<String,TimingMeta>()
@@ -68,7 +68,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             val json=runCatching{JSONObject(frame)}.getOrNull()?:return@forEach
             if(json.optString("error").isNotBlank()){_status.value="ERROR";ws.close(1002,json.optString("error"));return@forEach}
             if(_status.value=="HANDSHAKING"){_status.value="LIVE";val subscribe=JSONObject().put("type",1).put("invocationId","1").put("target","Subscribe").put("arguments",org.json.JSONArray().put(FEEDS.toTypedArray()));ws.send(subscribe.toString()+RS);keepAlive?.cancel();keepAlive=scope.launch{while(isActive){delay(KEEPALIVE_MS);if(socket===ws)ws.send(JSONObject().put("type",6).toString()+RS)}}}
-            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=decodeFeedObject(args.opt(1));when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"TeamRadio"->parseTeamRadio(data)}}}
+            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=decodeFeedObject(args.opt(1));when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TimingDataF1"->parseTiming(data);"TeamRadio"->parseTeamRadio(data)}}}
             if(json.optInt("type")==3){val result=json.optJSONObject("result")?:return@forEach;val it=result.keys();while(it.hasNext()){val feed=it.next();val data=decodeFeedObject(result.opt(feed));when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"TeamRadio"->parseTeamRadio(data)}}}
         }}
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;_status.value="RETRYING";scheduleReconnect()}
@@ -223,10 +223,10 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         }
         if(out.isNotEmpty()) _raceControl.value=out.takeLast(30)
     }
-    private fun parseWeather(data:JSONObject?) {
+    private fun parseLapCount(data:JSONObject?) {\n        if(data==null)return\n        val root=data.optJSONObject("LapCount") ?: data\n        _lapCount.value=root.optInt("CurrentLap",0) to root.optInt("TotalLaps",0)\n    }\n    private fun parseWeather(data:JSONObject?) {
         if(data==null)return
         fun v(vararg n:String)=n.firstNotNullOfOrNull{data.optString(it).takeIf{v->v.isNotBlank()}}?:"-"
-        _weather.value=TimingWeather(v("AirTemp","AirTemperature"),v("TrackTemp","TrackTemperature"),v("Humidity"),v("WindSpeed","Wind"),v("Rainfall","RainfallIntensity"))
+        _weather.value=TimingWeather(v("AirTemp","AirTemperature"),v("TrackTemp","TrackTemperature"),v("Humidity"),v("WindSpeed","Wind"),v("Rainfall","RainfallIntensity"),v("WindDirection"))
     }
     private fun parseTeamRadio(data:JSONObject?) {
         if(data==null)return
