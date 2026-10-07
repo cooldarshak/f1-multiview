@@ -46,7 +46,7 @@ object TmePlaybackParser {
                 val subtitles = feed.optJSONObject("subtitleTrackNames")
                 add(
                     TmeFeed(
-                        audioEnglish = audio?.optString("eng").takeUnless(String?::isNullOrBlank),
+                        audioEnglish = audio?.optString("eng").takeUnless { it.isNullOrBlank() },
                         audioSpanish = audio?.optString("spa").takeUnless(String?::isNullOrBlank),
                         channelId = feedMetadata?.optInt("channelId", -1)?.takeIf { it >= 0 },
                         encoderId = feed.optString("encoderId").takeUnless(String::isNullOrBlank),
