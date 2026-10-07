@@ -62,7 +62,7 @@ fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhon
     var destination by rememberSaveable { mutableStateOf(HomeDestination.HOME) }
 
     Box(Modifier.fillMaxSize().background(HomeBg)) {
-        F1HomeBody(ui, vm, isTv, compactPhone, destination, { drawer = true }, { search = true }, onOpenMultiview, onOpenEditorial, onOpenSession, { destination = HomeDestination.EVENT_DETAIL; vm.selectVodEvent(it) })
+        F1HomeBody(ui, vm, isTv, compactPhone, destination, { drawer = true }, { search = true }, onOpenMultiview, onOpenEditorial, onOpenSession, { destination = HomeDestination.EVENT_DETAIL; vm.selectVodEvent(it) }, { destination = HomeDestination.HOME })
         AnimatedVisibility(drawer, enter=fadeIn(tween(180)), exit=fadeOut(tween(140)), modifier=Modifier.fillMaxSize().zIndex(50f)) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.58f)).clickable { drawer=false })
         }
@@ -70,13 +70,13 @@ fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhon
             F1Drawer(isTv, destination, { destination=it; drawer=false }) { drawer=false }
         }
         AnimatedVisibility(search, enter=fadeIn(tween(160)), exit=fadeOut(tween(120)), modifier=Modifier.fillMaxSize().zIndex(60f)) {
-            F1Search(ui, vm, { item -> vm.playEditorial(item); onOpenEditorial(item) }, { event -> onOpenEvent(event) }) { search=false }
+            F1Search(ui, vm, { item -> vm.playEditorial(item); onOpenEditorial(item) }, { event -> destination = HomeDestination.EVENT_DETAIL; vm.selectVodEvent(event) }) { search=false }
         }
     }
 }
 
 @Composable
-private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactPhone:Boolean, destination:HomeDestination, onMenu:()->Unit, onSearch:()->Unit, onOpenMultiview:()->Unit, onOpenEditorial:(EditorialItem)->Unit, onOpenSession:(VodSession)->Unit, onOpenEvent:(VodEvent)->Unit) {
+private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactPhone:Boolean, destination:HomeDestination, onMenu:()->Unit, onSearch:()->Unit, onOpenMultiview:()->Unit, onOpenEditorial:(EditorialItem)->Unit, onOpenSession:(VodSession)->Unit, onOpenEvent:(VodEvent)->Unit, onBackHome:()->Unit) {
     val side=if(compactPhone)16.dp else if(isTv)38.dp else 24.dp
     Column(Modifier.fillMaxSize()) {
         F1TopBar(compactPhone,onMenu,onSearch,onOpenMultiview)
@@ -104,7 +104,7 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
                 item{SeasonRail(ui.vodEvents,compactPhone,onOpenEvent)}
                 item{WeekendRail(ui.vodSessions,compactPhone,onOpenSession,side)}
             }
-            HomeDestination.EVENT_DETAIL -> GrandPrixDetail(ui, vm, isTv, compactPhone, side, onOpenSession, { destination = HomeDestination.HOME })
+            HomeDestination.EVENT_DETAIL -> GrandPrixDetail(ui, vm, isTv, compactPhone, side, onOpenSession, { onBackHome() })
             HomeDestination.SHOWS -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=40.dp)) {
                 item{F1PageHeader("Shows","Analysis, tech and F1 TV originals.",side)}
                 item{EditorialGrid(ui.showsDocs.filter{it.pageId!=413},compactPhone){ item -> vm.playEditorial(item); onOpenEditorial(item) }}
