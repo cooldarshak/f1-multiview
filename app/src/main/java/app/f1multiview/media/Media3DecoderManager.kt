@@ -376,8 +376,9 @@ class Media3DecoderManager(context: Context) {
     private fun applyAutoResourceBudget(id: String, player: ExoPlayer) {
         if (id == audioPlayerId) return
 
-        val maxHeight = if (players.size >= 4) 360 else 480
-        val maxWidth = if (maxHeight <= 360) 640 else 854
+        val budget = resourceManager.autoVideoBudget(isReference = false, activeDecoderCount = resourceManager.activeLeases().size)
+        val maxHeight = budget.maxHeight
+        val maxWidth = budget.maxWidth
 
         val candidates = player.currentTracks.groups
             .filter { it.type == C.TRACK_TYPE_VIDEO }
