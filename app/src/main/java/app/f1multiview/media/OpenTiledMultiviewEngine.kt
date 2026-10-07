@@ -264,8 +264,12 @@ class OpenTiledMultiviewEngine(
                 tileIndex = binding.logicalIndex,
                 sourceRect = binding.sourceRect,
                 secure = source?.drmLicenseUrl != null,
-                widthPx = sourceVideoWidth,
-                heightPx = sourceVideoHeight
+                widthPx = ((binding.sourceRect.right - binding.sourceRect.left) * sourceVideoWidth)
+                    .toInt()
+                    .takeIf { it > 0 } ?: plan.tileWidthPx,
+                heightPx = ((binding.sourceRect.bottom - binding.sourceRect.top) * sourceVideoHeight)
+                    .toInt()
+                    .takeIf { it > 0 } ?: plan.tileHeightPx
             )
         }
         return OpenTiledFrameOutput(
