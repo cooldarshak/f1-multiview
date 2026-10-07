@@ -62,21 +62,12 @@ class Media3DecoderManager(context: Context) {
     private val startupFirstFrameAtMs = mutableMapOf<String, Long>()
     private val startupPlayingAtMs = mutableMapOf<String, Long>()
     private val firstFrameRendered = mutableSetOf<String>()
-    private val syncPausedByReference = mutableSetOf<String>()
-    private val syncEngine = SyncEngine()
-    private var syncMainId: String? = null
-    // Remembers the multiview "play all" intent even while later feeds are still loading.
-    // This prevents a feed that is created after playAll() from remaining paused forever.
     private var playAllRequested = false
-    private val syncRunnable = object : Runnable {
-        override fun run() {
-            val mainId = syncMainId
-            if (mainId != null && players.containsKey(mainId)) {
-                syncToMainOnce(mainId)
-                mainHandler.postDelayed(this, 500L)
-            }
-        }
-    }
+    private val syncController = MultiviewSyncController(
+        players = { players },
+        desiredPlaying = { desiredPlaying },
+        onReferenceRemoved = { }
+    )
     private val desiredPlaying = mutableSetOf<String>()
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
     val errors: StateFlow<Map<String, String>> = _errors.asStateFlow()
@@ -165,10 +156,7 @@ class Media3DecoderManager(context: Context) {
                             startupRequestedAtMs[id]?.let { requestedAt ->
                                 Log.i("Media3DecoderManager", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
                             }
-                            val referenceId = syncMainId
-                            if (referenceId != null && referenceId != id && firstFrameRendered.contains(referenceId)) {
-                                syncToMainOnce(referenceId)
-                            }
+                            syncController.markFirstFrame(id)
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -679,132 +667,18 @@ class Media3DecoderManager(context: Context) {
     fun isMuted(id: String): Boolean =
         players[id]?.volume?.let { it <= 0.001f } ?: true
 
-    /**
-     * One-shot synchronization only. We deliberately do not run a continuous
-     * seek loop because F1 TV feed types have different live latencies.
-     * When both manifests expose Unix-epoch window start times, align the
-     * secondary feeds to the main feed's presentation timestamp.
-     */
-    /**
-     * Synchronize the selected live feeds against the main feed.
-     *
-     * Live F1 feeds do not necessarily expose identical media-window positions, so
-     * currentLiveOffset is the primary clock. Small drift is corrected with a tiny
-     * playback-rate nudge (the same approach used by F1OpenViewer); large drift gets
-     * one seek with a cooldown so we never create a rewind/seek loop.
-     */
-    /**
-     * Align all selected feeds to the main feed.
-     *
-     * Replays/VOD use the main player's media position as the authoritative clock.
-     * This is intentionally a seek-only operation: continuously rate-correcting a VOD
-     * replay makes the reference stream stutter and can repeatedly flush follower buffers.
-     *
-     * Live feeds use live-edge offset when Media3 exposes it. Small drift is corrected
-     * gently; a large drift is corrected once with a cooldown.
-     */
-    fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
+    private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
 
-    /** Synchronize followers while applying curated replay channel offsets. */
+    /** Central synchronization entry point. */
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
         syncMainId = mainId
         activeChannelOffsetsMs = channelOffsetsMs
-        mainHandler.removeCallbacks(syncRunnable)
-        syncToMainOnce(mainId)
-        mainHandler.postDelayed(syncRunnable, 500L)
+        syncController.setReference(mainId)
+        syncController.synchronize(channelOffsetsMs)
     }
 
-    private var activeChannelOffsetsMs: Map<String, Long> = emptyMap()
-
-    private fun syncToMainOnce(mainId: String) {
-        val main = players[mainId] ?: return
-        if (!firstFrameRendered.contains(mainId)) return
-        if (main.playbackState == Player.STATE_IDLE || main.playbackState == Player.STATE_ENDED) return
-
-        val now = android.os.SystemClock.elapsedRealtime()
-        val live = main.isCurrentWindowLive
-
-        // The reference feed is authoritative. Media3 reports STATE_BUFFERING when the player
-        // cannot immediately continue from the current position, so followers are held rather
-        // than repeatedly seeking/rate-correcting into an unstable reference. This mirrors the
-        // buffering-protection strategy used by F1OpenViewer.
-        val mainBuffering = desiredPlaying.contains(mainId) &&
-            main.playbackState == Player.STATE_BUFFERING
-
-        players.forEach { (id, player) ->
-            if (id == mainId) return@forEach
-            if (!firstFrameRendered.contains(id)) return@forEach
-            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return@forEach
-
-            if (mainBuffering) {
-                player.setPlaybackSpeed(1f)
-                if (player.isPlaying) {
-                    player.pause()
-                    syncPausedByReference.add(id)
-                }
-                return@forEach
-            }
-
-            // Resume only feeds that this sync engine paused. A user-paused feed remains paused.
-            if (syncPausedByReference.remove(id) && desiredPlaying.contains(id) && !player.isPlaying) {
-                player.play()
-            }
-
-            if (desiredPlaying.contains(id) && !player.isPlaying && player.playbackState == Player.STATE_READY) {
-                player.play()
-            }
-
-            val correctionMs: Long? = if (live) {
-                val mainOffset = main.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-                val followerOffset = player.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0L }
-                if (mainOffset != null && followerOffset != null) followerOffset - mainOffset else null
-            } else {
-                main.currentPosition + (activeChannelOffsetsMs[id] ?: 0L) - player.currentPosition
-            }
-
-            val correction = correctionMs ?: return@forEach
-
-            // VOD uses the tighter 500 ms seek threshold. Live keeps the less disruptive
-            // 1500 ms threshold; ordinary live drift is corrected by playback-rate nudging.
-            val seekThreshold = if (live) 1_500L else syncEngine.hardSeekThresholdMs
-            val decision = syncEngine.decide(
-                deltaMs = correction,
-                canSeek = true,
-                referenceBuffering = false,
-                seekThresholdMs = seekThreshold
-            )
-
-            when (decision.action) {
-                SyncAction.HOLD -> {
-                    player.setPlaybackSpeed(1f)
-                }
-
-                SyncAction.SEEK -> {
-                    player.setPlaybackSpeed(1f)
-                    val target = if (live) {
-                        (player.currentPosition + correction).coerceAtLeast(0L)
-                    } else {
-                        main.currentPosition.coerceAtLeast(0L)
-                    }
-                    val duration = player.duration
-                    player.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                    lastLiveSeekMs[id] = now
-                }
-
-                SyncAction.SPEED_UP,
-                SyncAction.SLOW_DOWN -> {
-                    // Only followers are rate-adjusted. The reference feed is never touched.
-                    if (now - (lastLiveSeekMs[id] ?: 0L) >= 250L) {
-                        player.setPlaybackSpeed(decision.playbackSpeed)
-                    }
-                }
-
-                SyncAction.NORMAL -> {
-                    player.setPlaybackSpeed(1f)
-                }
-            }
-        }
-    }
+    private val syncMainId: String?
+        get() = syncController.referenceId()
 
     private fun windowStart(player: ExoPlayer): Long {
         if (player.currentTimeline.isEmpty) return C.TIME_UNSET
@@ -874,8 +748,7 @@ class Media3DecoderManager(context: Context) {
         playAllRequested = false
         players.keys.forEach { desiredPlaying.remove(it) }
         players.values.forEach { it.stop(); it.playWhenReady = false }
-        mainHandler.removeCallbacks(syncRunnable)
-        syncMainId = null
+        syncController.stop()
     }
 
     fun retain(ids: Set<String>) {
@@ -884,11 +757,7 @@ class Media3DecoderManager(context: Context) {
     }
 
     fun clear(id: String) {
-        if (id == syncMainId) {
-            syncMainId = null
-            mainHandler.removeCallbacks(syncRunnable)
-        }
-        syncPausedByReference.remove(id)
+        syncController.onFeedRemoved(id)
         desiredPlaying.remove(id)
         players.remove(id)?.release()
         resourceManager.release(id)
@@ -937,7 +806,7 @@ class Media3DecoderManager(context: Context) {
     fun release() {
         mainHandler.removeCallbacksAndMessages(null)
         syncMainId = null
-        syncPausedByReference.clear()
+        syncController.reset()
         players.values.forEach { it.release() }
         players.clear()
         resourceManager.reset()
