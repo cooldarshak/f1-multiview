@@ -54,7 +54,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         binding.container.removeAllViews()
     }
 
-    fun binding(feedId: String): SurfaceBinding? = bindings[feedId]
+    fun binding(feedId: String): SurfaceBinding? = bindings[feedId]\n\n    fun boundFeedIds(): Set<String> = bindings.keys.toSet()
 
     fun clear() {
         bindings.clear()
