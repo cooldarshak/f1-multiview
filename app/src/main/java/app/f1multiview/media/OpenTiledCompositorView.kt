@@ -45,6 +45,32 @@ class OpenTiledCompositorView(
     }
 
     private fun installProtectedEgl() {
+    private fun installProtectedEgl() {
+        setEGLConfigChooser(object : EGLConfigChooser {
+            override fun chooseConfig(
+                egl: javax.microedition.khronos.egl.EGL10,
+                display: javax.microedition.khronos.egl.EGLDisplay
+            ): javax.microedition.khronos.egl.EGLConfig {
+                val attributes = intArrayOf(
+                    javax.microedition.khronos.egl.EGL10.EGL_RED_SIZE, 8,
+                    javax.microedition.khronos.egl.EGL10.EGL_GREEN_SIZE, 8,
+                    javax.microedition.khronos.egl.EGL10.EGL_BLUE_SIZE, 8,
+                    javax.microedition.khronos.egl.EGL10.EGL_ALPHA_SIZE, 8,
+                    javax.microedition.khronos.egl.EGL10.EGL_RENDERABLE_TYPE, 4,
+                    0x32C0, 1,
+                    javax.microedition.khronos.egl.EGL10.EGL_NONE
+                )
+                val count = IntArray(1)
+                check(egl.eglChooseConfig(display, attributes, null, 0, count) && count[0] > 0) {
+                    "Protected EGL config is not supported"
+                }
+                val configs = arrayOfNulls<javax.microedition.khronos.egl.EGLConfig>(count[0])
+                check(egl.eglChooseConfig(display, attributes, configs, configs.size, count)) {
+                    "Unable to choose protected EGL config"
+                }
+                return requireNotNull(configs[0])
+            }
+        })
         setEGLContextFactory(object : EGLContextFactory {
             override fun createContext(
                 egl: javax.microedition.khronos.egl.EGL10,
