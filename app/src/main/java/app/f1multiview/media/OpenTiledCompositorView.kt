@@ -33,6 +33,7 @@ class OpenTiledCompositorView(
 
     private val renderer = Renderer()
     private var listener: Listener? = null
+    private var feedTapListener: ((String) -> Unit)? = null
 
     init {
         setEGLContextClientVersion(2)
@@ -145,6 +146,29 @@ class OpenTiledCompositorView(
         }
     }
 
+    fun setFeedTapListener(value: ((String) -> Unit)?) {
+        feedTapListener = value
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.action == android.view.MotionEvent.ACTION_UP) {
+            val feedId = renderer.feedAt(
+                event.x / width.coerceAtLeast(1),
+                event.y / height.coerceAtLeast(1)
+            )
+            if (feedId != null) {
+                feedTapListener?.invoke(feedId)
+                performClick()
+            }
+        }
+        return true
+    }
+
     fun setSession(value: TiledMultiviewSession) {
         renderer.setSession(value)
         requestRender()
@@ -181,6 +205,7 @@ class OpenTiledCompositorView(
         private var sourceVideoWidth = 0
         private var sourceVideoHeight = 0
         private var decoderPlan: OpenTiledDecoderPlan? = null
+        private var outputSlots = emptyList<OpenTiledMultiviewEngine.OutputSlot>()
 
         private val vertexShader = """
             attribute vec2 aPosition;
@@ -248,21 +273,41 @@ class OpenTiledCompositorView(
             val plan = decoderPlan ?: OpenTiledDecoderPlan.from(current, sourceVideoWidth, sourceVideoHeight)
                 ?: return
             decoderPlan = plan
-            val outputColumns = plan.tileColumns
-            val outputRows = plan.tileRows
+            val slots = outputSlots
+                .filter { it.feedId in feeds }
+                .ifEmpty {
+                    val columns = when {
+                        feeds.size <= 1 -> 1
+                        feeds.size <= 4 -> 2
+                        else -> 3
+                    }
+                    val rows = (feeds.size + columns - 1) / columns
+                    feeds.mapIndexed { index, feedId ->
+                        OpenTiledMultiviewEngine.OutputSlot(
+                            feedId = feedId,
+                            x = (index % columns).toFloat() / columns,
+                            y = (index / columns).toFloat() / rows,
+                            width = 1f / columns,
+                            height = 1f / rows,
+                            zIndex = index
+                        )
+                    }
+                }
+                .sortedBy { it.zIndex }
 
-            feeds.forEachIndexed { outputIndex, feedId ->
-                val binding = plan.binding(feedId) ?: return@forEachIndexed
-                val left = outputIndex % outputColumns
-                val top = outputIndex / outputColumns
-                val viewportWidth = width / outputColumns
-                val viewportHeight = height / outputRows
+            slots.forEach { slot ->
+                val binding = plan.binding(slot.feedId) ?: return@forEach
+                val viewportX = (slot.x.coerceIn(0f, 1f) * width).toInt()
+                val viewportYTop = (slot.y.coerceIn(0f, 1f) * height).toInt()
+                val viewportWidth = (slot.width.coerceIn(0.001f, 1f) * width).toInt().coerceAtLeast(1)
+                val viewportHeight = (slot.height.coerceIn(0.001f, 1f) * height).toInt().coerceAtLeast(1)
+                val viewportY = height - viewportYTop - viewportHeight
 
                 GLES20.glViewport(
-                    left * viewportWidth,
-                    height - (top + 1) * viewportHeight,
-                    viewportWidth,
-                    viewportHeight
+                    viewportX,
+                    viewportY.coerceAtLeast(0),
+                    viewportWidth.coerceAtMost(width - viewportX).coerceAtLeast(1),
+                    viewportHeight.coerceAtMost(height).coerceAtLeast(1)
                 )
 
                 val u0 = binding.sourceRect.left
@@ -322,6 +367,21 @@ class OpenTiledCompositorView(
         fun setSelectedFeedIds(value: List<String>) {
             selected = value.distinct()
         }
+
+        fun setOutputSlots(value: List<OpenTiledMultiviewEngine.OutputSlot>) {
+            outputSlots = value.distinctBy { it.feedId }.sortedBy { it.zIndex }
+        }
+
+        fun feedAt(normalizedX: Float, normalizedY: Float): String? =
+            outputSlots
+                .sortedByDescending { it.zIndex }
+                .firstOrNull {
+                    normalizedX >= it.x &&
+                        normalizedX <= it.x + it.width &&
+                        normalizedY >= it.y &&
+                        normalizedY <= it.y + it.height
+                }
+                ?.feedId
 
         fun setSourceVideoSize(width: Int, height: Int) {
             sourceVideoWidth = width
