@@ -1225,6 +1225,17 @@ private fun F1HdrPlayerSurface(
     val screenshotMode = BuildConfig.DEBUG &&
         DebugPresentationSettings.isScreenshotModeEnabled(context) &&
         !protectedContent
+    val decoderGeneration by engine.decoderGeneration.collectAsState()
+
+    // A logical feed can exist before the decoder lease is allocated. The SurfaceView may
+    // therefore be created while its EnginePlayerHandle has no backend player. Rebind it
+    // whenever the engine allocates/reclaims a decoder; otherwise audio can play while the
+    // surface remains permanently black.
+    LaunchedEffect(player.id, decoderGeneration, source) {
+        if (engine.hasDecoder(player.id)) {
+            engine.updateSurface(player.id, player, source)
+        }
+    }
 
     AndroidView(
         modifier = modifier,
