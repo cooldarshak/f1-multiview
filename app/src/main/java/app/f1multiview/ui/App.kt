@@ -1666,6 +1666,163 @@ private fun FullscreenFeedRail(
 }
 
 @Composable
+private fun FullscreenFeedControls(
+    stream: StreamSource,
+    player: EnginePlayerHandle,
+    engine: UnifiedMultiviewEngine,
+    audioTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
+    textTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
+    speed: Float,
+    quality: Quality,
+    fit: Boolean,
+    menu: String?,
+    onReplayPosition: (Long) -> Unit,
+    onSpeed: (Float) -> Unit,
+    onQuality: (Quality) -> Unit,
+    onFit: (Boolean) -> Unit,
+    onMenu: (String?) -> Unit,
+    onMute: () -> Unit,
+    onPlayAll: () -> Unit,
+    onPauseAll: () -> Unit,
+    onSeekAll: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val displayHdr = displaySupportsHdr(context)
+    var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
+    var position by remember(stream.id) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0L)) }
+    var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
+    var trackVersion by remember(stream.id) { mutableIntStateOf(0) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(value: Boolean) { playing = value }
+            override fun onPlaybackStateChanged(state: Int) { playing = player.isPlaying; duration = player.duration.takeIf { it > 0 } ?: 0L }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { trackVersion++ }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    LaunchedEffect(player) {
+        while (true) {
+            position = player.currentPosition.coerceAtLeast(0L)
+            onReplayPosition(position)
+            duration = player.duration.takeIf { it > 0 } ?: 0L
+            delay(250L)
+        }
+    }
+    Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .96f)))).padding(horizontal = 12.dp, vertical = 10.dp)) {
+        if (duration > 0L) {
+            Slider(value = position.toFloat().coerceIn(0f, duration.toFloat()), onValueChange = { position = it.toLong() }, onValueChangeFinished = { player.seekTo(position.coerceIn(0L, duration)) }, valueRange = 0f..duration.toFloat(), colors = SliderDefaults.colors(thumbColor = Red, activeTrackColor = Red, inactiveTrackColor = Color.White.copy(alpha = .28f)))
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("LIVE", color = Red, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.weight(1f))
+                PlayerControlButton("GO LIVE") { player.seekToDefaultPosition(); player.play() }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PlayerControlButton("↶ 10") { onSeekAll(-10_000L) }
+            PlayerControlButton(if (playing) "PAUSE" else "PLAY") { if (playing) onPauseAll() else onPlayAll() }
+            PlayerControlButton("10 ↷") { onSeekAll(10_000L) }
+            Spacer(Modifier.width(2.dp))
+            PlayerControlButton(if (engine.isMuted(stream.id)) "SOUND" else "MUTE") { onMute() }
+            Spacer(Modifier.weight(1f))
+            MenuButton("⚙") { onMenu(if (menu == "settings") null else "settings") }
+        }
+        if (menu != null) {
+            Surface(Modifier.fillMaxWidth().padding(top = 7.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFF17181F).copy(alpha = .98f), border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))) {
+                Column(Modifier.padding(9.dp)) {
+                    when (menu) {
+                        "settings" -> {
+                            Text("PLAYER SETTINGS", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Control(false, "SPEED") { onMenu("speed") }
+                                Control(false, "QUALITY") { onMenu("quality") }
+                                Control(false, "AUDIO") { onMenu("audio") }
+                                Control(false, "SUBS") { onMenu("text") }
+                                Control(false, "PIP") {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {
+                                        val w = player.videoSize.width.coerceAtLeast(16)
+                                        val h = player.videoSize.height.coerceAtLeast(9)
+                                        activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(w, h)).build())
+                                    }
+                                    onMenu(null)
+                                }
+                                Control(false, if (fit) "FIT" else "FILL") {
+                                    onFit(!fit)
+                                    player.videoScalingMode = if (!fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                                    onMenu(null)
+                                }
+                                Control(false, "RETRY") { player.prepare(); player.play(); onMenu(null) }
+                            }
+                        }
+                        "speed" -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { v -> Control(speed == v, v.toString() + "x") { onSpeed(v); player.setPlaybackParameters(PlaybackParameters(v)); onMenu(null) } }
+                        }
+                        "quality" -> {
+                            val resolutions = remember(trackVersion) { engine.availableVideoResolutionsForQualityMenu(stream.id) }
+                            val diagnostics = remember(trackVersion) { engine.currentVideoDiagnostics(stream.id) }
+                            Text(
+                                (
+                                    if (diagnostics != null) {
+                                        "ACTIVE  " + diagnostics.width + "×" + diagnostics.height +
+                                            if (diagnostics.hdr) "  •  HDR" else "  •  SDR"
+                                    } else if (resolutions.isNotEmpty()) {
+                                        "AVAILABLE  " + resolutions.joinToString { it.first.toString() + "×" + it.second }
+                                    } else "TRACKS NOT READY"
+                                ) + if (diagnostics?.hdr == true) {
+                                    if (displayHdr) "  •  DISPLAY HDR" else "  •  DISPLAY SDR"
+                                } else "",
+                                color=White.copy(alpha=.72f), fontSize=7.sp, fontWeight=FontWeight.Bold,
+                                modifier=Modifier.padding(bottom=5.dp)
+                            )
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(Quality.AUTO to "Auto", Quality.UHD to "4K", Quality.FHD to "1080p", Quality.HD to "720p", Quality.SD to "480p").forEach { (q, label) ->
+                                    val available = engine.qualityAvailable(stream.id, q)
+                                    Control(quality == q, if (available || q == Quality.AUTO) label else "$label — N/A") {
+                                        if (available || q == Quality.AUTO) {
+                                            onQuality(q)
+                                            engine.setQuality(stream.id, q)
+                                            onMenu(null)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        "audio" -> {
+                            Text("AUDIO TRACKS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                audioTracks.forEachIndexed { index, (gi, ti, f) ->
+                                    Control(false, f.label ?: f.language?.uppercase() ?: "Audio " + (index + 1)) {
+                                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).setOverrideForType(TrackSelectionOverride(player.currentTracks.groups[gi].mediaTrackGroup, ti)).build()
+                                        onMenu(null)
+                                    }
+                                }
+                                if (audioTracks.isEmpty()) Text("No alternate audio tracks reported by F1 TV.", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                        "text" -> {
+                            Text("SUBTITLES", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Control(false, "Off") { player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build(); onMenu(null) }
+                                textTracks.forEachIndexed { index, (gi, ti, f) ->
+                                    Control(false, f.label ?: f.language?.uppercase() ?: "Subtitle " + (index + 1)) {
+                                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(TrackSelectionOverride(player.currentTracks.groups[gi].mediaTrackGroup, ti)).build()
+                                        onMenu(null)
+                                    }
+                                }
+                                if (textTracks.isEmpty()) Text("No subtitle tracks reported by F1 TV.", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Text(formatPosition(position) + if (duration > 0L) " / " + formatPosition(duration) else "  •  LIVE", color = Color.White.copy(alpha = .72f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
 private fun FullscreenMultiview(
     ui: UiState,
     vm: MultiViewViewModel,
@@ -1919,18 +2076,15 @@ private fun FullscreenMultiview(
                     quality = quality,
                     fit = fit,
                     menu = menu,
-                    displayHdr = displayHdr,
                     onReplayPosition = onReplayPosition,
                     onSpeed = { speed = it },
                     onQuality = { quality = it },
                     onFit = { fit = it },
                     onMenu = { menu = it },
-                    onMute = { muted -> engine.setMuted(active!!.id, muted) },
-                    muted = engine.isMuted(active!!.id),
-                    playing = activePlayer.isPlaying,
-                    onPlay = { activePlayer.play() },
-                    onPause = { activePlayer.pause() },
-                    onSeek = { delta -> activePlayer.seekTo((activePlayer.currentPosition + delta).coerceAtLeast(0L)) }
+                    onMute = { engine.setMuted(active!!.id, !engine.isMuted(active!!.id)) },
+                    onPlayAll = { activePlayer.play() },
+                    onPauseAll = { activePlayer.pause() },
+                    onSeekAll = { delta -> activePlayer.seekTo((activePlayer.currentPosition + delta).coerceAtLeast(0L)) }
                 )
             }
         }
