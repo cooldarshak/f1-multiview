@@ -117,8 +117,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             live = false,
             seasonYear = _ui.value.selectedSeason?.year,
             eventPageId = item.pageId,
-            seriesId = "F1",
-            sessionTypeId = "editorial",
+            country = "F1",
+            dateLabel = "Editorial",
             meetingNumber = null,
             artworkUrl = item.artworkUrl,
             backgroundArtworkUrl = item.artworkUrl
