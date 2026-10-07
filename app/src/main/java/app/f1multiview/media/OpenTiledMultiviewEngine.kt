@@ -327,7 +327,10 @@ class OpenTiledMultiviewEngine(
             "sourceVideoWidth" to sourceVideoWidth.toString(),
             "sourceVideoHeight" to sourceVideoHeight.toString(),
             "protectedOutput" to (source?.drmLicenseUrl != null).toString(),
-            "driftMs" to _state.value.driftMs.toString()
+            "driftMs" to _state.value.driftMs.toString(),
+            "playbackRate" to mseController.state.playbackRate.toString(),
+            "syncMultiplier" to mseController.state.syncMultiplier.toString(),
+            "displayMappingCount" to (output?.displayMappings?.size ?: 0).toString()
         )
     }
 
