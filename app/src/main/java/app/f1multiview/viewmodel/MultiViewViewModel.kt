@@ -46,7 +46,8 @@ data class UiState(
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
     val pendingResume: ContinueWatchingEntry? = null,
-    val tiledMultiviewSession: TiledMultiviewSession? = null
+    val tiledMultiviewSession: TiledMultiviewSession? = null,
+    val selectedTiledFeedIds: List<String> = emptyList()
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -229,7 +230,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
              vodSessions = sessions.sortedBy { it.startTime },
              session = session,
              streams = emptyList(),
-             tiledMultiviewSession = null,
+             tiledMultiviewSession = null, selectedTiledFeedIds = emptyList(),
              selectedStreamIds = emptyList(),
              mainStreamId = null,
              providerError = null,
@@ -282,6 +283,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             _ui.value=_ui.value.copy(
                 tiledMultiviewSession = if (isReference) playback.tiledMultiview
                     else _ui.value.tiledMultiviewSession,
+                selectedTiledFeedIds = if (isReference && playback.tiledMultiview != null) playback.tiledMultiview.feedIds.take(4)
+                    else _ui.value.selectedTiledFeedIds,
                 streams=_ui.value.streams.map{
                     if(it.id==source.id) it.copy(
                         url=playback.manifestUrl,
