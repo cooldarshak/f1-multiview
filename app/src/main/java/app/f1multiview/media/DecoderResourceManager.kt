@@ -16,7 +16,6 @@ class DecoderResourceManager(
 ) {
     data class Allocation(
         val lease: DecoderLease?,
-        val evictedFeedId: String? = null
     )
 
     data class DecoderLease(
@@ -54,20 +53,7 @@ class DecoderResourceManager(
             })
         }
 
-        // Never evict an active reference feed. If the budget is full, a lower-priority
-        // secondary may be displaced. The caller owns the actual player teardown/rebind.
-        val victim = leases.values
-            .filterNot { it.isReference }
-            .minWithOrNull(compareBy<DecoderLease> { it.priority }.thenBy { it.slotId })
-
-        if (victim != null && priority > victim.priority) {
-            leases.remove(victim.feedId)
-            return Allocation(
-                DecoderLease(victim.slotId, stream.id, priority, isReference).also {
-                    leases[stream.id] = it
-                },
-                evictedFeedId = victim.feedId
-            )
+        return Allocation(null)
         }
 
         return Allocation(null)
