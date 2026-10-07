@@ -77,7 +77,7 @@ class OpenTiledDecoderPlanTest {
         assertNotNull(plan)
         assertEquals(0f, plan!!.bindings[0].sourceRect.left, 0.0001f)
         assertEquals(0.5f, plan.bindings[0].sourceRect.right, 0.0001f)
-        assertEquals(0.5f, plan.bindings[0].sourceRect.left, 0.0001f)
+        assertEquals(0.5f, plan.bindings[1].sourceRect.left, 0.0001f)
         assertEquals(1f, plan.bindings[3].sourceRect.right, 0.0001f)
         assertEquals(1f, plan.bindings[3].sourceRect.bottom, 0.0001f)
     }
