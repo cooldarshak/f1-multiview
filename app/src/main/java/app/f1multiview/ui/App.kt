@@ -1000,14 +1000,31 @@ private fun PitWall(
     }
     if (feedPanelOpen) LazyRow(Modifier.fillMaxWidth().padding(top = 8.dp), contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(ui.streams) { stream ->
-            val picked = stream.id in ui.selectedStreamIds
+            val picked = if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
+                val session = ui.tiledMultiviewSession
+                val channel = stream.channelId?.trim().takeIf { !it.isNullOrBlank() }
+                val index = channel?.let { ch -> session?.feeds?.indexOfFirst { it.channelId?.toString() == ch } } ?: -1
+                val tileId = if (index != null && index >= 0) session?.feedIds?.getOrNull(index) else stream.id
+                tileId != null && tileId in ui.selectedTiledFeedIds
+            } else {
+                stream.id in ui.selectedStreamIds
+            }
             val isMain = stream.id == ui.mainStreamId
             var feedFocused by remember(stream.id) { mutableStateOf(false) }
             Surface(Modifier.clip(RoundedCornerShape(10.dp)), shape = RoundedCornerShape(10.dp), color = if (isMain) Red else if (picked) Color(0xFF5A1012) else Surface2, border = BorderStroke(1.dp, if (isMain) Red else Color.White.copy(alpha = .08f))) {
                 Column(Modifier.widthIn(min = 135.dp, max = 190.dp).padding(horizontal = 9.dp, vertical = 7.dp)) {
                     Row(
                         Modifier.fillMaxWidth()
-                            .clickable { onToggleStream(stream.id) }
+                            .clickable {
+                                if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
+                                    // TME selection is logical-feed state, not the generic
+                                    // independent-player selection state.
+                                    // The parent callback remains for fallback backends.
+                                    onToggleStream(stream.id)
+                                } else {
+                                    onToggleStream(stream.id)
+                                }
+                            }
                             .focusable()
                             .onFocusChanged { feedFocused = it.isFocused }
                             .then(if (feedFocused) Modifier.border(2.dp, White, RoundedCornerShape(6.dp)) else Modifier),
@@ -1098,6 +1115,7 @@ private fun PitWall(
                     engine = engine,
                     feedIds = tiledSelected,
                     protectedSource = protectedSource,
+                    layout = ui.layout,
                     modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
                 )
             }
