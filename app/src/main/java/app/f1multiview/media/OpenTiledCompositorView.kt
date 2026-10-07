@@ -77,7 +77,7 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
         private var width = 0
         private var height = 0
         private var sourceVideoWidth = 0
-        private var sourceVideoHeight = 0
+        private var sourceVideoHeight = 0\n        private var decoderPlan: OpenTiledDecoderPlan? = null
 
         private val vertexShader = """
             attribute vec2 aPosition;
@@ -144,22 +144,13 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
             val outputColumns = max(1, kotlin.math.ceil(kotlin.math.sqrt(feeds.size.toDouble())).toInt())
             val outputRows = max(1, kotlin.math.ceil(feeds.size.toDouble() / outputColumns).toInt())
-            val sourceColumns = if (sourceVideoWidth > 0 && current.tileWidth != null) {
-                (sourceVideoWidth / current.tileWidth).coerceAtLeast(1)
-            } else {
-                max(1, kotlin.math.ceil(kotlin.math.sqrt(current.feeds.size.toDouble())).toInt())
-            }
-            val sourceRows = if (sourceVideoHeight > 0 && current.tileHeight != null) {
-                (sourceVideoHeight / current.tileHeight).coerceAtLeast(1)
-            } else {
-                max(1, kotlin.math.ceil(current.feeds.size.toDouble() / sourceColumns).toInt())
-            }
+            val plan = decoderPlan ?: OpenTiledDecoderPlan.from(current, sourceVideoWidth, sourceVideoHeight)
+                ?: return
+            decoderPlan = plan
 
             feeds.forEachIndexed { outputIndex, feedId ->
-                val sourceIndex = current.feeds.indexOfFirst { feed ->
-                    (feed.uuid ?: feed.channelId?.toString() ?: "feed-${feed.index}") == feedId
-                }
-                if (sourceIndex < 0) return@forEachIndexed
+                val binding = plan.binding(feedId) ?: return@forEachIndexed
+                val sourceIndex = binding.logicalIndex
 
                 val sourceColumn = sourceIndex % sourceColumns
                 val sourceRow = sourceIndex / sourceColumns
