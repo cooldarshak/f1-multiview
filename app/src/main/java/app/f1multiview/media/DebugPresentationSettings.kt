@@ -1,6 +1,9 @@
 package app.f1multiview.media
 
 import android.content.Context
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Debug-only playback presentation switch.
@@ -19,16 +22,21 @@ object DebugPresentationSettings {
     @Volatile
     private var cached = false
 
+    private val _screenshotMode = MutableStateFlow(false)
+    val screenshotMode: StateFlow<Boolean> = _screenshotMode.asStateFlow()
+
     fun isScreenshotModeEnabled(context: Context): Boolean {
         val value = context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_SCREENSHOT_MODE, false)
         cached = value
+        _screenshotMode.value = value
         return value
     }
 
     fun setScreenshotMode(context: Context, enabled: Boolean) {
         cached = enabled
+        _screenshotMode.value = enabled
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
