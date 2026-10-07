@@ -64,6 +64,7 @@ import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
 import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.media.UnifiedMultiviewEngine
+import app.f1multiview.media.EnginePlayerHandle
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.HdrSurfaceHints
@@ -140,7 +141,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         if (session.live) return@LaunchedEffect
         while (true) {
             val mainId = ui.mainStreamId ?: break
-            val player = pool.get(mainId)
+            val player = pool.player(mainId)
             val position = player.currentPosition.coerceAtLeast(0L)
             val duration = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
             if (player.currentMediaItem != null && position >= 10_000L) {
@@ -153,7 +154,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     LaunchedEffect(ui.pendingResume?.contentId, ui.mainStreamId) {
         val pending = ui.pendingResume ?: return@LaunchedEffect
         val mainId = ui.mainStreamId ?: return@LaunchedEffect
-        val player = pool.get(mainId)
+        val player = pool.player(mainId)
         repeat(40) {
             if (player.currentMediaItem != null && player.duration > 0L) {
                 val target = pending.positionMs.coerceIn(0L, (player.duration - 15_000L).coerceAtLeast(0L))
@@ -1208,7 +1209,7 @@ private fun ResizeHandle(
 @OptIn(UnstableApi::class)
 @Composable
 private fun F1HdrPlayerSurface(
-    player: androidx.media3.exoplayer.ExoPlayer,
+    player: EnginePlayerHandle,
     modifier: Modifier,
     source: String,
     protectedContent: Boolean
@@ -1261,7 +1262,7 @@ private fun F1HdrPlayerSurface(
 @OptIn(UnstableApi::class)
 @Composable
 private fun PlayerTile(stream: StreamSource, pool: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
-    val player = remember(stream.id) { pool.get(stream.id) }
+    val player = remember(stream.id) { pool.player(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
@@ -1411,7 +1412,7 @@ private fun FullscreenFeedRail(
                     )
                 ) {
                     Box(Modifier.fillMaxSize()) {
-                        val previewPlayer = remember(candidate.id) { pool.get(candidate.id) }
+                        val previewPlayer = remember(candidate.id) { pool.player(candidate.id) }
                         if (candidate.url != null && candidate.id in previewIds) {
                             F1HdrPlayerSurface(
                                 player = previewPlayer,
@@ -1526,7 +1527,7 @@ private fun FullscreenMultiview(
     }
 
     val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
-    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { pool.get(it.id) }
+    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { pool.player(it.id) }
 
     LaunchedEffect(activePlayer, ui.session?.live) {
         if (activePlayer != null && ui.session?.live == false) {
@@ -1560,7 +1561,7 @@ private fun FullscreenMultiview(
 
     fun playAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { pool.play(it.id) }
     fun pauseAll() = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { pool.pause(it.id) }
-    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { val p = pool.get(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
+    fun seekAll(deltaMs: Long) = selected.filter { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }.forEach { val p = pool.player(it.id); p.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L)) }
 
     LaunchedEffect(controlsVisible, feedPickerOpen, editSize, menu) {
         if (controlsVisible && !feedPickerOpen && !editSize && menu == null) {
@@ -1708,7 +1709,7 @@ private fun FullscreenMultiview(
 
         if (active != null && activePlayer != null && controlsVisible) {
             Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
-                    stream = active, player = pool.get(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
+                    stream = active, player = pool.player(active.id), pool = pool, audioTracks = audioTracks, textTracks = textTracks,
                     speed = speed, quality = quality, fit = fit, menu = menu, onReplayPosition = onReplayPosition,
                     onSpeed = { speed = it }, onQuality = { quality = it }, onFit = { fit = it }, onMenu = { menu = it },
                     onMute = { pool.setMuted(active.id, !pool.isMuted(active.id)) },
@@ -2259,7 +2260,7 @@ private fun CanonicalMultiviewLayout(
 @Composable
 private fun FullscreenFeedControls(
     stream: StreamSource,
-    player: androidx.media3.exoplayer.ExoPlayer,
+    player: EnginePlayerHandle,
     pool: UnifiedMultiviewEngine,
     audioTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
     textTracks: List<Triple<Int, Int, androidx.media3.common.Format>>,
@@ -2407,7 +2408,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: UnifiedMul
     val context = LocalContext.current
     val activity = context as? Activity
     val displayHdr = displaySupportsHdr(context)
-    val player = remember(stream.id) { pool.get(stream.id) }
+    val player = remember(stream.id) { pool.player(stream.id) }
 
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
