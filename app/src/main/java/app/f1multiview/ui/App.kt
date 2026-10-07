@@ -79,6 +79,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
+import android.widget.FrameLayout
 import kotlinx.coroutines.delay
 import kotlin.math.max
 
@@ -1328,17 +1329,16 @@ private fun F1HdrPlayerSurface(
     key(player.id) {
         AndroidView(
             modifier = modifier,
-            factory = {
+            factory = { FrameLayout(context) },
+            update = { container ->
                 engine.attachSurface(
                     feedId = player.id,
                     player = player,
                     stream = stream,
                     source = source,
+                    container = container,
                     screenshotMode = screenshotMode
                 )
-            },
-            update = {
-                engine.updateSurface(player.id, player, source)
             },
             onRelease = { released ->
                 engine.detachSurface(player.id, player, released)
