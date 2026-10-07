@@ -319,8 +319,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private fun openTiledCapable(): Boolean {
         val mainId = _ui.value.mainStreamId ?: return false
         val source = _ui.value.streams.firstOrNull { it.id == mainId } ?: return false
-        return source.tmeJson?.let(TmePlaybackParser::parse)?.isTiledSource == true &&
-            source.drmLicenseUrl == null
+        return source.tmeJson?.let(TmePlaybackParser::parse)?.isTiledSource == true
     }
 
     fun setLayout(layout:LayoutPreset){
