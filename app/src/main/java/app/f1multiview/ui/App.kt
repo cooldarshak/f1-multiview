@@ -64,6 +64,7 @@ import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.VodSession
 import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.media.UnifiedMultiviewEngine
+import app.f1multiview.media.OpenTiledSecureSurfaceView
 import app.f1multiview.media.EnginePlayerHandle
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
