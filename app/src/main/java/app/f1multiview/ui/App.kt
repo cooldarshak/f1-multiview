@@ -1125,25 +1125,24 @@ private fun OpenTiledMultiviewWall(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val view = remember(engine, protectedSource) {
-        engine.openTiledView(context, protectedOutput = protectedSource)
-    }
 
-    LaunchedEffect(view, feedIds) {
-        engine.selectOpenTiledFeeds(feedIds)
-    }
-
-    DisposableEffect(view, engine) {
-        engine.attachOpenTiledView(view)
-        onDispose {
-            engine.detachOpenTiledView(view)
-        }
-    }
-
+    /*
+     * AndroidView owns the View instance it creates. Never return a remembered/external
+     * View from factory: doing so allows the same View to retain an old parent and causes
+     * "The specified child already has a parent" during Compose's ViewHolder creation.
+     * The engine binding follows the AndroidView lifecycle instead.
+     */
     AndroidView(
         modifier = modifier.clip(RoundedCornerShape(14.dp)),
-        factory = { view },
-        update = { engine.selectOpenTiledFeeds(feedIds) }
+        factory = {
+            engine.openTiledView(context, protectedOutput = protectedSource).also { created ->
+                engine.attachOpenTiledView(created)
+            }
+        },
+        update = { engine.selectOpenTiledFeeds(feedIds) },
+        onRelease = { released ->
+            engine.detachOpenTiledView(released)
+        }
     )
 }
 @Composable
@@ -1154,18 +1153,22 @@ private fun OpenTiledSecureWall(
 ) {
     val context = LocalContext.current
     if (session == null) return
-    val view = remember(engine) { OpenTiledSecureSurfaceView(context) }
-    LaunchedEffect(view, session) {
-        view.setSession(session)
-        engine.selectOpenTiledFeeds(session.feedIds.take(24))
-    }
-    DisposableEffect(view, engine) {
-        engine.attachOpenTiledSecureView(view)
-        onDispose { engine.detachOpenTiledSecureView(view) }
-    }
+
     AndroidView(
         modifier = modifier.clip(RoundedCornerShape(14.dp)),
-        factory = { view }
+        factory = {
+            OpenTiledSecureSurfaceView(context).also { created ->
+                created.setSession(session)
+                engine.attachOpenTiledSecureView(created)
+            }
+        },
+        update = { view ->
+            view.setSession(session)
+            engine.selectOpenTiledFeeds(session.feedIds.take(24))
+        },
+        onRelease = { released ->
+            engine.detachOpenTiledSecureView(released)
+        }
     )
 }
 
