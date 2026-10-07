@@ -184,13 +184,6 @@ class Media3DecoderManager(context: Context) {
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         val url = stream.url ?: return false
-        if (!forceReload && stream.id !in players && players.size >= maxVideoFeeds) {
-            _errors.value = _errors.value + (
-                stream.id to "4 simultaneous video feeds is the safe limit; 5th feed blocked to prevent decoder crash"
-            )
-            Log.w("Media3DecoderManager", "Blocked feed " + stream.id + ": maxVideoFeeds=" + maxVideoFeeds)
-            return false
-        }
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
         if (playAllRequested) desiredPlaying.add(stream.id)
@@ -203,7 +196,7 @@ class Media3DecoderManager(context: Context) {
         if (lease == null) {
             _errors.value = _errors.value + (stream.id to "No decoder resource available; feed remains logical and decoderless")
             Log.i("Media3DecoderManager", "RESOURCE_WAIT feed=" + stream.id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
-            return
+            return false
         }
         allocation.evictedFeedId?.let { evictedId ->
             Log.i("Media3DecoderManager", "RESOURCE_EVICT feed=" + evictedId + " for=" + stream.id + " slot=" + lease.slotId)
@@ -211,7 +204,7 @@ class Media3DecoderManager(context: Context) {
         }
         val player = createPlayer(stream.id)
 
-        if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
+        if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return true
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
