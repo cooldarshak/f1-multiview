@@ -64,7 +64,7 @@ class OpenTiledMultiviewEngine(
     private var decoderPlan: OpenTiledDecoderPlan? = null
     private var sourceVideoWidth = 0
     private var sourceVideoHeight = 0
-    private val qualityManager = QualityManager()
+    private val qualityManager = QualityManager()\n    private val mseController = OpenTiledMseController()
     private val _state = MutableStateFlow(State())
     private var compositorPlayerListener: Player.Listener? = null
     val state: StateFlow<State> = _state.asStateFlow()
