@@ -42,12 +42,10 @@ data class VideoDiagnostics(
 )
 
 class Media3DecoderManager(context: Context) {
-    // Four simultaneous video feeds are the validated safe ceiling on the current
-    // target device. Keep this guard here as well as in the ViewModel so an accidental
-    // caller cannot instantiate a fifth decoder and crash the process.
-    private val maxVideoFeeds = 4
-    // Phase 2 resource guard: secondary feeds are deliberately constrained before decoder pressure rises.
+    // The platform capability probe provides an upper-bound hint; the policy clamps it
+    // conservatively so we can use more than four feeds where the secure codec pool allows it.
     private val appContext = context.applicationContext
+    private val maxVideoFeeds = DecoderCapacityPolicy.detect()
     private val players = linkedMapOf<String, ExoPlayer>()
     private val resourceManager = DecoderResourceManager(maxVideoDecoders = maxVideoFeeds)
     private val qualityManager = QualityManager()
@@ -76,6 +74,7 @@ class Media3DecoderManager(context: Context) {
         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
         .build()
 
+    fun capacity(): Int = maxVideoFeeds
     fun hasDecoder(id: String): Boolean = players.containsKey(id)
     fun activeDecoderIds(): Set<String> = players.keys.toSet()
 
