@@ -213,6 +213,11 @@ class OpenTiledCompositorView(
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            if (protectedOutput) {
+                // GL_TEXTURE_PROTECTED_EXT. This keeps the external texture on the
+                // protected path; there is no CPU readback or unprotected copy.
+                GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0x8BFA, 1)
+            }
 
             surfaceTexture = SurfaceTexture(textureId).also { st ->
                 st.setOnFrameAvailableListener {
