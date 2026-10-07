@@ -26,7 +26,17 @@ data class PlaybackSession(
     val tmeJson: String? = null,
     /** F1/TME channel view mode when supplied by CONTENT/PLAY. */
     val channelViewMode: String? = null
-)
+) {
+    /**
+     * Parsed TME is deliberately exposed as a first-class playback capability.
+     *
+     * The current Media3 fallback does not pretend to implement Tiledmedia's native
+     * single-player decoder. Callers can inspect/configure the tiled session separately
+     * and fall back to ordinary stream playback until a native tiled backend is present.
+     */
+    val tiledMultiview: TiledMultiviewSession?
+        get() = tmeJson?.let(TiledMultiviewSessionParser::parse)
+}
 data class VodSeason(val year: Int, val pageId: Int)
 data class VodEvent(
     val pageId: Int,
