@@ -198,10 +198,6 @@ class Media3DecoderManager(context: Context) {
             Log.i("Media3DecoderManager", "RESOURCE_WAIT feed=" + stream.id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
             return false
         }
-        allocation.evictedFeedId?.let { evictedId ->
-            Log.i("Media3DecoderManager", "RESOURCE_EVICT feed=" + evictedId + " for=" + stream.id + " slot=" + lease.slotId)
-            releasePlayerOnly(evictedId)
-        }
         val player = createPlayer(stream.id)
 
         if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return true
@@ -881,25 +877,6 @@ class Media3DecoderManager(context: Context) {
     fun retain(ids: Set<String>) {
         players.keys.filterNot(ids::contains).toList().forEach(::clear)
         if (audioPlayerId !in players.keys) setAudioPlayer(null)
-    }
-
-    private fun releasePlayerOnly(id: String) {
-        if (id == syncMainId) {
-            syncMainId = null
-            mainHandler.removeCallbacks(syncRunnable)
-        }
-        syncPausedByReference.remove(id)
-        desiredPlaying.remove(id)
-        players.remove(id)?.release()
-        selectedQualities.remove(id)
-        streamKinds.remove(id)
-        decoderRecoveryAttempts.remove(id)
-        l3SecondaryFallback.remove(id)
-        startupRequestedAtMs.remove(id)
-        startupFirstFrameAtMs.remove(id)
-        startupPlayingAtMs.remove(id)
-        firstFrameRendered.remove(id)
-        if (audioPlayerId == id) audioPlayerId = null
     }
 
     fun clear(id: String) {
