@@ -278,15 +278,6 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
                 onScreenshotModeChanged = { enabled ->
                     if (BuildConfig.DEBUG) {
                         DebugPresentationSettings.setScreenshotMode(context, enabled)
-                        ui.selectedStreamIds
-                            .mapNotNull { id -> ui.streams.firstOrNull { it.id == id && it.url != null } }
-                            .take(4)
-                            .forEach { stream ->
-                                engine.clear(stream.id)
-                                engine.load(stream)
-                            }
-                        engine.playAll()
-                        ui.mainStreamId?.let { engine.syncToMain(it) }
                     }
                 }
             )
@@ -1130,6 +1121,9 @@ private fun OpenTiledMultiviewWall(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
+
+    Box(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
 
     /*
      * AndroidView owns the View instance it creates. Never return a remembered/external
@@ -1139,7 +1133,7 @@ private fun OpenTiledMultiviewWall(
      */
     key(protectedSource) {
         AndroidView(
-            modifier = modifier.clip(RoundedCornerShape(14.dp)),
+                modifier = Modifier.fillMaxSize(),
             factory = {
                 FrameLayout(context).apply {
                     val tiledView = engine.openTiledView(
@@ -1168,6 +1162,10 @@ private fun OpenTiledMultiviewWall(
             }
         )
     }
+        if (screenshotMode) {
+            ScreenshotPlaceholder(label = "TILED MULTIVIEW", modifier = Modifier.fillMaxSize())
+        }
+    }
 }
 @Composable
 private fun OpenTiledSecureWall(
@@ -1176,10 +1174,13 @@ private fun OpenTiledSecureWall(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
     if (session == null) return
 
+    Box(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
+
     AndroidView(
-        modifier = modifier.clip(RoundedCornerShape(14.dp)),
+            modifier = Modifier.fillMaxSize(),
         factory = {
             FrameLayout(context).apply {
                 val secureView = OpenTiledSecureSurfaceView(context)
@@ -1209,6 +1210,10 @@ private fun OpenTiledSecureWall(
             released.removeAllViews()
         }
     )
+        if (screenshotMode) {
+            ScreenshotPlaceholder(label = "SECURE TILED MULTIVIEW", modifier = Modifier.fillMaxSize())
+        }
+    }
 }
 
 @Composable
@@ -1331,6 +1336,27 @@ private fun ResizeHandle(
     }
 }
 
+@Composable
+private fun ScreenshotPlaceholder(
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.zIndex(20f),
+        color = Color(0xFF101116),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .12f))
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("SCREENSHOT MODE", color = White.copy(alpha = .55f), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                Text("VIDEO", color = White, fontSize = 22.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 3.dp))
+                Text(label, color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 private fun F1HdrPlayerSurface(
@@ -1418,6 +1444,12 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
+            if (DebugPresentationSettings.screenshotMode.collectAsState().value) {
+                ScreenshotPlaceholder(
+                    label = stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
