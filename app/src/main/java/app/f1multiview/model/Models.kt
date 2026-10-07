@@ -7,7 +7,7 @@ data class StreamSource(
     val driver: String? = null, val drmLicenseUrl: String? = null,
     val requestHeaders: Map<String, String> = emptyMap(), val drmRequestHeaders: Map<String, String> = emptyMap(),
     val contentId: String? = null, val channelId: String? = null, val isLive: Boolean = true,
-    val playApiVersion: String? = null, val platform: String? = null, val streamType: String? = null,
+    val playApiVersion: String? = null, val platform: String? = null, val streamType: String? = null, val tmeJson: String? = null,
     val ascendonToken: String? = null, val entitlementToken: String? = null, val drmType: String? = null, val playToken: String? = null
 )
 data class DriverTelemetry(val driver: String, val speed: Int, val rpm: Int, val gear: Int, val throttle: Int, val brake: Int, val lap: Int, val lapTime: String)
