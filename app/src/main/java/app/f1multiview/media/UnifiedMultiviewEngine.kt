@@ -20,6 +20,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val feedRegistry = FeedRegistry()
     private val playbackClock = PlaybackClock()
     private val surfaceManager = MultiviewSurfaceManager(context)
+    private val viewportScheduler = ViewportScheduler(maxDecoders = 4)
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
 
@@ -43,12 +44,41 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     internal fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)
+    fun activeDecoderIds(): Set<String> = decoderManager.activeDecoderIds()
 
     fun clear(id: String) {
         if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
         feedRegistry.remove(id)
         playbackClock.onFeedRemoved(id)
         decoderManager.clear(id)
+    }
+
+
+    /**
+     * Reconciles logical feeds with the physical decoder budget according to viewport visibility.
+     * Reference/visible feeds win; already-active feeds are preferred over cold feeds at equal priority.
+     */
+    fun updateViewport(
+        streams: List<StreamSource>,
+        visibleIds: Set<String>,
+        referenceId: String?,
+        autoplay: Boolean = false
+    ): Set<String> {
+        streams.forEach(feedRegistry::put)
+        if (referenceId != null) setAudioPlayer(referenceId)
+        val active = decoderManager.activeDecoderIds()
+        val target = viewportScheduler.schedule(streams, visibleIds, referenceId, active)
+        val targetIds = target.map { it.id }.toSet()
+        active.filterNot(targetIds::contains).forEach(::clear)
+        target.forEach { stream ->
+            if (!decoderManager.hasDecoder(stream.id)) {
+                load(stream)
+            }
+            if (autoplay && decoderManager.hasDecoder(stream.id)) {
+                play(stream.id)
+            }
+        }
+        return targetIds
     }
 
     fun setQuality(id: String, quality: Quality) = decoderManager.setQuality(id, quality)
@@ -118,6 +148,7 @@ private class DecoderManager(context: Context) {
     val errors: StateFlow<Map<String, String>> = backend.errors
 
     fun hasDecoder(id: String): Boolean = backend.hasDecoder(id)
+    fun activeDecoderIds(): Set<String> = backend.activeDecoderIds()
     fun get(id: String): ExoPlayer = backend.get(id)
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
     fun retain(ids: Set<String>) = backend.retain(ids)
