@@ -229,6 +229,28 @@ class OpenTiledMultiviewEngine(
         selectFeeds(feedIds)
     }
 
+
+    fun attachSecureTo(view: OpenTiledSecureSurfaceView) {
+        view.setSession(session ?: return)
+        view.setListener(object : OpenTiledSecureSurfaceView.Listener {
+            override fun onSurfaceReady(surface: android.view.Surface) {
+                val p = player ?: return
+                android.os.Handler(p.applicationLooper).post { p.setVideoSurface(surface) }
+            }
+
+            override fun onSurfaceReleased() {
+                player?.let { p ->
+                    android.os.Handler(p.applicationLooper).post { p.clearVideoSurface() }
+                }
+            }
+        })
+    }
+
+    fun focusSecureFeed(feedId: String?) {
+        // Secure output can only be framed by the system surface/view hierarchy.
+        // It cannot use the GPU tile compositor.
+    }
+
     fun release() {
         player?.release()
         player = null
