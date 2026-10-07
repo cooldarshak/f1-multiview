@@ -36,6 +36,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val openTiledBackend = OpenTiledMultiviewBackend(openTiledEngine)
     private var selectedMultiviewBackend: MultiviewPlaybackBackend = media3FallbackBackend
     private val _backendStatus = MutableStateFlow(media3FallbackBackend.status)
+    private var openTiledMuted = false
     val backendStatus: StateFlow<MultiviewBackendStatus> = _backendStatus
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
@@ -85,6 +86,10 @@ class UnifiedMultiviewEngine(context: Context) {
         openTiledEngine.selectVisibleFeeds(feedIds)
     }
 
+    fun setOpenTiledOutputSlots(slots: List<OpenTiledMultiviewEngine.OutputSlot>) {
+        openTiledEngine.setOutputSlots(slots)
+    }
+
     fun openTiledFrameOutput(): OpenTiledFrameOutput? =
         if (isOpenTiledActive()) openTiledEngine.frameOutput() else null
 
@@ -110,6 +115,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun detachOpenTiledView(view: OpenTiledCompositorView) {
+        openTiledEngine.detachFrom(view)
         view.releaseOutput()
         view.setListener(null)
     }
@@ -313,17 +319,27 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun setAudioPlayer(id: String?) {
         if (isOpenTiledActive()) {
-            // A genuine single-source TME mosaic has one physical audio clock/player.
-            // Logical feed selection therefore controls whether that shared player is
-            // audible, rather than trying to select a nonexistent per-tile player.
-            openTiledEngine.player()?.volume = if (id != null) 1f else 0f
+            if (id == null) {
+                openTiledEngine.player()?.volume = 0f
+            } else if (!openTiledMuted) {
+                openTiledEngine.player()?.volume = 1f
+            }
         } else {
             decoderManager.setAudioPlayer(id)
         }
     }
 
-    fun setMuted(id: String, muted: Boolean) = decoderManager.setMuted(id, muted)
-    fun isMuted(id: String): Boolean = decoderManager.isMuted(id)
+    fun setMuted(id: String, muted: Boolean) {
+        if (isOpenTiledActive()) {
+            openTiledMuted = muted
+            openTiledEngine.player()?.volume = if (muted) 0f else 1f
+        } else {
+            decoderManager.setMuted(id, muted)
+        }
+    }
+
+    fun isMuted(id: String): Boolean =
+        if (isOpenTiledActive()) openTiledMuted else decoderManager.isMuted(id)
 
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
 
@@ -376,6 +392,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun isGpuComposable(feedId: String): Boolean = surfaceManager.isGpuComposable(feedId)
 
     fun release() {
+        openTiledMuted = false
         tiledMultiviewController.clear()
         surfaceManager.clear()
         feedRegistry.clear()
