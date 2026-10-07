@@ -35,7 +35,7 @@ class EnginePlayerHandle internal constructor(
     val playbackState: Int get() = player?.playbackState ?: Player.STATE_IDLE
     val currentMediaItem: MediaItem? get() = player?.currentMediaItem
     val currentTracks: Tracks get() = player?.currentTracks ?: Tracks.EMPTY
-    val videoSize: VideoSize get() = player?.videoSize ?: VideoSize(0, 0, 0f, 0)
+    val videoSize: VideoSize get() = player?.videoSize ?: VideoSize(0, 0, 0, 0f)
     val videoFormat: Format? get() = player?.videoFormat
 
     var trackSelectionParameters: TrackSelectionParameters
