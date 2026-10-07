@@ -178,16 +178,16 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
         }
         val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
-        engine.setAudioPlayer(mainId)
         // Timing and Driver Tracker are native data feeds, not video decoders.
-        // Only real video feeds enter UnifiedMultiviewEngine.
-        ordered.forEach { stream ->
-            if (startedFeeds[stream.id] != true) {
-                if (engine.load(stream)) {
-                    startedFeeds[stream.id] = true
-                }
-            }
-        }
+        // UnifiedMultiviewEngine now decides which logical video feeds receive physical
+        // decoder slots based on the active viewport and reference feed.
+        val scheduled = engine.updateViewport(
+            streams = ordered,
+            visibleIds = videoSelectedIds,
+            referenceId = mainId,
+            autoplay = false
+        )
+        startedFeeds.keys.retainAll(scheduled)
     }
 
     LaunchedEffect(fullscreenMultiview) {
@@ -1353,17 +1353,19 @@ private fun FullscreenFeedRail(
             .filter { it != activeId }
             .take(3)
         previewIds.filterNot { it in visibleIds }.toList().forEach {
-            engine.clear(it)
             previewIds.remove(it)
         }
         visibleIds.forEach { id ->
             if (id !in previewIds) previewIds.add(id)
             vm.prepareStream(id)
         }
-        candidates.filter { it.id in previewIds && it.url != null }.forEach {
-            engine.load(it)
-            engine.play(it.id)
-        }
+        val viewportStreams = candidates.filter { it.id == activeId || it.id in visibleIds }
+        engine.updateViewport(
+            streams = viewportStreams,
+            visibleIds = visibleIds,
+            referenceId = activeId,
+            autoplay = true
+        )
     }
 
     Surface(
