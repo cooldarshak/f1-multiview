@@ -292,15 +292,15 @@ class UnifiedMultiviewEngine(context: Context) {
     fun seekTo(id: String, positionMs: Long) = decoderManager.seekTo(id, positionMs)
     fun seekToDefaultPosition(id: String) = decoderManager.seekToDefaultPosition(id)
     fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) = decoderManager.setPlaybackParameters(id, parameters)
-    fun setPlaybackSpeed(id: String, speed: Float) = decoderManager.setPlaybackSpeed(id, speed)
+    fun setPlaybackSpeed(id: String, speed: Float) { if (isOpenTiledActive()) openTiledEngine.setPlaybackSpeed(speed) else decoderManager.setPlaybackSpeed(id, speed) }
     internal fun attachSurfaceView(id: String, surface: SurfaceView) = decoderManager.attachSurfaceView(id, surface)
     internal fun detachSurfaceView(id: String, surface: SurfaceView) = decoderManager.detachSurfaceView(id, surface)
     internal fun attachTextureView(id: String, texture: TextureView) = decoderManager.attachTextureView(id, texture)
     internal fun detachTextureView(id: String, texture: TextureView) = decoderManager.detachTextureView(id, texture)
     fun pause(id: String) = decoderManager.pause(id)
-    fun playAll() = decoderManager.playAll()
-    fun pauseAll() = decoderManager.pauseAll()
-    fun stopAll() = decoderManager.stopAll()
+    fun playAll() { if (isOpenTiledActive()) openTiledEngine.play() else decoderManager.playAll() }
+    fun pauseAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.pauseAll() }
+    fun stopAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.stopAll() }
 
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
