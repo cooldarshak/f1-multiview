@@ -140,9 +140,8 @@ class UnifiedMultiviewEngine(context: Context) {
                     val prepared = openTiledBackend.prepare(tme, reference, referenceId)
                     if (prepared) {
                         selectedMultiviewBackend = openTiledBackend
-                        tiledMultiviewController.configure(
-                            TiledMultiviewSessionParser.parse(reference.tmeJson!!).toSession()
-                        )
+                        TiledMultiviewSessionParser.parse(reference.tmeJson)
+                        ?.also { tiledMultiviewController.configure(it) }
                     } else {
                         selectedMultiviewBackend = media3FallbackBackend
                     }
