@@ -1,6 +1,6 @@
 package app.f1multiview.model
 
-enum class StreamKind { WORLD, ONBOARD, TIMING, TRACK, HELICAM, DATA }
+enum class StreamKind { WORLD, ONBOARD, TIMING, TRACK, HELICAM, DATA, F1_DASH }
 enum class LayoutPreset { SINGLE, SPLIT_2, GRID_4, GRID_6 }
 data class StreamSource(
     val id: String, val title: String, val kind: StreamKind, val url: String? = null,
