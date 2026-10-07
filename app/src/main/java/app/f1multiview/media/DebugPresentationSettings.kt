@@ -8,12 +8,12 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Debug-only playback presentation switch.
  *
- * When enabled, the protected EGL presentation path is bypassed so normal Android
- * screenshots can capture the video surface during testing. DRM/authentication and
- * decoder selection are otherwise unchanged.
+ * When enabled, protected video surfaces are removed from the Compose hierarchy and
+ * replaced by screenshot-safe placeholders while the underlying playback continues.
+ * DRM/authentication and decoder selection remain unchanged.
  *
- * This is intentionally persisted so a tester does not need to re-enable it after
- * restarting the app. Release builds should expose no UI for this switch.
+ * The persisted setting is useful for debugging; the transient UI-capture action
+ * does not persist and is intended for a single screenshot session.
  */
 object DebugPresentationSettings {
     private const val PREFS = "f1_multiview_debug_settings"
