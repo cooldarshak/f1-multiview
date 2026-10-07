@@ -50,6 +50,7 @@ class Media3DecoderManager(context: Context) {
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
     private val resourceManager = DecoderResourceManager(maxVideoDecoders = maxVideoFeeds)
+    private val qualityManager = QualityManager()
     private val selectedQualities = mutableMapOf<String, Quality>()
     private val streamKinds = mutableMapOf<String, app.f1multiview.model.StreamKind>()
     private val streams = mutableMapOf<String, StreamSource>()
