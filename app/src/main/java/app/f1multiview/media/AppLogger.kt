@@ -2,40 +2,49 @@ package app.f1multiview.media
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.io.File
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * In-app diagnostic logger.
+ * Runtime diagnostics owned by the app.
  *
- * Enabled by default so runtime failures can be diagnosed without requiring logcat.
- * The same entries are also sent to Logcat while enabled. Sensitive fields are redacted
- * before storage/display. A bounded on-disk file survives process crashes/restarts.
+ * A new public log file is created for every process/app launch:
+ * Download/F1 MultiView Logs/YYYY-MM-DD/F1MultiView-HH-mm-ss-SSS.log
+ *
+ * Logging is enabled by default and can be disabled from Settings. The public file is
+ * intentionally separate per launch so a crash never overwrites an earlier session.
  */
 object AppLogger {
     private const val TAG = "F1MultiView"
     private const val PREFS = "f1_multiview_debug_settings"
     private const val KEY_ENABLED = "app_logging_enabled"
-    private const val FILE_NAME = "f1-multiview.log"
-    private const val MAX_FILE_BYTES = 2L * 1024L * 1024L
+    private const val ROOT_FOLDER = "F1 MultiView Logs"
     private const val MAX_MEMORY_ENTRIES = 2000
+    private const val MAX_FILE_BYTES = 4L * 1024L * 1024L
 
     private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+    private val dateFolderFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    private val fileNameFormatter = SimpleDateFormat("HH-mm-ss-SSS", Locale.US)
     private val _entries = MutableStateFlow<List<String>>(emptyList())
     val entries: StateFlow<List<String>> = _entries.asStateFlow()
 
-    @Volatile
-    private var enabled = true
-    @Volatile
-    private var initialized = false
+    @Volatile private var enabled = true
+    @Volatile private var initialized = false
     private var appContext: Context? = null
+    private var logUri: Uri? = null
+    private var logOutput: OutputStream? = null
     private var previousHandler: Thread.UncaughtExceptionHandler? = null
 
     @Synchronized
@@ -44,16 +53,20 @@ object AppLogger {
         appContext = context.applicationContext
         enabled = appContext!!.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_ENABLED, true)
-        loadPersisted()
+
+        // Do not reuse an old file: each process gets a distinct launch log.
+        if (enabled) createLaunchFile(appContext!!)
+
         previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             if (enabled) {
-                e("Crash", "Uncaught exception on ${thread.name}: ${throwable.stackTraceToString()}")
+                e("Crash", "Uncaught exception on ${thread.name}", throwable)
+                flush()
             }
             previousHandler?.uncaughtException(thread, throwable)
         }
         initialized = true
-        i("AppLogger", "Initialized; enabled=$enabled")
+        i("AppLogger", "Initialized; enabled=$enabled; logFile=${logUri ?: "unavailable"}")
     }
 
     fun isEnabled(context: Context): Boolean {
@@ -66,10 +79,19 @@ object AppLogger {
         initialize(context)
         enabled = value
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_ENABLED, value)
-            .apply()
-        if (value) i("AppLogger", "Logging enabled")
+            .edit().putBoolean(KEY_ENABLED, value).apply()
+
+        if (value) {
+            // Enabling after launch gets its own file as well, so disabled time is never
+            // silently merged into an earlier session.
+            closeOutput()
+            createLaunchFile(context.applicationContext)
+            i("AppLogger", "Logging enabled; new log file=$logUri")
+        } else {
+            write("INFO", "AppLogger", "Logging disabled")
+            flush()
+            closeOutput()
+        }
     }
 
     fun d(component: String, message: String) = write("DEBUG", component, message)
@@ -83,10 +105,15 @@ object AppLogger {
     @Synchronized
     fun clear() {
         _entries.value = emptyList()
-        appContext?.let { File(it.filesDir, FILE_NAME).delete() }
+        // Clear means clear the in-app view/current file; it does not delete previous
+        // launch logs from Downloads, preserving crash evidence.
+        runCatching { logOutput?.flush() }
     }
 
-    fun snapshot(): String = _entries.value.joinToString("\n")
+    fun snapshot(): String = _entries.value.joinToString("
+")
+
+    fun currentLogLocation(): String = logUri?.toString() ?: "Log file unavailable"
 
     fun copyToClipboard(context: Context): Boolean {
         val text = snapshot()
@@ -96,14 +123,19 @@ object AppLogger {
         return true
     }
 
+    @Synchronized
+    fun close() {
+        flush()
+        closeOutput()
+    }
+
     private fun write(level: String, component: String, raw: String) {
         if (!enabled) return
         val safe = redact(raw)
         val line = "${formatter.format(Date())} $level [$component] $safe"
         synchronized(this) {
-            val next = (_entries.value + line).takeLast(MAX_MEMORY_ENTRIES)
-            _entries.value = next
-            appContext?.let { persist(it, line) }
+            _entries.value = (_entries.value + line).takeLast(MAX_MEMORY_ENTRIES)
+            append(line)
         }
         when (level) {
             "ERROR" -> Log.e(TAG, line)
@@ -113,27 +145,53 @@ object AppLogger {
         }
     }
 
-    private fun loadPersisted() {
-        val context = appContext ?: return
-        val file = File(context.filesDir, FILE_NAME)
-        if (!file.exists()) return
-        val lines = runCatching { file.readLines() }.getOrDefault(emptyList())
-        _entries.value = lines.takeLast(MAX_MEMORY_ENTRIES)
-    }
-
-    private fun persist(context: Context, line: String) {
-        val file = File(context.filesDir, FILE_NAME)
+    private fun createLaunchFile(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         runCatching {
-            file.appendText(line + "\n")
-            if (file.length() > MAX_FILE_BYTES) {
-                val retained = file.readLines().takeLast(MAX_MEMORY_ENTRIES).joinToString("\n", postfix = "\n")
-                file.writeText(retained)
+            val now = Date()
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, "F1MultiView-${fileNameFormatter.format(now)}.log")
+                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/" + dateFolderFormatter.format(now))
+                put(MediaStore.Downloads.IS_PENDING, 1)
             }
+            val resolver = context.contentResolver
+            logUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (logUri == null) error("MediaStore insert returned null")
+            logOutput = resolver.openOutputStream(logUri!!, "wa")
+            resolver.update(logUri!!, ContentValues().apply {
+                put(MediaStore.Downloads.IS_PENDING, 0)
+            }, null, null)
+        }.onFailure {
+            logUri = null
+            closeOutput()
+            Log.w(TAG, "Unable to create Downloads log file", it)
         }
     }
 
+    private fun append(line: String) {
+        val output = logOutput ?: return
+        runCatching {
+            if (output is java.io.FileOutputStream && output.channel.size() > MAX_FILE_BYTES) return
+            output.write((line + "
+").toByteArray(Charsets.UTF_8))
+            output.flush()
+        }.onFailure { Log.w(TAG, "Unable to write app log", it) }
+    }
+
+    private fun flush() {
+        runCatching { logOutput?.flush() }
+    }
+
+    private fun closeOutput() {
+        runCatching { logOutput?.close() }
+        logOutput = null
+    }
+
     private fun redact(input: String): String {
-        return input
-            .replace(Regex("(?i)(password|passwd|token|authorization|cookie|secret)[=:]\\s*[^\\s,;]+"), "$1=<redacted>")
+        return input.replace(
+            Regex("(?i)(password|passwd|token|authorization|cookie|secret)[=:]\\s*[^\\s,;]+"),
+            "$1=<redacted>"
+        )
     }
 }
