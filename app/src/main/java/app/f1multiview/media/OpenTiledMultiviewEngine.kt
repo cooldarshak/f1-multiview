@@ -60,6 +60,7 @@ class OpenTiledMultiviewEngine(
     private var session: TiledMultiviewSession? = null
     private var source: StreamSource? = null
     private var referenceFeedId: String? = null
+    private val qualityManager = QualityManager()
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -197,6 +198,35 @@ class OpenTiledMultiviewEngine(
         }
         publish(drift = drift)
         return nowMs
+    }
+
+
+    fun setQuality(quality: app.f1multiview.core.playback.Quality) {
+        val p = player ?: return
+        p.trackSelectionParameters = qualityManager.parameters(
+            p,
+            quality,
+            qualityManager.autoBudget(isReference = true, activeDecoderCount = 1, capacity = 1)
+        )
+    }
+
+    fun availableVideoResolutions(): List<Pair<Int, Int>> =
+        player?.let(qualityManager::availableResolutions) ?: emptyList()
+
+    fun selectAudioLanguage(language: String?) {
+        player?.let { p ->
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setPreferredAudioLanguage(language)
+                .build()
+        }
+    }
+
+    fun selectSubtitleLanguage(language: String?) {
+        player?.let { p ->
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setPreferredTextLanguage(language)
+                .build()
+        }
     }
 
     fun attachListener(listener: Player.Listener): Boolean {
