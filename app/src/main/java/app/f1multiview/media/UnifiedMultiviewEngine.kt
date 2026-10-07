@@ -17,6 +17,7 @@ import app.f1multiview.model.StreamSource
  * strategy can be replaced without changing the Compose layer.
  */
 class UnifiedMultiviewEngine(context: Context) {
+    private val tiledMultiviewController = TiledMultiviewController()
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val surfaceManager = MultiviewSurfaceManager(context)
@@ -27,6 +28,22 @@ class UnifiedMultiviewEngine(context: Context) {
     val decoderGeneration: StateFlow<Long> = _decoderGeneration
 
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
+
+    fun configureTiledMultiview(session: app.f1multiview.core.playback.TiledMultiviewSession) {
+        tiledMultiviewController.configure(session)
+    }
+
+    fun tiledMultiviewState(): TiledMultiviewController.State = tiledMultiviewController.state()
+
+    fun setTiledFeeds(feedIds: List<String>) = tiledMultiviewController.setFeeds(feedIds)
+
+    fun focusTiledFeed(feedId: String) = tiledMultiviewController.focus(feedId)
+
+    fun setTiledAudio(feedId: String) = tiledMultiviewController.setAudio(feedId)
+
+    fun setTiledSlots(slots: List<TiledMultiviewController.ViewSlot>) =
+        tiledMultiviewController.setSlots(slots)
+
 
     internal fun backendPlayer(id: String): ExoPlayer = decoderManager.get(id)
     internal fun backendPlayerOrNull(id: String): ExoPlayer? = decoderManager.getOrNull(id)
@@ -175,6 +192,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun isGpuComposable(feedId: String): Boolean = surfaceManager.isGpuComposable(feedId)
 
     fun release() {
+        tiledMultiviewController.clear()
         surfaceManager.clear()
         feedRegistry.clear()
         decoderManager.release()
