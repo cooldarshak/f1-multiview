@@ -244,14 +244,27 @@ class OpenTiledMultiviewEngine(
     fun attachTo(view: OpenTiledCompositorView) {
         view.setSession(session ?: return)
         view.setSelectedFeedIds(_state.value.selectedFeedIds)
+
+        compositorPlayerListener?.let { listener -> player?.removeListener(listener) }
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                view.setSourceVideoSize(videoSize.width, videoSize.height)
+            }
+        }
+        compositorPlayerListener = listener
+        player?.addListener(listener)
+
         view.setListener(object : OpenTiledCompositorView.Listener {
             override fun onOutputSurfaceReady(surface: android.view.Surface) {
                 val p = player ?: return
-                p.setVideoSurface(surface)
+                view.setSourceVideoSize(p.videoSize.width, p.videoSize.height)
+                Handler(p.applicationLooper).post { p.setVideoSurface(surface) }
             }
 
             override fun onOutputSurfaceReleased() {
-                player?.clearVideoSurface()
+                player?.let { p ->
+                    Handler(p.applicationLooper).post { p.clearVideoSurface() }
+                }
             }
         })
     }
@@ -275,11 +288,6 @@ class OpenTiledMultiviewEngine(
                 }
             }
         })
-    }
-
-    fun focusSecureFeed(feedId: String?) {
-        // Secure output can only be framed by the system surface/view hierarchy.
-        // It cannot use the GPU tile compositor.
     }
 
     fun release() {
