@@ -88,6 +88,13 @@ class UnifiedMultiviewEngine(context: Context) {
         autoplay: Boolean = false
     ): Set<String> {
         streams.forEach(feedRegistry::put)
+
+        // If F1 supplied TME metadata with the resolved reference feed, configure the
+        // logical single-player multiview state before the physical fallback scheduler runs.
+        streams.asSequence()
+            .mapNotNull { it.tmeJson?.let(TiledMultiviewSessionParser::parse) }
+            .firstOrNull()
+            ?.let(::configureTiledMultiview)
         if (referenceId != null) setAudioPlayer(referenceId)
 
         // Warm logical feed sources before decoder scheduling. This is the key feed-rail
