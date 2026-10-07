@@ -3,6 +3,7 @@ package app.f1multiview.media
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.opengl.GLES20
+import android.opengl.GLES11Ext
 import android.opengl.GLSurfaceView
 import android.view.Surface
 import app.f1multiview.core.playback.TiledMultiviewSession
@@ -98,11 +99,11 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
             val texture = IntArray(1)
             GLES20.glGenTextures(1, texture, 0)
             textureId = texture[0]
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_EXTERNAL_OES, textureId)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
 
             surfaceTexture = SurfaceTexture(textureId).also { st ->
                 st.setOnFrameAvailableListener {
@@ -194,7 +195,7 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
             GLES20.glVertexAttribPointer(texCoord, 2, GLES20.GL_FLOAT, false, 0, textures)
 
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_EXTERNAL_OES, textureId)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
             GLES20.glUniform1i(program.texture, 0)
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
 
