@@ -115,6 +115,14 @@ class QualityManager {
         return best?.let { it.width to it.height } ?: (fallbackWidth to fallbackHeight)
     }
 
+    fun sourceRecoveryQuality(requested: Quality): Quality = when (requested) {
+        Quality.UHD -> Quality.FHD
+        Quality.FHD -> Quality.HD
+        Quality.HD -> Quality.SD
+        Quality.SD -> Quality.AUTO
+        Quality.AUTO -> Quality.AUTO
+    }
+
     fun recoveryQuality(requested: Quality, isReference: Boolean): Quality = when {
         requested == Quality.UHD -> Quality.FHD
         requested == Quality.FHD && !isReference -> Quality.HD
