@@ -73,6 +73,9 @@ class OpenTiledMultiviewEngine(
     private var clockCorrectionRunnable: Runnable? = null
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /** Exposes the one real Media3 player for UI state/position reads; never creates another player. */
+    internal fun playerOrNull(): ExoPlayer? = player
+
     fun canHandle(tme: TmePlayback): Boolean =
         tme.topology == TmeTopology.SINGLE_MOSAIC_SOURCE &&
             !tme.feeds.firstOrNull()?.url.isNullOrBlank() &&
