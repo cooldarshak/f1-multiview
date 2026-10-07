@@ -3,6 +3,7 @@ package app.f1multiview.media
 import android.content.Context
 import android.view.SurfaceView
 import android.view.TextureView
+import android.os.Handler
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -10,7 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.TiledMultiviewSessionParser
-import app.f1multiview.data.f1tv.TmePlayback
+import app.f1multiview.core.playback.toModel
 import app.f1multiview.model.StreamSource
 
 /**
