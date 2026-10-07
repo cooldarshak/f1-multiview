@@ -38,6 +38,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun clear(id: String) {
+        if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
         feedRegistry.remove(id)
         playbackClock.onFeedRemoved(id)
         decoderManager.clear(id)
