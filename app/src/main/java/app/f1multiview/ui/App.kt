@@ -1877,6 +1877,29 @@ private fun FullscreenMultiview(
         }
 
 
+        if (feedPickerOpen && openTiled && ui.tiledMultiviewSession != null) {
+            Spacer(Modifier.height(6.dp))
+            LazyRow(
+                Modifier.fillMaxWidth().align(Alignment.BottomCenter).zIndex(15f).background(Color.Black.copy(alpha = .88f)).padding(horizontal = 12.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                items(ui.tiledMultiviewSession.feeds, key = { it.index }) { feed ->
+                    val feedId = ui.tiledMultiviewSession.feedIds[feed.index]
+                    val picked = feedId in tiledSelected
+                    Surface(
+                        Modifier.widthIn(min = 135.dp, max = 190.dp).clickable { vm.toggleTiledFeed(feedId) }.focusable(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (picked) Color(0xFF5A1012) else Surface2,
+                        border = BorderStroke(1.dp, if (picked) Red else Color.White.copy(alpha = .08f))
+                    ) {
+                        Row(Modifier.padding(horizontal = 9.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(feed.encoderId ?: feed.uuid ?: "FEED " + (feed.index + 1), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (picked) "✓" else "+", color = White, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
+        }
         if (active != null && activePlayer != null && controlsVisible) {
             Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).focusGroup()) {                FullscreenFeedControls(
                     stream = active, player = engine.player(active.id), engine = engine, audioTracks = audioTracks, textTracks = textTracks,
