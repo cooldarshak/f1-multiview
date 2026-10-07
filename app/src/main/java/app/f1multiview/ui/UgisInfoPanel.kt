@@ -139,9 +139,13 @@ fun UgisInfoPanel(
                                 Column(Modifier.weight(1f)){
                                     Text("App Logging",color=InfoWhite,fontWeight=FontWeight.Bold)
                                     Text(
-                                        if(loggingEnabled) "ON · logs are stored in-app and also sent to Logcat."
+                                        if(loggingEnabled) "ON · a new log file is created for this app launch."
                                         else "OFF · no new diagnostic entries are recorded.",
                                         color=InfoMuted,fontSize=10.sp
+                                    )
+                                    Text(
+                                        "Location: Download/F1 MultiView Logs/YYYY-MM-DD/",
+                                        color=InfoMuted,fontSize=9.sp
                                     )
                                 }
                                 Switch(
