@@ -241,6 +241,60 @@ class OpenTiledMultiviewEngine(
 
     fun player(): ExoPlayer? = player
 
+    /**
+     * Provider-neutral equivalent of the production renderer's frame/display state.
+     * This is real state derived from our active player, decoder plan and selected
+     * logical feeds; it never invents decoded-frame metadata.
+     */
+    fun frameOutput(): OpenTiledFrameOutput? {
+        val currentSession = session ?: return null
+        val plan = decoderPlan ?: OpenTiledDecoderPlan.from(
+            currentSession,
+            sourceVideoWidth,
+            sourceVideoHeight
+        ) ?: return null
+        val selectedIds = _state.value.selectedFeedIds.ifEmpty { plan.bindings.map { it.feedId } }
+        val mappings = selectedIds.mapNotNull { feedId ->
+            val binding = plan.binding(feedId) ?: return@mapNotNull null
+            OpenTiledDisplayObjectMapping(
+                viewId = "tiled-view-$feedId",
+                displayObjectId = binding.logicalIndex,
+                feedId = binding.feedId,
+                decoderId = binding.physicalDecoderId,
+                tileIndex = binding.logicalIndex,
+                sourceRect = binding.sourceRect,
+                secure = source?.drmLicenseUrl != null,
+                widthPx = sourceVideoWidth,
+                heightPx = sourceVideoHeight
+            )
+        }
+        return OpenTiledFrameOutput(
+            positionMs = player?.currentPosition ?: _state.value.positionMs,
+            activeDecoderIds = plan.physicalDecoderIds,
+            displayMappings = mappings,
+            selectedFeedIds = selectedIds
+        )
+    }
+
+    /**
+     * Runtime diagnostics for the tiled path. URLs and authentication material are
+     * intentionally excluded.
+     */
+    fun diagnostics(): Map<String, String> {
+        val output = frameOutput()
+        return mapOf(
+            "backend" to "OPEN_TME",
+            "active" to (_state.value.active).toString(),
+            "physicalDecoderCount" to (output?.activeDecoderCount ?: 0).toString(),
+            "logicalFeedCount" to (_state.value.tiles.size).toString(),
+            "selectedFeedCount" to (_state.value.selectedFeedIds.size).toString(),
+            "sourceVideoWidth" to sourceVideoWidth.toString(),
+            "sourceVideoHeight" to sourceVideoHeight.toString(),
+            "protectedOutput" to (source?.drmLicenseUrl != null).toString(),
+            "driftMs" to _state.value.driftMs.toString()
+        )
+    }
+
     fun attachTo(view: OpenTiledCompositorView) {
         view.setSession(session ?: return)
         view.setSelectedFeedIds(_state.value.selectedFeedIds)
