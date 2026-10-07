@@ -75,6 +75,8 @@ object AppLogger {
     fun d(component: String, message: String) = write("DEBUG", component, message)
     fun i(component: String, message: String) = write("INFO", component, message)
     fun w(component: String, message: String) = write("WARN", component, message)
+    fun w(component: String, message: String, throwable: Throwable) =
+        write("WARN", component, "$message | ${throwable.stackTraceToString()}")
     fun e(component: String, message: String, throwable: Throwable? = null) =
         write("ERROR", component, if (throwable == null) message else "$message | ${throwable.stackTraceToString()}")
 
