@@ -19,10 +19,13 @@ import kotlin.math.max
  *
  * one Media3 decoder -> one SurfaceTexture -> one GL compositor -> N logical tiles.
  *
- * Protected streams must not use this path. The secure Media3 SurfaceView path
- * remains the only path for DRM content.
+ * Protected streams use the same compositor with a protected EGL context/window and
+ * protected external texture. No protected pixels are copied to CPU-visible memory.
  */
-class OpenTiledCompositorView(\n    context: Context,\n    private val protectedOutput: Boolean = false\n) : GLSurfaceView(context) {
+class OpenTiledCompositorView(
+    context: Context,
+    private val protectedOutput: Boolean = false
+) : GLSurfaceView(context) {
     interface Listener {
         fun onOutputSurfaceReady(surface: Surface)
         fun onOutputSurfaceReleased()
@@ -130,7 +133,8 @@ class OpenTiledCompositorView(\n    context: Context,\n    private val protected
         private var width = 0
         private var height = 0
         private var sourceVideoWidth = 0
-        private var sourceVideoHeight = 0\n        private var decoderPlan: OpenTiledDecoderPlan? = null
+        private var sourceVideoHeight = 0
+        private var decoderPlan: OpenTiledDecoderPlan? = null
 
         private val vertexShader = """
             attribute vec2 aPosition;
@@ -299,7 +303,12 @@ class OpenTiledCompositorView(\n    context: Context,\n    private val protected
                 }
     }
 
-    companion object {\n        private const val EGL_PROTECTED_CONTENT_EXT = 0x32C0\n        private const val GL_TEXTURE_PROTECTED_EXT = 0x8BFA\n    }\n\n    private class ShaderProgram(vertexSource: String, fragmentSource: String) {
+    companion object {
+        private const val EGL_PROTECTED_CONTENT_EXT = 0x32C0
+        private const val GL_TEXTURE_PROTECTED_EXT = 0x8BFA
+    }
+
+    private class ShaderProgram(vertexSource: String, fragmentSource: String) {
         val id: Int
         val position: Int
         val texCoord: Int
