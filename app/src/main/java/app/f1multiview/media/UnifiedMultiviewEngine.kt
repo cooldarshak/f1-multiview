@@ -101,8 +101,8 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun detachOpenTiledView(view: OpenTiledCompositorView) {
-        view.setListener(null)
         view.releaseOutput()
+        view.setListener(null)
     }
 
     fun setTiledFeeds(feedIds: List<String>) = tiledMultiviewController.setFeeds(feedIds)
