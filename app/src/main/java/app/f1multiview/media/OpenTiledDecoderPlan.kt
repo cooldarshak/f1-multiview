@@ -2,6 +2,7 @@ package app.f1multiview.media
 
 import app.f1multiview.core.playback.TiledMultiviewSession
 import app.f1multiview.data.f1tv.TmeTopology
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.sqrt
 
@@ -58,16 +59,36 @@ data class OpenTiledDecoderPlan(
             val tileWidth = session.tileWidth ?: return null
             val tileHeight = session.tileHeight ?: return null
 
-            val columns = if (sourceVideoWidth >= tileWidth) {
-                (sourceVideoWidth / tileWidth).coerceAtLeast(1)
+            val feedCount = session.feeds.size
+            val sourceAspect = if (sourceVideoWidth > 0 && sourceVideoHeight > 0) {
+                sourceVideoWidth.toDouble() / sourceVideoHeight.toDouble()
             } else {
-                ceil(sqrt(session.feeds.size.toDouble())).toInt().coerceAtLeast(1)
+                tileWidth.toDouble() / tileHeight.toDouble()
             }
-            val rows = if (sourceVideoHeight >= tileHeight) {
-                (sourceVideoHeight / tileHeight).coerceAtLeast(1)
-            } else {
-                ceil(session.feeds.size.toDouble() / columns).toInt().coerceAtLeast(1)
-            }
+
+            // The feed count is authoritative for grid topology. Source dimensions
+            // are used only to choose the closest valid factor pair. We never allow
+            // a 24-feed session to be forced into a 4x4 grid just because the source
+            // dimensions happen to divide into four nominal tiles.
+            val factors = (1..ceil(sqrt(feedCount.toDouble())).toInt())
+                .filter { feedCount % it == 0 }
+                .flatMap { rowsCandidate ->
+                    val columnsCandidate = feedCount / rowsCandidate
+                    listOf(
+                        columnsCandidate to rowsCandidate,
+                        rowsCandidate to columnsCandidate
+                    )
+                }
+                .distinct()
+
+            val (columns, rows) = factors.minByOrNull { (candidateColumns, candidateRows) ->
+                abs(
+                    (candidateColumns * tileWidth).toDouble() /
+                        (candidateRows * tileHeight).toDouble() - sourceAspect
+                )
+            } ?: (ceil(sqrt(feedCount.toDouble())).toInt().coerceAtLeast(1) to
+                ceil(feedCount.toDouble() / ceil(sqrt(feedCount.toDouble())).toInt()).toInt())
+
 
             val bindings = session.feeds.mapIndexed { index, feed ->
                 val feedId = session.feedIds[index]
