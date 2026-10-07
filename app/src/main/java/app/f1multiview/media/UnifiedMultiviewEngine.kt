@@ -80,6 +80,14 @@ class UnifiedMultiviewEngine(context: Context) {
         if (isOpenTiledActive()) openTiledEngine.attachTo(view)
     }
 
+    fun attachOpenTiledSecureView(view: OpenTiledSecureSurfaceView) {
+        if (isOpenTiledActive()) openTiledEngine.attachSecureTo(view)
+    }
+
+    fun detachOpenTiledSecureView(view: OpenTiledSecureSurfaceView) {
+        view.setListener(null)
+    }
+
     fun detachOpenTiledView(view: OpenTiledCompositorView) {
         view.setListener(null)
         view.releaseOutput()
