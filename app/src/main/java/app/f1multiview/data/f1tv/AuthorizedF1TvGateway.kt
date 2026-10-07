@@ -429,20 +429,26 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             }
         }
 
-        // Put native analytics feeds immediately after the main feed so they are visible
-        // in the feed picker without scrolling past every onboard feed.
-        // TRACKER and DATA remain the original F1-provided playable feeds.
-        // F1 Dash Data is a separate native dashboard driven by the live timing client.
-        if (f1Dash.isEmpty()) {
-            f1Dash += StreamSource(
-                id = "f1-dash-data-" + sessionId,
-                title = "F1 Dash Data",
-                kind = StreamKind.F1_DASH,
-                contentId = null,
-                channelId = null
-            )
-        }
-        (world + tracker + data + f1Dash + timing + helicam + other + onboard).distinctBy { it.id }
+        // Every item parsed from F1 additionalStreams remains an official F1
+        // playable feed, including TRACKER, TIMING and F1_DASH when F1 supplies them.
+        // Our rendered data views are separate entries and must never replace an
+        // official F1 stream.
+        val f1DashData = StreamSource(
+            id = "f1-dash-data-" + sessionId,
+            title = "F1 Dash Data",
+            kind = StreamKind.F1_DASH_DATA,
+            contentId = null,
+            channelId = null
+        )
+        val trackMap = StreamSource(
+            id = "track-map-" + sessionId,
+            title = "Driver Tracker Map",
+            kind = StreamKind.TRACK_MAP,
+            contentId = null,
+            channelId = null
+        )
+        (world + tracker + data + f1Dash + timing + helicam + listOf(f1DashData, trackMap) + other + onboard)
+            .distinctBy { it.id }
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = playbackResolveMutex.withLock {
         val waitMs = 450L - (System.currentTimeMillis() - lastPlaybackResolveAt)
