@@ -1090,8 +1090,9 @@ private fun PitWall(
                 !protectedSource || engine.protectedTiledCompositorSupported()
             }
             if (protectedSource && !protectedCompositorSupported) {
-                OpenTiledSecureFallbackWall(
+                OpenTiledSecureWall(
                     engine = engine,
+                    session = ui.tiledMultiviewSession,
                     modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
                 )
             } else {
@@ -1145,6 +1146,29 @@ private fun OpenTiledMultiviewWall(
         update = { engine.selectOpenTiledFeeds(feedIds) }
     )
 }
+@Composable
+private fun OpenTiledSecureWall(
+    engine: UnifiedMultiviewEngine,
+    session: app.f1multiview.core.playback.TiledMultiviewSession?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    if (session == null) return
+    val view = remember(engine) { OpenTiledSecureSurfaceView(context) }
+    LaunchedEffect(view, session) {
+        view.setSession(session)
+        engine.selectOpenTiledFeeds(session.feedIds.take(24))
+    }
+    DisposableEffect(view, engine) {
+        engine.attachOpenTiledSecureView(view)
+        onDispose { engine.detachOpenTiledSecureView(view) }
+    }
+    AndroidView(
+        modifier = modifier.clip(RoundedCornerShape(14.dp)),
+        factory = { view }
+    )
+}
+
 @Composable
 private fun ResizableCompactWall(selected: List<StreamSource>, engine: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -1567,6 +1591,8 @@ private fun FullscreenMultiview(
     onPreset: (String) -> Unit
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    val openTiled = engine.multiviewBackendStatus().kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME
+    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }.take(24)
     val context = LocalContext.current
     val isTv = remember(context) { isTelevision(context) }
     val displayHdr = displaySupportsHdr(context)
