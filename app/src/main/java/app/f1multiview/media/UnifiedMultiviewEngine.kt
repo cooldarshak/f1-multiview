@@ -85,7 +85,7 @@ class UnifiedMultiviewEngine(context: Context) {
                 var evicted: StreamSource? = null
                 if (decoderManager.availableDecoderSlots() == 0) {
                     evicted = if (evictionCandidates.isNotEmpty()) evictionCandidates.removeAt(0) else null
-                    evicted?.let { clear(it.id) }
+                    evicted?.let { suspend(it.id) }
                 }
 
                 val loaded = load(stream)
@@ -103,7 +103,7 @@ class UnifiedMultiviewEngine(context: Context) {
         // Remove any remaining decoders that are no longer in the viewport target.
         decoderManager.activeDecoderIds()
             .filterNot(targetIds::contains)
-            .forEach(::clear)
+            .forEach(::suspend)
 
         return targetIds
     }
