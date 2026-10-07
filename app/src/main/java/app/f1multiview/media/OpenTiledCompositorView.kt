@@ -118,6 +118,26 @@ class OpenTiledCompositorView(
         })
     }
 
+    companion object {
+        /**
+         * Checks the public EGL protected-content capability before attempting to
+         * create a protected compositor. This prevents a device without the
+         * extension from failing later during GLSurfaceView initialization.
+         */
+        fun supportsProtectedOutput(): Boolean {
+            val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+            if (display == EGL14.EGL_NO_DISPLAY) return false
+            val version = IntArray(2)
+            if (!EGL14.eglInitialize(display, version, 0, version, 1)) return false
+            return try {
+                val extensions = EGL14.eglQueryString(display, EGL14.EGL_EXTENSIONS).orEmpty()
+                extensions.split(' ').any { it == "EGL_EXT_protected_content" }
+            } finally {
+                EGL14.eglTerminate(display)
+            }
+        }
+    }
+
     fun setListener(value: Listener?) {
         listener = value
         if (value != null) {
