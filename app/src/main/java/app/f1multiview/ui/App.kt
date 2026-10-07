@@ -1132,18 +1132,20 @@ private fun OpenTiledMultiviewWall(
      * "The specified child already has a parent" during Compose's ViewHolder creation.
      * The engine binding follows the AndroidView lifecycle instead.
      */
-    AndroidView(
-        modifier = modifier.clip(RoundedCornerShape(14.dp)),
-        factory = {
-            engine.openTiledView(context, protectedOutput = protectedSource).also { created ->
-                engine.attachOpenTiledView(created)
+    key(protectedSource) {
+        AndroidView(
+            modifier = modifier.clip(RoundedCornerShape(14.dp)),
+            factory = {
+                engine.openTiledView(context, protectedOutput = protectedSource).also { created ->
+                    engine.attachOpenTiledView(created)
+                }
+            },
+            update = { engine.selectOpenTiledFeeds(feedIds) },
+            onRelease = { released ->
+                engine.detachOpenTiledView(released)
             }
-        },
-        update = { engine.selectOpenTiledFeeds(feedIds) },
-        onRelease = { released ->
-            engine.detachOpenTiledView(released)
-        }
-    )
+        )
+    }
 }
 @Composable
 private fun OpenTiledSecureWall(
@@ -1318,24 +1320,31 @@ private fun F1HdrPlayerSurface(
         }
     }
 
-    AndroidView(
-        modifier = modifier,
-        factory = {
-            engine.attachSurface(
-                feedId = player.id,
-                player = player,
-                stream = stream,
-                source = source,
-                screenshotMode = screenshotMode
-            )
-        },
-        update = {
-            engine.updateSurface(player.id, player, source)
-        },
-        onRelease = {
-            engine.detachSurface(player.id, player)
-        }
-    )
+    /*
+     * Feed identity is part of the native-view identity. Without this key, Compose can
+     * reuse the same AndroidView node when a grid position changes from feed A to feed B;
+     * the native SurfaceView then remains owned by A while update() starts targeting B.
+     */
+    key(player.id) {
+        AndroidView(
+            modifier = modifier,
+            factory = {
+                engine.attachSurface(
+                    feedId = player.id,
+                    player = player,
+                    stream = stream,
+                    source = source,
+                    screenshotMode = screenshotMode
+                )
+            },
+            update = {
+                engine.updateSurface(player.id, player, source)
+            },
+            onRelease = { released ->
+                engine.detachSurface(player.id, player, released)
+            }
+        )
+    }
 }
 
 @OptIn(UnstableApi::class)
