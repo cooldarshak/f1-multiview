@@ -2424,7 +2424,7 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
         shape=RoundedCornerShape(8.dp),
         border=if (focused) BorderStroke(3.dp, White) else null
     ){
-        Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=7.dp))
+        Text(label,color=White,fontSize=7.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=9.dp,vertical=6.dp))
     }
 }
 @Composable
@@ -2511,9 +2511,9 @@ private fun CompactLayoutPicker(selected: LayoutPreset, onSelect: (LayoutPreset)
         Modifier.clip(RoundedCornerShape(50)).clickable(onClick=onClick).focusable().onFocusChanged { focused = it.isFocused },
         color=if(label=="PAUSE"||label=="PLAY")Red else Color.White.copy(alpha=.12f),
         shape=RoundedCornerShape(50),
-        border=if (focused) BorderStroke(2.dp, White) else null
+        border=if (focused) BorderStroke(1.dp, White) else BorderStroke(1.dp, Color.White.copy(alpha = .06f))
     ){
-        Text(label,color=White,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=11.dp,vertical=8.dp))
+        Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=10.dp,vertical=6.dp))
     }
 }
 @Composable private fun MenuButton(label:String,onClick:()->Unit){
@@ -2524,7 +2524,7 @@ private fun CompactLayoutPicker(selected: LayoutPreset, onSelect: (LayoutPreset)
         shape=RoundedCornerShape(8.dp),
         border=if (focused) BorderStroke(2.dp, White) else null
     ){
-        Text(label,color=White,fontSize=8.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=9.dp,vertical=8.dp))
+        Text(label,color=White,fontSize=7.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=8.dp,vertical=6.dp))
     }
 }
 private fun formatPosition(ms:Long):String{
@@ -2575,7 +2575,7 @@ private fun LayoutGlyph(preset: LayoutPreset, selected: Boolean) {
     when (preset) {
         LayoutPreset.SINGLE -> Box(Modifier.fillMaxSize().border(1.dp, c, RoundedCornerShape(2.dp)))
         LayoutPreset.SPLIT_2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-            Box(Modifier.weight(1f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
+            Box(Modifier.weight(1f).fillMaxHeight().border(1.dp, c, RoundedCornerShape(2.dp)))
             Box(Modifier.weight(1f).fillMaxHeight().border(2.dp, c, RoundedCornerShape(2.dp)))
         }
         LayoutPreset.GRID_4 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
@@ -2604,9 +2604,9 @@ private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
             .onFocusChanged { focused = it.isFocused },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) Red else Surface2,
-        border = if (focused) BorderStroke(3.dp, White) else if (selected) BorderStroke(1.dp, White.copy(alpha = .55f)) else null
+        border = if (focused) BorderStroke(1.dp, White) else if (selected) BorderStroke(1.dp, White.copy(alpha = .35f)) else BorderStroke(1.dp, Color.White.copy(alpha = .05f))
     ) {
-        Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+        Text(label, color = White, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
     }
 }
 
@@ -2614,7 +2614,7 @@ private fun Control(selected: Boolean, label: String, onClick: () -> Unit) {
 private fun Action(label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Surface(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).focusable().onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = .07f),
-        border = if (focused) BorderStroke(3.dp, White) else null) {
+        border = if (focused) BorderStroke(1.dp, White) else BorderStroke(1.dp, Color.White.copy(alpha = .06f))) {
         Text(label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
     }
 }
