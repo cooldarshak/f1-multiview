@@ -10,6 +10,25 @@ import org.json.JSONObject
  * Tme.version, Tme.channel, Tme.metadata.contentId,
  * Tme.advanced.tileSize.width/height, and Tme.feeds[*].
  */
+enum class TmeTopology {
+    /**
+     * One media URL represents the complete tiled/mosaic representation.
+     * This is the only topology that can legitimately enter our one-player path.
+     */
+    SINGLE_MOSAIC_SOURCE,
+
+    /**
+     * Each logical feed has its own compressed media URL. This requires multiple
+     * decoders unless a provider-specific tiled decoder exists.
+     */
+    INDEPENDENT_FEED_SOURCES,
+
+    /**
+     * TME metadata is incomplete and cannot safely determine the media topology.
+     */
+    UNKNOWN
+}
+
 data class TmePlayback(
     val version: Int?,
     val channel: String?,
@@ -17,7 +36,20 @@ data class TmePlayback(
     val tileWidth: Int?,
     val tileHeight: Int?,
     val feeds: List<TmeFeed>
-)
+) {
+    val topology: TmeTopology
+        get() {
+            val urls = feeds.mapNotNull { it.url?.trim()?.takeIf(String::isNotBlank) }.distinct()
+            if (urls.isEmpty()) return TmeTopology.UNKNOWN
+            if (urls.size == 1 && tileWidth != null && tileHeight != null && feeds.size > 1) {
+                return TmeTopology.SINGLE_MOSAIC_SOURCE
+            }
+            return TmeTopology.INDEPENDENT_FEED_SOURCES
+        }
+
+    val isTiledSource: Boolean
+        get() = topology == TmeTopology.SINGLE_MOSAIC_SOURCE
+}
 
 data class TmeFeed(
     val audioEnglish: String?,
