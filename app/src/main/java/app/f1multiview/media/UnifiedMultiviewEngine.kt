@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.model.StreamSource
@@ -22,6 +23,8 @@ class UnifiedMultiviewEngine(context: Context) {
     private val viewportScheduler = ViewportScheduler(maxDecoders = decoderManager.capacity())
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
+    private val _decoderGeneration = MutableStateFlow(0L)
+    val decoderGeneration: StateFlow<Long> = _decoderGeneration
 
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
@@ -111,6 +114,10 @@ class UnifiedMultiviewEngine(context: Context) {
             .filterNot(targetIds::contains)
             .forEach(::suspend)
 
+        // Decoder leases are intentionally dynamic. Notify the Compose surface layer whenever
+        // a feed is allocated/released so a SurfaceView that was created before the decoder
+        // existed gets rebound to the newly allocated ExoPlayer instead of staying black.
+        _decoderGeneration.value += 1L
         return targetIds
     }
 
