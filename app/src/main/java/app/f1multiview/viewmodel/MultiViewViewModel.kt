@@ -106,6 +106,34 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private suspend fun loadVodSessions(event:VodEvent){provider.vodSessions(event).onSuccess{sessions->val ordered=sessions.sortedWith(compareBy<VodSession>{when{it.stage.equals("race",true)&&!it.title.contains("highlight",true)->0;it.stage.equals("race",true)->1;it.stage.equals("qualifying",true)->2;it.stage.equals("sprint",true)->3;it.stage.equals("sprint-qualifying",true)->4;it.stage.startsWith("practice",true)->5;it.stage.equals("pre-show",true)->6;it.stage.equals("post-show",true)->7;else->8}}.thenBy{it.startTime}.thenBy{it.title});val selected=ordered.firstOrNull{it.stage.equals("race",true)&&!it.title.contains("highlight",true)}?:ordered.firstOrNull();_ui.value=_ui.value.copy(vodSessions=ordered,selectedEvent=event);if(selected!=null){val session=Session(selected.contentId,selected.title,selected.series,"Replay",false,event.seasonYear,event.pageId,selected.series,selected.stage,event.meetingNumber,selected.artworkUrl?:event.artworkUrl, selected.backgroundArtworkUrl?:event.backgroundArtworkUrl);_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null);loadStreams(session);loadReplayTiming(session)}}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     fun selectVodSeason(season:VodSeason)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedSeason=season,selectedEvent=null,vodEvents=emptyList(),vodSessions=emptyList());loadVodEvents(season)}
     fun selectVodEvent(event:VodEvent)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedEvent=event,vodSessions=emptyList());loadVodSessions(event)}
+    fun playEditorial(item: EditorialItem)=viewModelScope.launch {
+        // Editorial cards are real F1 TV content, not decorative tiles. Resolve the
+        // item's content id through the same playback gateway used by race sessions.
+        val session = Session(
+            id = item.contentId,
+            name = item.title,
+            series = "F1",
+            sessionType = "Editorial",
+            live = false,
+            seasonYear = _ui.value.selectedSeason?.year,
+            eventPageId = item.pageId,
+            seriesId = "F1",
+            sessionTypeId = "editorial",
+            meetingNumber = null,
+            artworkUrl = item.artworkUrl,
+            backgroundArtworkUrl = item.artworkUrl
+        )
+        _ui.value = _ui.value.copy(
+            session = session,
+            streams = emptyList(),
+            selectedStreamIds = emptyList(),
+            mainStreamId = null,
+            providerError = null,
+            pendingResume = null
+        )
+        loadStreams(session)
+    }
+
     fun selectVodSession(vod:VodSession)=viewModelScope.launch{
          val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl)
          val resume=continueStore.entries.first().firstOrNull { it.contentId == vod.contentId }
