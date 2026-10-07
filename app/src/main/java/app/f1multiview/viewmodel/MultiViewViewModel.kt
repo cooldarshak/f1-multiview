@@ -283,8 +283,10 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             _ui.value=_ui.value.copy(
                 tiledMultiviewSession = if (isReference) playback.tiledMultiview
                     else _ui.value.tiledMultiviewSession,
-                selectedTiledFeedIds = if (isReference && playback.tiledMultiview != null) playback.tiledMultiview.feedIds.take(4)
-                    else _ui.value.selectedTiledFeedIds,
+                selectedTiledFeedIds = if (isReference) {
+                    val tiled = playback.tiledMultiview
+                    if (tiled != null) tiled.feedIds.take(24) else _ui.value.selectedTiledFeedIds
+                } else _ui.value.selectedTiledFeedIds,
                 streams=_ui.value.streams.map{
                     if(it.id==source.id) it.copy(
                         url=playback.manifestUrl,
