@@ -159,6 +159,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun retain(ids: Set<String>) {
+        AppLogger.d("Engine", "retain requested ids=${ids.joinToString(",")}")
         surfaceManager.boundFeedIds().filterNot(ids::contains).forEach { id ->
             surfaceManager.binding(id)?.let { binding ->
                 surfaceManager.detach(id, binding.owner, binding.container)
@@ -166,6 +167,7 @@ class UnifiedMultiviewEngine(context: Context) {
         }
         feedRegistry.retain(ids)
         decoderManager.retain(ids)
+        AppLogger.d("Engine", "retain complete active=${decoderManager.activeDecoderIds()}")
     }
 
     internal fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)
