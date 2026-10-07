@@ -1836,6 +1836,7 @@ private fun FullscreenMultiview(
     val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }.take(24)
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
+    val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
     var railOpen by rememberSaveable { mutableStateOf(true) }
     var activeFeedId by rememberSaveable { mutableStateOf(ui.mainStreamId ?: selected.firstOrNull()?.id) }
@@ -2036,7 +2037,16 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.weight(1f))
                     CompactLayoutPicker(selected = ui.layout, onSelect = vm::setLayout)
                     Spacer(Modifier.width(7.dp))
-                    SmallPlayerButton("SYNC") {
+                    SmallPlayerButton("RESIZE") {
+                        // Resize remains a first-class feature in the normal multiview wall.
+                        // The genuine TME mosaic currently owns a fixed decoder grid, so do
+                        // not fake per-tile resizing here. This control intentionally routes
+                        // the user back to the editable wall instead of silently doing nothing.
+                        controlsVisible = false
+                        onClose()
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    SmallPlayerButton("SYNC ALL") {
                         engine.playAll()
                         val mainId = active?.takeIf {
                             it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
@@ -2044,6 +2054,14 @@ private fun FullscreenMultiview(
                         if (mainId != null) {
                             engine.setAudioPlayer(mainId)
                             engine.syncToMain(mainId)
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    SmallPlayerButton(if (screenshotMode) "SHOW VIDEO" else "CAPTURE UI") {
+                        if (screenshotMode) {
+                            DebugPresentationSettings.exitUiCaptureMode(context)
+                        } else {
+                            DebugPresentationSettings.enterUiCaptureMode()
                         }
                     }
                     Spacer(Modifier.width(6.dp))
