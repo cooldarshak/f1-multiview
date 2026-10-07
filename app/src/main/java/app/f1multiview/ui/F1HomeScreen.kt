@@ -67,7 +67,13 @@ fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhon
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.58f)).clickable { drawer=false })
         }
         AnimatedVisibility(drawer, enter=slideInHorizontally(initialOffsetX={-it}, animationSpec=tween(260, easing=FastOutSlowInEasing)), exit=slideOutHorizontally(targetOffsetX={-it}, animationSpec=tween(200)), modifier=Modifier.align(Alignment.CenterStart).zIndex(51f)) {
-            F1Drawer(isTv, destination, { destination=it; drawer=false }) { drawer=false }
+            F1Drawer(
+                isTv = isTv,
+                selected = destination,
+                onSelect = { destination=it; drawer=false },
+                onSettings = { drawer=false; vm.panel("settings") },
+                onClose = { drawer=false }
+            )
         }
         AnimatedVisibility(search, enter=fadeIn(tween(160)), exit=fadeOut(tween(120)), modifier=Modifier.fillMaxSize().zIndex(60f)) {
             F1Search(ui, vm, { item -> vm.playEditorial(item); onOpenEditorial(item) }, { event -> destination = HomeDestination.EVENT_DETAIL; vm.selectVodEvent(event) }) { search=false }
@@ -151,14 +157,80 @@ private fun F1HomeBody(ui:UiState, vm:MultiViewViewModel, isTv:Boolean, compactP
     }
 }
 
-@Composable private fun F1Drawer(isTv:Boolean,selected:HomeDestination,onSelect:(HomeDestination)->Unit,onClose:()->Unit) {
-    Surface(Modifier.fillMaxHeight().width(if(isTv)390.dp else 340.dp),color=Color(0xFF121319),tonalElevation=8.dp,shadowElevation=20.dp,shape=RoundedCornerShape(topEnd=28.dp,bottomEnd=28.dp)){
+@Composable private fun F1Drawer(
+    isTv:Boolean,
+    selected:HomeDestination,
+    onSelect:(HomeDestination)->Unit,
+    onSettings:()->Unit,
+    onClose:()->Unit
+) {
+    Surface(
+        Modifier.fillMaxHeight().width(if(isTv)390.dp else 340.dp),
+        color=Color(0xFF121319),
+        tonalElevation=8.dp,
+        shadowElevation=20.dp,
+        shape=RoundedCornerShape(topEnd=28.dp,bottomEnd=28.dp)
+    ){
         Column(Modifier.fillMaxSize().padding(22.dp)){
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("F1",color=HomeRed,fontSize=31.sp,fontWeight=FontWeight.Black,letterSpacing=(-2).sp);Spacer(Modifier.width(7.dp));Text("TV",color=HomeText,fontSize=25.sp,fontWeight=FontWeight.ExtraBold);Spacer(Modifier.weight(1f));IconButton(onClick=onClose){Icon(Icons.Default.Close,"Close",tint=HomeText)}}
-            Spacer(Modifier.height(24.dp));Text("EXPLORE",color=HomeMuted,fontSize=10.sp,fontWeight=FontWeight.Black,letterSpacing=1.5.sp,modifier=Modifier.padding(start=10.dp,end=10.dp,bottom=8.dp))
-            HomeDestination.entries.forEach{item->val active=item==selected;NavigationDrawerItem(label={Text(item.label,fontWeight=if(active)FontWeight.Bold else FontWeight.Medium)},selected=active,onClick={onSelect(item)},icon={Icon(if(active)Icons.Default.RadioButtonChecked else Icons.Default.ChevronRight,null)},shape=RoundedCornerShape(18.dp),colors=NavigationDrawerItemDefaults.colors(selectedContainerColor=HomeRed.copy(alpha=.16f),selectedIconColor=HomeRed,selectedTextColor=HomeText,unselectedIconColor=HomeMuted,unselectedTextColor=HomeText))}
-            Spacer(Modifier.height(20.dp));HorizontalDivider(color=Color.White.copy(alpha=.08f));Spacer(Modifier.height(18.dp))
-            Surface(Modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp),color=HomeSurface,border=BorderStroke(1.dp,Color.White.copy(alpha=.07f))){Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Person, contentDescription=null, modifier=Modifier.size(28.dp), tint=HomeText);Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f)){Text("F1 TV ACCOUNT",color=HomeMuted,fontSize=9.sp,fontWeight=FontWeight.Black);Text("Signed in",color=HomeText,fontSize=15.sp,fontWeight=FontWeight.Bold)};Icon(Icons.Default.ChevronRight, contentDescription=null, tint=HomeMuted)}}
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                Text("F1",color=HomeRed,fontSize=31.sp,fontWeight=FontWeight.Black,letterSpacing=(-2).sp)
+                Spacer(Modifier.width(7.dp))
+                Text("TV",color=HomeText,fontSize=25.sp,fontWeight=FontWeight.ExtraBold)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick=onClose){Icon(Icons.Default.Close,"Close",tint=HomeText)}
+            }
+            Spacer(Modifier.height(24.dp))
+            Text("EXPLORE",color=HomeMuted,fontSize=10.sp,fontWeight=FontWeight.Black,letterSpacing=1.5.sp,modifier=Modifier.padding(start=10.dp,end=10.dp,bottom=8.dp))
+            HomeDestination.entries.forEach{item->
+                val active=item==selected
+                NavigationDrawerItem(
+                    label={Text(item.label,fontWeight=if(active)FontWeight.Bold else FontWeight.Medium)},
+                    selected=active,
+                    onClick={onSelect(item)},
+                    icon={Icon(if(active)Icons.Default.RadioButtonChecked else Icons.Default.ChevronRight,null)},
+                    shape=RoundedCornerShape(18.dp),
+                    colors=NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor=HomeRed.copy(alpha=.16f),
+                        selectedIconColor=HomeRed,
+                        selectedTextColor=HomeText,
+                        unselectedIconColor=HomeMuted,
+                        unselectedTextColor=HomeText
+                    )
+                )
+            }
+            NavigationDrawerItem(
+                label={Text("Settings",fontWeight=FontWeight.Medium)},
+                selected=false,
+                onClick=onSettings,
+                icon={Icon(Icons.Default.Settings,null)},
+                shape=RoundedCornerShape(18.dp),
+                colors=NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor=HomeRed.copy(alpha=.16f),
+                    selectedIconColor=HomeRed,
+                    selectedTextColor=HomeText,
+                    unselectedIconColor=HomeMuted,
+                    unselectedTextColor=HomeText
+                )
+            )
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider(color=Color.White.copy(alpha=.08f))
+            Spacer(Modifier.height(18.dp))
+            Surface(
+                Modifier.fillMaxWidth(),
+                shape=RoundedCornerShape(22.dp),
+                color=HomeSurface,
+                border=BorderStroke(1.dp,Color.White.copy(alpha=.07f))
+            ){
+                Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically){
+                    Icon(Icons.Default.Person, contentDescription=null, modifier=Modifier.size(28.dp), tint=HomeText)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)){
+                        Text("F1 TV ACCOUNT",color=HomeMuted,fontSize=9.sp,fontWeight=FontWeight.Black)
+                        Text("Signed in",color=HomeText,fontSize=15.sp,fontWeight=FontWeight.Bold)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription=null, tint=HomeMuted)
+                }
+            }
         }
     }
 }
