@@ -390,7 +390,6 @@ class Media3DecoderManager(context: Context) {
         player.trackSelectionParameters = qualityManager.parameters(
             player = player,
             quality = quality,
-            isReference = isMain,
             autoBudget = budget
         ).buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
