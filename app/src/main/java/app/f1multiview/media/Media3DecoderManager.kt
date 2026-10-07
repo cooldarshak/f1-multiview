@@ -363,6 +363,20 @@ class Media3DecoderManager(context: Context) {
             .sortedByDescending { it.second }
     }
 
+    private fun qualityParameters(player: ExoPlayer, quality: Quality, isMain: Boolean): androidx.media3.common.TrackSelectionParameters {
+        val budget = qualityManager.autoBudget(
+            isReference = isMain,
+            activeDecoderCount = resourceManager.activeLeases().size,
+            capacity = resourceManager.capacity()
+        )
+        return qualityManager.parameters(
+            player = player,
+            quality = quality,
+            isReference = isMain,
+            autoBudget = budget
+        )
+    }
+
     private fun applyAutoResourceBudget(id: String, player: ExoPlayer) {
         if (id == audioPlayerId) return
         val budget = qualityManager.autoBudget(
@@ -420,12 +434,7 @@ class Media3DecoderManager(context: Context) {
         }
         sourceRecoveryAttempts[id] = attempts + 1
         if (fallback != requested) selectedQualities[id] = fallback
-        player.trackSelectionParameters = buildQualityParameters(
-            player = player,
-            quality = fallback,
-            isMain = id == audioPlayerId,
-            preserveAudioSetting = true
-        )
+        player.trackSelectionParameters = qualityParameters(player, fallback, id == audioPlayerId)
         // Retry transient CDN/manifest/network failures before surfacing an error.
         mainHandler.postDelayed({
             if (players[id] === player) {
@@ -524,12 +533,7 @@ class Media3DecoderManager(context: Context) {
         if (recoveryQuality != requested) selectedQualities[id] = recoveryQuality
 
         player.stop()
-        player.trackSelectionParameters = buildQualityParameters(
-            player = player,
-            quality = recoveryQuality,
-            isMain = isMain,
-            preserveAudioSetting = true
-        )
+        player.trackSelectionParameters = qualityParameters(player, recoveryQuality, isMain)
         mainHandler.postDelayed({
             if (players[id] === player) {
                 player.prepare()
