@@ -37,8 +37,8 @@ jobs:
       - name: Install required Android SDK packages
         run: |
           set -euo pipefail
-          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
           yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Restore signing keystore
         env:
