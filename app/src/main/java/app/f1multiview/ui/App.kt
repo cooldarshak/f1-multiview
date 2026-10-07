@@ -1591,7 +1591,7 @@ private fun FullscreenFeedRail(
                         when {
                             candidate.kind == StreamKind.TRACK_MAP -> Box(Modifier.fillMaxSize()) { TrackMapPanel(ui, isTv) }
                             candidate.kind == StreamKind.F1_DASH_DATA -> Box(Modifier.fillMaxSize()) { F1DashDataFeed(ui, isTv) }
-                            candidate.url != null -> {
+                            candidate.url != null && (candidate.id == activeId || candidate.id in previewIds) -> {
                                 F1HdrPlayerSurface(
                                     engine = engine,
                                     player = previewPlayer,
@@ -1976,6 +1976,18 @@ private fun FullscreenMultiview(
                 }
             }
 
+            Box(
+                Modifier
+                    .width(30.dp)
+                    .fillMaxHeight()
+            ) {
+                RailCollapseButton(
+                    open = railOpen,
+                    onClick = { railOpen = !railOpen; menu = null },
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
             if (railOpen) {
                 FullscreenFeedRail(
                     ui = ui,
@@ -1989,18 +2001,10 @@ private fun FullscreenMultiview(
                     modifier = Modifier
                         .fillMaxHeight()
                         .weight(0.29f)
-                        .padding(start = 3.dp, end = 7.dp, top = 4.dp, bottom = 4.dp)
+                        .padding(end = 7.dp, top = 4.dp, bottom = 4.dp)
                 )
-            } else {
-                Spacer(Modifier.width(30.dp))
             }
         }
-
-        RailCollapseButton(
-            open = railOpen,
-            onClick = { railOpen = !railOpen; menu = null },
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
 
         if (controlsVisible) {
             Box(
