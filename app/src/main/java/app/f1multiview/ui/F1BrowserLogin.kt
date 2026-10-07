@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Handler
+import android.widget.FrameLayout
 import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -110,7 +111,8 @@ fun F1BrowserLogin(
                 AndroidView(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     factory = { context: Context ->
-                    WebView(context).apply {
+                        FrameLayout(context).apply {
+                            val webView = WebView(context).apply {
                         webViewRef = this
                         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                         var capturedToken = false
@@ -403,15 +405,31 @@ fun F1BrowserLogin(
                         loadUrl(F1_LOGIN_URL)
                         handler.postDelayed({ captureToken() }, 1000L)
                         handler.postDelayed({ installCookieConsentAutomation() }, 1800L)
-                    }
-                },
-                    update = { webView: WebView -> webViewRef = webView },
-                    onRelease = { webView ->
+                            }
+
+                            addView(
+                                webView,
+                                FrameLayout.LayoutParams(
+                                    FrameLayout.LayoutParams.MATCH_PARENT,
+                                    FrameLayout.LayoutParams.MATCH_PARENT
+                                )
+                            )
+                        }
+                    },
+                    update = { container ->
+                        val webView = container.getChildAt(0) as? WebView ?: return@AndroidView
+                        webViewRef = webView
+                    },
+                    onRelease = { container ->
                         handler.removeCallbacksAndMessages(null)
+                        val webView = container.getChildAt(0) as? WebView
                         if (webViewRef === webView) webViewRef = null
-                        webView.stopLoading()
-                        webView.webViewClient = WebViewClient()
-                        webView.destroy()
+                        webView?.let {
+                            it.stopLoading()
+                            it.webViewClient = WebViewClient()
+                            it.destroy()
+                        }
+                        container.removeAllViews()
                     }
                 )
             }
