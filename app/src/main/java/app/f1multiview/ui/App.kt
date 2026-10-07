@@ -1998,7 +1998,8 @@ private fun FullscreenMultiview(
 
         RailCollapseButton(
             open = railOpen,
-            onClick = { railOpen = !railOpen; menu = null }
+            onClick = { railOpen = !railOpen; menu = null },
+            modifier = Modifier.align(Alignment.CenterEnd)
         )
 
         if (controlsVisible) {
@@ -2414,10 +2415,9 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
     }
 }
 @Composable
-private fun RailCollapseButton(open: Boolean, onClick: () -> Unit) {
+private fun RailCollapseButton(open: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
-        Modifier
-            .align(Alignment.CenterEnd)
+        modifier
             .width(30.dp)
             .height(64.dp)
             .clickable(onClick = onClick)
