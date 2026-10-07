@@ -33,11 +33,18 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun retain(ids: Set<String>) {
-        surfaceManager.boundFeedIds().filterNot(ids::contains).forEach { id ->\n            surfaceManager.binding(id)?.let { binding ->\n                if (decoderManager.hasDecoder(id)) surfaceManager.detach(id, player(id))\n            }\n        }\n        feedRegistry.retain(ids)
+        surfaceManager.boundFeedIds().filterNot(ids::contains).forEach { id ->
+            surfaceManager.binding(id)?.let { binding ->
+                if (decoderManager.hasDecoder(id)) surfaceManager.detach(id, player(id))
+            }
+        }
+        feedRegistry.retain(ids)
         decoderManager.retain(ids)
     }
 
-    internal fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)\n\n    fun clear(id: String) {
+    internal fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)
+
+    fun clear(id: String) {
         if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
         feedRegistry.remove(id)
         playbackClock.onFeedRemoved(id)
@@ -110,7 +117,8 @@ private class DecoderManager(context: Context) {
 
     val errors: StateFlow<Map<String, String>> = backend.errors
 
-    fun hasDecoder(id: String): Boolean = backend.hasDecoder(id)\n    fun get(id: String): ExoPlayer = backend.get(id)
+    fun hasDecoder(id: String): Boolean = backend.hasDecoder(id)
+    fun get(id: String): ExoPlayer = backend.get(id)
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
     fun retain(ids: Set<String>) = backend.retain(ids)
     fun clear(id: String) = backend.clear(id)
