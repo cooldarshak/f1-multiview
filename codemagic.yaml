@@ -8,6 +8,8 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+        - pattern: feature/tiledmedia-multiview-rearchitecture
+          include: true
         - pattern: feature/android-tv-remote
           include: true
     environment:
@@ -16,12 +18,34 @@ workflows:
     scripts:
       - name: Configure Android SDK
         script: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+
+      - name: Determine canonical build version
+        script: |
+          set -euo pipefail
+          VERSION_CODE="$(bash scripts/ci-version-code.sh)"
+          echo "Canonical versionCode=$VERSION_CODE"
+          echo "CM_CANONICAL_VERSION_CODE=$VERSION_CODE" >> "$CM_ENV"
+
+      - name: Clean build outputs
+        script: |
+          set -euo pipefail
+          rm -rf app/build/outputs/apk artifacts
+          mkdir -p artifacts
+
       - name: Assemble signed debug APK
         script: |
+          set -euo pipefail
           chmod +x ./gradlew
-          UPDATED_VERSION_CODE=$((1000 + PROJECT_BUILD_NUMBER))
-          ./gradlew testDebugUnitTest assembleDebug \
-            -PversionCode="$UPDATED_VERSION_CODE" \
-            -PversionName="1.1.$UPDATED_VERSION_CODE"
+          ./gradlew --no-daemon clean testDebugUnitTest assembleDebug             -PversionCode="$CM_CANONICAL_VERSION_CODE"             -PversionName="1.1.$CM_CANONICAL_VERSION_CODE"
+
+      - name: Verify and stage canonical APK
+        script: |
+          set -euo pipefail
+          mapfile -t APKS < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print)
+          test "${#APKS[@]}" -eq 1
+          APK="${APKS[0]}"
+          cp "$APK" artifacts/f1-multiview-debug.apk
+          bash scripts/verify-apk.sh artifacts/f1-multiview-debug.apk
+
     artifacts:
-      - app/build/outputs/apk/debug/*.apk
+      - artifacts/f1-multiview-debug.apk
