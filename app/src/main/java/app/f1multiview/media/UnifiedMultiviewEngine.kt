@@ -126,6 +126,11 @@ class UnifiedMultiviewEngine(context: Context) {
 
     internal fun backendPlayer(id: String): ExoPlayer = decoderManager.get(id)
     internal fun backendPlayerOrNull(id: String): ExoPlayer? = decoderManager.getOrNull(id)
+    /** Returns the real single tiled player only for its reference feed. */
+    internal fun openTiledPlayerOrNull(id: String): ExoPlayer? =
+        if (isOpenTiledActive() && openTiledEngine.state.value.referenceFeedId == id) {
+            openTiledEngine.playerOrNull()
+        } else null
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         feedRegistry.put(stream)
