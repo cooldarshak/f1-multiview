@@ -1276,7 +1276,7 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
         colors = CardDefaults.cardColors(containerColor = Color.Black)
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id, protectedContent = stream.drmLicenseUrl != null)
+            F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
@@ -2496,7 +2496,9 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(0.73f).fillMaxHeight()) {
                 F1HdrPlayerSurface(
+                    engine = engine,
                     player = player,
+                    stream = stream,
                     modifier = Modifier.fillMaxSize(),
                     source = "fullscreen-" + stream.id,
                     protectedContent = stream.drmLicenseUrl != null
