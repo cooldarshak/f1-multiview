@@ -53,7 +53,7 @@ class OpenTiledCompositorView(
             ): javax.microedition.khronos.egl.EGLContext {
                 val attributes = intArrayOf(
                     EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
-                    EGL_PROTECTED_CONTENT_EXT, EGL14.EGL_TRUE,
+                    0x32C0, EGL14.EGL_TRUE,
                     EGL14.EGL_NONE
                 )
                 return egl.eglCreateContext(
@@ -301,11 +301,6 @@ class OpenTiledCompositorView(
                     put(values)
                     position(0)
                 }
-    }
-
-    companion object {
-        private const val EGL_PROTECTED_CONTENT_EXT = 0x32C0
-        private const val GL_TEXTURE_PROTECTED_EXT = 0x8BFA
     }
 
     private class ShaderProgram(vertexSource: String, fragmentSource: String) {
