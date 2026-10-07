@@ -376,6 +376,26 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) resolveSource(source)
 }
+    fun toggleTiledFeed(feedId: String) {
+        val session = _ui.value.tiledMultiviewSession ?: return
+        val validIds = session.feedIds
+        if (feedId !in validIds) return
+        val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
+        val next = if (feedId in current) {
+            current.filterNot { it == feedId }
+        } else {
+            if (current.size >= 24) {
+                _ui.value = _ui.value.copy(providerError = "The tiled source has reached its 24-feed logical limit.")
+                return
+            }
+            current + feedId
+        }
+        _ui.value = _ui.value.copy(
+            selectedTiledFeedIds = next,
+            providerError = null
+        )
+    }
+
     fun activateTracker(){
     _ui.value=_ui.value.copy(selectedPanel="tracker")
     loadTrackMapGeometry()
