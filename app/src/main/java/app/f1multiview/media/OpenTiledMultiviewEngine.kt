@@ -3,6 +3,8 @@ package app.f1multiview.media
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.f1multiview.core.playback.TiledMultiviewSession
@@ -67,6 +69,7 @@ class OpenTiledMultiviewEngine(
             tme.tileWidth != null &&
             tme.tileHeight != null
 
+    @OptIn(UnstableApi::class)
     fun prepare(
         tme: TmePlayback,
         source: StreamSource,
@@ -80,7 +83,18 @@ class OpenTiledMultiviewEngine(
         this.source = source
         this.referenceFeedId = referenceFeedId ?: tme.feeds.firstOrNull()?.uuid
         this.player = playerFactory().also { p ->
-            p.setMediaItem(MediaItem.Builder().setUri(url).build())
+            val builder = MediaItem.Builder()
+                .setUri(url)
+                .setMediaId("tme-mosaic-" + (tme.contentId ?: "unknown"))
+            if (source.drmLicenseUrl != null) {
+                val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                    .setLicenseUri(source.drmLicenseUrl)
+                if (source.drmRequestHeaders.isNotEmpty()) {
+                    drmBuilder.setLicenseRequestHeaders(source.drmRequestHeaders)
+                }
+                builder.setDrmConfiguration(drmBuilder.build())
+            }
+            p.setMediaItem(builder.build())
             p.playWhenReady = true
             p.prepare()
         }
