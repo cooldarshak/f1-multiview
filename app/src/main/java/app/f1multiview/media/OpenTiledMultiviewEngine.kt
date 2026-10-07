@@ -47,11 +47,26 @@ class OpenTiledMultiviewEngine(
         val heightPx: Int
     )
 
+    /**
+     * Presentation geometry is separate from the source mosaic geometry.
+     * SourceRect says where a feed is inside the decoded mosaic. OutputSlot says
+     * where that feed is shown on screen.
+     */
+    data class OutputSlot(
+        val feedId: String,
+        val x: Float,
+        val y: Float,
+        val width: Float,
+        val height: Float,
+        val zIndex: Int = 0
+    )
+
     data class State(
         val active: Boolean = false,
         val sourceUrl: String? = null,
         val tiles: List<Tile> = emptyList(),
         val selectedFeedIds: List<String> = emptyList(),
+        val outputSlots: List<OutputSlot> = emptyList(),
         val referenceFeedId: String? = null,
         val positionMs: Long = 0L,
         val isPlaying: Boolean = false,
@@ -69,6 +84,7 @@ class OpenTiledMultiviewEngine(
     private val mseController = OpenTiledMseController()
     private val _state = MutableStateFlow(State())
     private var compositorPlayerListener: Player.Listener? = null
+    private var attachedCompositorView: OpenTiledCompositorView? = null
     private var clockCorrectionHandler: Handler? = null
     private var clockCorrectionRunnable: Runnable? = null
     val state: StateFlow<State> = _state.asStateFlow()
@@ -162,6 +178,7 @@ class OpenTiledMultiviewEngine(
         val current = _state.value.tiles
         val selected = feedIds.filter { id -> current.any { it.feedId == id } }.distinct()
         publish(selected = selected)
+        attachedCompositorView?.setSelectedFeedIds(selected)
     }
 
     fun selectAll() {
@@ -335,8 +352,10 @@ class OpenTiledMultiviewEngine(
     }
 
     fun attachTo(view: OpenTiledCompositorView) {
+        attachedCompositorView = view
         view.setSession(session ?: return)
         view.setSelectedFeedIds(_state.value.selectedFeedIds)
+        view.setOutputSlots(_state.value.outputSlots)
 
         compositorPlayerListener?.let { listener -> player?.removeListener(listener) }
         val listener = object : Player.Listener {
@@ -372,6 +391,25 @@ class OpenTiledMultiviewEngine(
         selectFeeds(feedIds)
     }
 
+    fun setOutputSlots(slots: List<OutputSlot>) {
+        val validIds = session?.feedIds?.toSet().orEmpty()
+        val valid = slots
+            .asSequence()
+            .filter { it.feedId in validIds }
+            .distinctBy { it.feedId }
+            .sortedBy { it.zIndex }
+            .toList()
+        _state.value = _state.value.copy(outputSlots = valid)
+        attachedCompositorView?.setOutputSlots(valid)
+    }
+
+    fun detachFrom(view: OpenTiledCompositorView) {
+        if (attachedCompositorView === view) {
+            view.setListener(null)
+            attachedCompositorView = null
+        }
+    }
+
 
     fun attachSecureTo(view: OpenTiledSecureSurfaceView) {
         view.setSession(session ?: return)
@@ -393,6 +431,7 @@ class OpenTiledMultiviewEngine(
         stopClockCorrection()
         compositorPlayerListener?.let { listener -> player?.removeListener(listener) }
         compositorPlayerListener = null
+        attachedCompositorView = null
         player?.release()
         player = null
         session = null
@@ -416,6 +455,7 @@ class OpenTiledMultiviewEngine(
             sourceUrl = p?.currentMediaItem?.localConfiguration?.uri?.toString(),
             tiles = tiles,
             selectedFeedIds = selected,
+            outputSlots = _state.value.outputSlots,
             referenceFeedId = referenceFeedId,
             positionMs = p?.currentPosition ?: 0L,
             isPlaying = p?.isPlaying == true,
