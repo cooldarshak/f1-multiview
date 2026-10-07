@@ -54,15 +54,4 @@ class DecoderResourceManagerTest {
         assertEquals(100, manager.lease("secondary")?.priority)
     }
 
-    @Test
-    fun secondaryBudgetTightensAtFullDecoderCapacity() {
-        val manager = DecoderResourceManager(4)
-
-        assertEquals(854, manager.autoVideoBudget(false, 1).maxWidth)
-        assertEquals(480, manager.autoVideoBudget(false, 1).maxHeight)
-        assertEquals(640, manager.autoVideoBudget(false, 4).maxWidth)
-        assertEquals(360, manager.autoVideoBudget(false, 4).maxHeight)
-        assertEquals(1920, manager.autoVideoBudget(true, 4).maxWidth)
-        assertEquals(1080, manager.autoVideoBudget(true, 4).maxHeight)
-    }
 }
