@@ -75,6 +75,7 @@ class Media3DecoderManager(context: Context) {
         .build()
 
     fun capacity(): Int = maxVideoFeeds
+    fun availableDecoderSlots(): Int = resourceManager.availableSlots()
     fun hasDecoder(id: String): Boolean = players.containsKey(id)
     fun activeDecoderIds(): Set<String> = players.keys.toSet()
 
