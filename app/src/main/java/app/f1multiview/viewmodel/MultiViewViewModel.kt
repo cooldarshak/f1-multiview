@@ -308,7 +308,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-        if (source.kind == StreamKind.TIMING || source.kind == StreamKind.TRACK) return@launch
+        if (source.kind == StreamKind.TIMING || source.kind == StreamKind.TRACK || source.kind == StreamKind.F1_DASH) return@launch
         val current=_ui.value.selectedStreamIds
         val maxFeeds=when(_ui.value.layout){
             LayoutPreset.SINGLE->1
