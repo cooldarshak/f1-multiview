@@ -91,8 +91,9 @@ class OpenTiledMultiviewBackend(
             session.tileHeight > 0 &&
             session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct().size == 1
 
-    fun canHandle(tme: TmePlayback): Boolean =
-        tme.topology == TmeTopology.SINGLE_MOSAIC_SOURCE &&
+    fun canHandle(tme: TmePlayback, source: StreamSource): Boolean =
+        source.drmLicenseUrl == null &&
+            tme.topology == TmeTopology.SINGLE_MOSAIC_SOURCE &&
             engine.canHandle(tme)
 
     fun prepare(tme: TmePlayback, source: StreamSource, referenceFeedId: String? = null): Boolean =
