@@ -344,8 +344,8 @@ class UnifiedMultiviewEngine(context: Context) {
     fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) =
         surfaceManager.update(feedId, player, source)
 
-    fun detachSurface(feedId: String, player: EnginePlayerHandle) =
-        surfaceManager.detach(feedId, player)
+    fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout) =
+        surfaceManager.detach(feedId, player, container)
 
     fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = surfaceManager.renderSlots()
 
