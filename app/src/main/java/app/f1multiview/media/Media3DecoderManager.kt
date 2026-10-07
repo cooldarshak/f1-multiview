@@ -326,7 +326,6 @@ class Media3DecoderManager(context: Context) {
             val source = buildMediaSourceFactory(stream).createMediaSource(mediaItem)
             preloadManager.addMediaSource(source, rank)
             preloadedMediaSources[stream.id] = source
-            preloadManager.invalidate()
             Log.i("Media3DecoderManager", "PRELOAD_REGISTER id=${stream.id} rank=$rank")
         }.onFailure { error ->
             Log.w("Media3DecoderManager", "PRELOAD_REGISTER_FAILED id=${stream.id}", error)
@@ -338,7 +337,6 @@ class Media3DecoderManager(context: Context) {
         orderedIds.forEachIndexed { index, id -> preloadRanks[id] = index }
         preloadReferenceRank = referenceId?.let { preloadRanks[it] } ?: 0
         preloadManager.setCurrentPlayingIndex(preloadReferenceRank)
-        preloadManager.invalidate()
     }
 
     /**
