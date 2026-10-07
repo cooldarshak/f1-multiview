@@ -405,7 +405,8 @@ class OpenTiledMultiviewEngine(
 
     fun detachFrom(view: OpenTiledCompositorView) {
         if (attachedCompositorView === view) {
-            view.setListener(null)
+            // UnifiedMultiviewEngine releases the output surface first, then clears
+            // the listener. Clearing it here would lose the surface-release callback.
             attachedCompositorView = null
         }
     }
