@@ -245,11 +245,11 @@ class OpenTiledCompositorView(
             }
             if (feeds.isEmpty() || width <= 0 || height <= 0) return
 
-            val outputColumns = max(1, kotlin.math.ceil(kotlin.math.sqrt(feeds.size.toDouble())).toInt())
-            val outputRows = max(1, kotlin.math.ceil(feeds.size.toDouble() / outputColumns).toInt())
             val plan = decoderPlan ?: OpenTiledDecoderPlan.from(current, sourceVideoWidth, sourceVideoHeight)
                 ?: return
             decoderPlan = plan
+            val outputColumns = plan.tileColumns
+            val outputRows = plan.tileRows
 
             feeds.forEachIndexed { outputIndex, feedId ->
                 val binding = plan.binding(feedId) ?: return@forEachIndexed
