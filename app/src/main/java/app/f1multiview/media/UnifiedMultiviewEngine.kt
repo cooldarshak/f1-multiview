@@ -88,6 +88,14 @@ class UnifiedMultiviewEngine(context: Context) {
     fun openTiledFrameOutput(): OpenTiledFrameOutput? =
         if (isOpenTiledActive()) openTiledEngine.frameOutput() else null
 
+    fun startOpenTiledClockCorrection(referencePositionProvider: () -> Long, intervalMs: Long = 500L) {
+        if (isOpenTiledActive()) openTiledEngine.startClockCorrection(referencePositionProvider, intervalMs)
+    }
+
+    fun stopOpenTiledClockCorrection() {
+        openTiledEngine.stopClockCorrection()
+    }
+
     fun attachOpenTiledView(view: OpenTiledCompositorView) {
         if (isOpenTiledActive()) openTiledEngine.attachTo(view)
     }
