@@ -78,6 +78,9 @@ class UnifiedMultiviewEngine(context: Context) {
     fun openTiledView(context: Context, protectedOutput: Boolean = false): OpenTiledCompositorView =
         OpenTiledCompositorView(context, protectedOutput)
 
+    fun protectedTiledCompositorSupported(): Boolean =
+        OpenTiledCompositorView.supportsProtectedOutput()
+
     fun selectOpenTiledFeeds(feedIds: List<String>) {
         openTiledEngine.selectVisibleFeeds(feedIds)
     }
