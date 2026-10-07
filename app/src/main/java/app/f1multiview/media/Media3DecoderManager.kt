@@ -365,125 +365,37 @@ class Media3DecoderManager(context: Context) {
 
     private fun applyAutoResourceBudget(id: String, player: ExoPlayer) {
         if (id == audioPlayerId) return
-
-        val budget = resourceManager.autoVideoBudget(isReference = false, activeDecoderCount = resourceManager.activeLeases().size)
-        val maxHeight = budget.maxHeight
-        val maxWidth = budget.maxWidth
-
-        val candidates = player.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_VIDEO }
-            .flatMap { group ->
-                (0 until group.length).map { index ->
-                    Triple(group, index, group.getTrackFormat(index))
-                }
-            }
-            .filter { (_, _, format) -> format.width > 0 && format.height > 0 }
-            .filter { (_, _, format) -> format.height <= maxHeight && format.width <= maxWidth }
-            .filter { (group, index, _) ->
-                val support = group.getTrackSupport(index)
-                support == C.FORMAT_HANDLED || support == C.FORMAT_EXCEEDS_CAPABILITIES
-            }
-
-        if (candidates.isEmpty()) return
-
-        val selected = candidates.sortedWith(
-            compareByDescending<Triple<androidx.media3.common.Tracks.Group, Int, androidx.media3.common.Format>> { (_, _, format) ->
-                format.sampleMimeType.equals(MimeTypes.VIDEO_H264, true)
-            }.thenByDescending { (_, _, format) -> format.height }
-                .thenByDescending { (_, _, format) -> format.width }
-                .thenByDescending { (_, _, format) -> format.bitrate }
-        ).firstOrNull() ?: return
-
+        val budget = qualityManager.autoBudget(
+            isReference = false,
+            activeDecoderCount = resourceManager.activeLeases().size,
+            capacity = resourceManager.capacity()
+        )
+        val selected = qualityManager.chooseAutoTrack(player.currentTracks, budget) ?: return
         val group = selected.first
         val index = selected.second
-        val alreadySelected = player.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_VIDEO }
-            .any { g -> (0 until g.length).any { i -> g === group && i == index && g.isTrackSelected(i) } }
-
+        val alreadySelected = group.isTrackSelected(index)
         if (!alreadySelected) {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setMaxVideoSize(maxWidth, maxHeight)
+                .setMaxVideoSize(budget.maxWidth, budget.maxHeight)
                 .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
                 .build()
         }
     }
 
     private fun applyQuality(player: ExoPlayer, quality: Quality, isMain: Boolean) {
-        player.trackSelectionParameters = buildQualityParameters(
+        val budget = qualityManager.autoBudget(
+            isReference = isMain,
+            activeDecoderCount = resourceManager.activeLeases().size,
+            capacity = resourceManager.capacity()
+        )
+        player.trackSelectionParameters = qualityManager.parameters(
             player = player,
             quality = quality,
-            isMain = isMain,
-            preserveAudioSetting = true
-        )
-    }
-
-    /**
-     * Explicit quality is pinned with matching minimum and maximum dimensions.
-     * Auto remains adaptive within the feed's resource budget.
-     */
-    private fun buildQualityParameters(
-        player: ExoPlayer,
-        quality: Quality,
-        isMain: Boolean,
-        preserveAudioSetting: Boolean
-    ): androidx.media3.common.TrackSelectionParameters {
-        val builder = player.trackSelectionParameters.buildUpon()
-            
-
-        if (!preserveAudioSetting) {
-            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isMain)
-        }
-
-        when (quality) {
-            Quality.UHD -> {
-                val target = targetResolution(player, 2160, 3840, 2160)
-                builder.setMinVideoSize(target.first, target.second)
-                    .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(false)
-            }
-            Quality.FHD -> {
-                val target = targetResolution(player, 1080, 1920, 1080)
-                builder.setMinVideoSize(target.first, target.second)
-                    .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(false)
-            }
-            Quality.HD -> {
-                val target = targetResolution(player, 720, 1280, 720)
-                builder.setMinVideoSize(target.first, target.second)
-                    .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(false)
-            }
-            Quality.SD -> {
-                val target = targetResolution(player, 480, 854, 480)
-                builder.setMinVideoSize(target.first, target.second)
-                    .setMaxVideoSize(target.first, target.second)
-                    .setForceHighestSupportedBitrate(false)
-            }
-            Quality.AUTO -> {
-                val secondaryMaxHeight = if (!isMain && players.size >= 4) 360 else 480
-                val secondaryMaxWidth = if (!isMain && players.size >= 4) 640 else 854
-                builder.setMinVideoSize(0, 0)
-                    .setMaxVideoSize(
-                        if (isMain) Int.MAX_VALUE else secondaryMaxWidth,
-                        if (isMain) Int.MAX_VALUE else secondaryMaxHeight
-                    )
-                    .setForceHighestSupportedBitrate(false)
-            }
-        }
-        return builder.build()
-    }
-
-    private fun targetResolution(player: ExoPlayer, desiredHeight: Int, fallbackWidth: Int, fallbackHeight: Int): Pair<Int,Int> {
-        val formats = player.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_VIDEO }
-            .flatMap { group -> (0 until group.length).map { group.getTrackFormat(it) } }
-            .filter { it.width > 0 && it.height > 0 }
-            .distinctBy { it.width to it.height }
-        if (formats.isEmpty()) return fallbackWidth to fallbackHeight
-        val candidates = formats.filter { it.height >= desiredHeight - 32 && it.height <= desiredHeight + 256 }
-        val best = candidates.maxWithOrNull(compareBy<androidx.media3.common.Format> { it.height }.thenBy { it.width })
-            ?: formats.minByOrNull { kotlin.math.abs(it.height - desiredHeight) }
-        return if (best != null) best.width to best.height else fallbackWidth to fallbackHeight
+            isReference = isMain,
+            autoBudget = budget
+        ).buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            .build()
     }
 
     private fun isDecoderFailure(error: PlaybackException): Boolean {
