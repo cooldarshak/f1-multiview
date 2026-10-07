@@ -62,7 +62,7 @@ object TiledMultiviewSessionParser {
     fun parse(json: String): TiledMultiviewSession? =
         TmePlaybackParser.parse(json)?.toModel()
 
-    private fun TmePlayback.toModel(): TiledMultiviewSession =
+    fun TmePlayback.toModel(): TiledMultiviewSession =
         TiledMultiviewSession(
             version = version,
             channel = channel,
