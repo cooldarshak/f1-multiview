@@ -11,7 +11,7 @@ import app.f1multiview.model.StreamSource
  */
 class MultiviewRenderCoordinator {
     enum class RenderPath {
-        SECURE_SURFACE,
+        SURFACE_VIEW,
         GPU_TEXTURE
     }
 
