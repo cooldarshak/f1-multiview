@@ -130,13 +130,17 @@ class F1TvApiClient {
     }
     private fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
         val result=JSONObject(response.body).optJSONObject("resultObj")?:JSONObject(response.body)
-        val manifest=firstString(result,"url","manifestUrl","manifestURL","playUrl")?:throw F1TvException("CONTENT/PLAY did not return a manifest URL")
+        val tmeElement=result.opt("tmeJson") ?: result.opt("tme") ?: result.opt("TME")
+        val tmeJson=tmeElement?.let { if (it is org.json.JSONObject || it is org.json.JSONArray) it.toString() else it.toString() }
+        val manifest=firstString(result,"url","manifestUrl","manifestURL","playUrl")
+        if (manifest.isNullOrBlank() && tmeJson.isNullOrBlank()) throw F1TvException("CONTENT/PLAY returned neither a manifest URL nor TME JSON")
         val license=firstString(result,"laURL","laUrl","licenseUrl","licenseURL")
         val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken")
         val streamType=firstString(result,"streamType");val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0}
         val playToken=extractPlayToken(manifest);val playApiVersion=firstString(result,"playApiVersion","playAPIVersion")
         val platform=firstString(result,"platform")?:requestedPlatform;val drmType=firstString(result,"drmType")
-        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
+        val channelViewMode=firstString(result,"channelViewMode","channelViewModeOverride")
+        return PlaybackResponse(manifest.orEmpty(),license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType,tmeJson,channelViewMode)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
         val response=execute(BASE+"/2.0/R/"+LANG+"/WEB_DASH/ALL/PAGE/"+pageId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"archive page "+pageId)
@@ -223,6 +227,6 @@ class F1TvApiClient {
     }
     private fun firstString(obj:JSONObject,vararg keys:String):String?=keys.firstNotNullOfOrNull{key->obj.optString(key).takeIf{it.isNotBlank()}}
 }
-data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null)
+data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val tmeJson:String?=null,val channelViewMode:String?=null)
 data class HttpResponse(val code:Int,val isSuccessful:Boolean,val body:String)
 class F1TvException(message:String):Exception(message)
