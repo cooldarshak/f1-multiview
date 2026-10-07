@@ -1210,21 +1210,14 @@ private fun ResizeHandle(
 @OptIn(UnstableApi::class)
 @Composable
 private fun F1HdrPlayerSurface(
+    engine: UnifiedMultiviewEngine,
     player: EnginePlayerHandle,
+    stream: StreamSource,
     modifier: Modifier,
-    source: String,
-    protectedContent: Boolean
+    source: String
 ) {
     val context = LocalContext.current
-    val engine = LocalEngine.current
-    val stream = remember(player.id, protectedContent) {
-        StreamSource(
-            id = player.id,
-            title = player.id,
-            kind = StreamKind.WORLD,
-            drmLicenseUrl = if (protectedContent) "protected" else null
-        )
-    }
+    val protectedContent = stream.drmLicenseUrl != null
     val screenshotMode = BuildConfig.DEBUG &&
         DebugPresentationSettings.isScreenshotModeEnabled(context) &&
         !protectedContent
