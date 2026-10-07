@@ -90,7 +90,9 @@ class OpenTiledMultiviewEngine(
             ?: return false
 
         if (player != null && _state.value.sourceUrl == url) {
-            publish(selected = _state.value.tiles.map { it.feedId })
+            val available = _state.value.tiles.map { it.feedId }.toSet()
+            val preserved = _state.value.selectedFeedIds.filter(available::contains)
+            publish(selected = preserved.ifEmpty { _state.value.tiles.map { it.feedId } })
             return true
         }
 
