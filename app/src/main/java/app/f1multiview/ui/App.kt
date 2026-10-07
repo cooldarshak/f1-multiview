@@ -1608,7 +1608,7 @@ private fun FullscreenMultiview(
     }
 
     val active = selected.firstOrNull { it.id == activeFeedId } ?: selected.firstOrNull()
-    val activePlayer = active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { engine.player(it.id) }
+    val activePlayer = if (openTiled) null else active?.takeIf { it.kind != StreamKind.TIMING && it.kind != StreamKind.TRACK && it.kind != StreamKind.F1_DASH }?.let { engine.player(it.id) }
 
     LaunchedEffect(activePlayer, ui.session?.live) {
         if (activePlayer != null && ui.session?.live == false) {
@@ -1688,16 +1688,25 @@ private fun FullscreenMultiview(
                         .fillMaxHeight()
                         .padding(start = 8.dp, end = 5.dp, top = 8.dp, bottom = 8.dp)
                 ) {
-                    MultiviewFeedTile(
-                        stream = activeStream,
-                        ui = ui,
-                        engine = engine,
-                        error = errors[activeStream.id],
-                        modifier = Modifier.fillMaxSize(),
-                        onFocus = { activeFeedId = it; menu = null },
-                        active = true,
-                        surfaceType = SURFACE_TYPE_SURFACE_VIEW
-                    )
+                    if (openTiled) {
+                        OpenTiledMultiviewWall(
+                            engine = engine,
+                            feedIds = tiledSelected,
+                            protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        MultiviewFeedTile(
+                            stream = activeStream,
+                            ui = ui,
+                            engine = engine,
+                            error = errors[activeStream.id],
+                            modifier = Modifier.fillMaxSize(),
+                            onFocus = { activeFeedId = it; menu = null },
+                            active = true,
+                            surfaceType = SURFACE_TYPE_SURFACE_VIEW
+                        )
+                    }
                     Surface(
                         Modifier.align(Alignment.BottomStart).padding(12.dp),
                         color = Color.Black.copy(alpha = .72f),
@@ -1796,7 +1805,7 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.width(7.dp))
                     Text("MULTIVIEW", color = White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.width(6.dp))
-                    Text("${selected.size} FEEDS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                    Text("${if (openTiled) tiledSelected.size else selected.size} FEEDS", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Black)
                     Spacer(Modifier.weight(1f))
                     Control(false, "SIDE OBC") { onPreset("side") }
                     Spacer(Modifier.width(5.dp))
