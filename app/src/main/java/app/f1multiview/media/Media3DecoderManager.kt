@@ -49,6 +49,7 @@ class Media3DecoderManager(context: Context) {
     // Phase 2 resource guard: secondary feeds are deliberately constrained before decoder pressure rises.
     private val appContext = context.applicationContext
     private val players = linkedMapOf<String, ExoPlayer>()
+    private val resourceManager = DecoderResourceManager(maxVideoDecoders = maxVideoFeeds)
     private val selectedQualities = mutableMapOf<String, Quality>()
     private val streamKinds = mutableMapOf<String, app.f1multiview.model.StreamKind>()
     private val streams = mutableMapOf<String, StreamSource>()
@@ -85,7 +86,9 @@ class Media3DecoderManager(context: Context) {
         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
         .build()
 
-    fun get(id: String): ExoPlayer = players.getOrPut(id) {
+    fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
+
+    private fun createPlayer(id: String): ExoPlayer = players.getOrPut(id) {
         ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
             .setLoadControl(ProductionLoadControl.create())
             .build()
@@ -191,7 +194,22 @@ class Media3DecoderManager(context: Context) {
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
         if (playAllRequested) desiredPlaying.add(stream.id)
-        val player = get(stream.id)
+        val allocation = resourceManager.request(
+            stream = stream,
+            isReference = stream.id == audioPlayerId,
+            quality = selectedQualities[stream.id] ?: Quality.AUTO
+        )
+        val lease = allocation.lease
+        if (lease == null) {
+            _errors.value = _errors.value + (stream.id to "No decoder resource available; feed remains logical and decoderless")
+            Log.i("Media3DecoderManager", "RESOURCE_WAIT feed=" + stream.id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
+            return
+        }
+        allocation.evictedFeedId?.let { evictedId ->
+            Log.i("Media3DecoderManager", "RESOURCE_EVICT feed=" + evictedId + " for=" + stream.id + " slot=" + lease.slotId)
+            releasePlayerOnly(evictedId)
+        }
+        val player = createPlayer(stream.id)
 
         if (!forceReload && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) return
 
@@ -636,6 +654,7 @@ class Media3DecoderManager(context: Context) {
 
     fun setAudioPlayer(id: String?) {
         audioPlayerId = id
+        resourceManager.updateReference(id)
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
             // Audio selection must remain enabled on every feed. We switch the
@@ -870,6 +889,25 @@ class Media3DecoderManager(context: Context) {
         if (audioPlayerId !in players.keys) setAudioPlayer(null)
     }
 
+    private fun releasePlayerOnly(id: String) {
+        if (id == syncMainId) {
+            syncMainId = null
+            mainHandler.removeCallbacks(syncRunnable)
+        }
+        syncPausedByReference.remove(id)
+        desiredPlaying.remove(id)
+        players.remove(id)?.release()
+        selectedQualities.remove(id)
+        streamKinds.remove(id)
+        decoderRecoveryAttempts.remove(id)
+        l3SecondaryFallback.remove(id)
+        startupRequestedAtMs.remove(id)
+        startupFirstFrameAtMs.remove(id)
+        startupPlayingAtMs.remove(id)
+        firstFrameRendered.remove(id)
+        if (audioPlayerId == id) audioPlayerId = null
+    }
+
     fun clear(id: String) {
         if (id == syncMainId) {
             syncMainId = null
@@ -878,6 +916,7 @@ class Media3DecoderManager(context: Context) {
         syncPausedByReference.remove(id)
         desiredPlaying.remove(id)
         players.remove(id)?.release()
+        resourceManager.release(id)
         selectedQualities.remove(id)
         streamKinds.remove(id)
         streams.remove(id)
@@ -926,6 +965,7 @@ class Media3DecoderManager(context: Context) {
         syncPausedByReference.clear()
         players.values.forEach { it.release() }
         players.clear()
+        resourceManager.reset()
         desiredPlaying.clear()
         audioPlayerId = null
         selectedQualities.clear()
@@ -946,7 +986,8 @@ class Media3DecoderManager(context: Context) {
                 ",isPlaying=" + player.isPlaying +
                 ",firstFrame=" + firstFrameRendered.contains(id) +
                 ",positionMs=" + player.currentPosition +
-                ",bufferedMs=" + player.bufferedPosition
+                ",bufferedMs=" + player.bufferedPosition +
+                ",decoderSlot=" + (resourceManager.lease(id)?.slotId ?: -1)
         }
     fun all(): Collection<ExoPlayer> = players.values
 }
