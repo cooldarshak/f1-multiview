@@ -275,7 +275,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun qualityAvailable(id: String, quality: Quality): Boolean = decoderManager.qualityAvailable(id, quality)
 
     fun setAudioPlayer(id: String?) {
-        decoderManager.setAudioPlayer(id)
+        if (!isOpenTiledActive()) decoderManager.setAudioPlayer(id)
     }
 
     fun setMuted(id: String, muted: Boolean) = decoderManager.setMuted(id, muted)
@@ -284,7 +284,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
 
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
-        decoderManager.syncToMain(mainId, channelOffsetsMs)
+        if (!isOpenTiledActive()) decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
 
     fun play(id: String) = decoderManager.play(id)
