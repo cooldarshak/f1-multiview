@@ -229,7 +229,16 @@ class UnifiedMultiviewEngine(context: Context) {
         // A genuine single-source tiled session owns the only physical video player.
         // Do not preload, allocate, suspend, or reactivate the independent-feed
         // decoder manager after the open tiled backend has been selected.
-        if (openTiledPrepared) return streams.map { it.id }.toSet()
+        if (openTiledPrepared) {
+            val referenceIsVideo = reference?.kind !in setOf(
+                app.f1multiview.model.StreamKind.TRACK_MAP,
+                app.f1multiview.model.StreamKind.F1_DASH_DATA,
+                app.f1multiview.model.StreamKind.TIMING,
+                app.f1multiview.model.StreamKind.TRACK
+            )
+            setAudioPlayer(referenceId.takeIf { referenceIsVideo })
+            return streams.map { it.id }.toSet()
+        }
 
         if (referenceId != null) setAudioPlayer(referenceId)
 
