@@ -34,8 +34,7 @@ class EnginePlayerHandle internal constructor(
     val currentTracks: Tracks get() = player.currentTracks
     val videoSize: VideoSize get() = player.videoSize
     val videoFormat: Format? get() = player.videoFormat
-    val trackSelectionParameters: TrackSelectionParameters get() = player.trackSelectionParameters
-    var trackSelectionParametersMutable: TrackSelectionParameters
+    var trackSelectionParameters: TrackSelectionParameters
         get() = player.trackSelectionParameters
         set(value) { player.trackSelectionParameters = value }
     var playWhenReady: Boolean
