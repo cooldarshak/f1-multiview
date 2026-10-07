@@ -68,6 +68,7 @@ import app.f1multiview.media.EnginePlayerHandle
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.DebugPresentationSettings
+import app.f1multiview.media.AppLogger
 import app.f1multiview.media.OpenTiledSecureSurfaceView
 import app.f1multiview.BuildConfig
 import app.f1multiview.model.*
@@ -92,6 +93,8 @@ private val Muted = Color(0xFF9698A2)
 
 @Composable
 fun App(vm: MultiViewViewModel) {
+    val context = LocalContext.current
+    AppLogger.initialize(context)
     val ui by vm.ui.collectAsState()
     F1Theme {
         when (ui.auth) {
