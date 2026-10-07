@@ -1370,7 +1370,7 @@ private fun FullscreenFeedRail(
         val viewportStreams = candidates.filter { it.id == activeId || it.id in preloadIds }
         engine.updateViewport(
             streams = viewportStreams,
-            visibleIds = visibleIds,
+            visibleIds = visibleIds.toSet(),
             referenceId = activeId,
             autoplay = true
         )
