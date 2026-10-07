@@ -298,15 +298,15 @@ class Media3DecoderManager(context: Context) {
         Log.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
         preloadedMediaSources[stream.id]?.let { old ->
-            if (forceReload || preloadMediaSourcesChanged(stream.id, mediaItem)) {
-                runCatching { preloadManager.removeMediaSource(old) }
+            if (forceReload) {
+                runCatching { preloadManager.remove(old) }
                 preloadedMediaSources.remove(stream.id)
             }
         }
         if (stream.id !in preloadedMediaSources) {
             val rank = preloadRanks[stream.id] ?: preloadRanks.size
             preloadRanks[stream.id] = rank
-            preloadManager.addMediaSource(mediaSource, rank)
+            preloadManager.add(mediaSource, rank)
             preloadedMediaSources[stream.id] = mediaSource
             preloadManager.invalidate()
         }
@@ -324,7 +324,7 @@ class Media3DecoderManager(context: Context) {
         runCatching {
             val mediaItem = buildMediaItem(stream)
             val source = buildMediaSourceFactory(stream).createMediaSource(mediaItem)
-            preloadManager.addMediaSource(source, rank)
+            preloadManager.add(source, rank)
             preloadedMediaSources[stream.id] = source
             Log.i("Media3DecoderManager", "PRELOAD_REGISTER id=${stream.id} rank=$rank")
         }.onFailure { error ->
