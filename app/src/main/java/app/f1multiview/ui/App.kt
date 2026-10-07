@@ -1646,7 +1646,7 @@ private fun MultiviewFeedTile(
         when (stream.kind) {
             StreamKind.F1_DASH -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
             StreamKind.TIMING -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
-            StreamKind.TRACK -> CompactDriverTrackerFeed(ui, isTv, Modifier.fillMaxSize())
+            StreamKind.TRACK -> TrackMapPanel(ui, isTv)
             else -> PlayerTile(
                 stream, pool, error, Modifier.fillMaxSize(), {}, onFocus,
                 active = active, surfaceType = surfaceType
