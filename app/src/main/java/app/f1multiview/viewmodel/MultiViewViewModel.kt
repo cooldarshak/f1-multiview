@@ -70,7 +70,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.trackStatus.collect{status->_ui.value=_ui.value.copy(trackStatus=status)}}
         viewModelScope.launch{timingClient.lapCount.collect{laps->_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
         viewModelScope.launch{timingClient.sessionClock.collect{clock->_ui.value=_ui.value.copy(sessionClock=clock)}}
-        viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
+        viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
         }
@@ -94,7 +94,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             }
         }
     }
-    fun signInWithSessionToken(token:String)=viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signInWithSessionToken(token).fold({ _ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Browser sign-in failed"),providerError=it.message)})}
+    fun signInWithSessionToken(token:String)=viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signInWithSessionToken(token).fold({ _ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Browser sign-in failed"),providerError=it.message)})}
     fun signIn(username:String,password:String){if(username.isBlank()||password.isBlank())return;viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signIn(ProviderCredentials(username.trim(),password)).fold({_ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Sign-in failed"),providerError=it.message)})}}
     fun signOut()=viewModelScope.launch{provider.signOut();_ui.value=UiState(auth=AuthState.SignedOut)}
     private suspend fun loadSessions(){provider.sessions().fold({sessions->val first=sessions.firstOrNull();_ui.value=_ui.value.copy(auth=AuthState.SignedIn,sessions=sessions,session=first);if(first!=null)loadStreams(first)},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Unable to load F1 TV sessions"),providerError=it.message)})}
