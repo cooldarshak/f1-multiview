@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.TiledMultiviewSessionParser
+import app.f1multiview.data.f1tv.TmePlayback
 import app.f1multiview.model.StreamSource
 
 /**
@@ -136,18 +137,19 @@ class UnifiedMultiviewEngine(context: Context) {
             ?.tmeJson
             ?.let(TiledMultiviewSessionParser::parse)
             ?.let { tme ->
-                if (openTiledBackend.canHandle(tme, reference)) {
-                    val prepared = openTiledBackend.prepare(tme, reference, referenceId)
+                val source = reference ?: return@let
+                if (openTiledBackend.canHandle(tme, source)) {
+                    val prepared = openTiledBackend.prepare(tme, source, referenceId)
                     if (prepared) {
                         selectedMultiviewBackend = openTiledBackend
-                        TiledMultiviewSessionParser.parse(reference.tmeJson)
+                        TiledMultiviewSessionParser.parse(source.tmeJson)
                         ?.also { tiledMultiviewController.configure(it) }
                     } else {
                         selectedMultiviewBackend = media3FallbackBackend
                     }
                 } else {
                     selectedMultiviewBackend = media3FallbackBackend
-                    configureTiledMultiview(tme.toSession())
+                    configureTiledMultiview(tme.toModel())
                 }
             }
         if (referenceId != null) setAudioPlayer(referenceId)
