@@ -1708,7 +1708,7 @@ private fun DashSector(value: String, status: String) {
     }
 }
 
-private fun parseTeamColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor("#" + value.removePrefix("#").padStart(6, "F"))) }.getOrDefault(Color(0xFF5B5D66))
+private fun parseTeamColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor("#" + value.removePrefix("#").padStart(6, 'F'))) }.getOrDefault(Color(0xFF5B5D66))
 @Composable
 private fun SectorCell(label: String, value: String, status: String) {
     Column(Modifier.widthIn(min = 43.dp, max = 62.dp)) {
