@@ -86,6 +86,8 @@ import kotlinx.coroutines.delay
 import kotlin.math.max
 
 private val Red = Color(0xFFE10600)
+// Retained semantic alias used by the feed rail/live badges. This was present in the pre-overhaul UI and must not be removed.
+private val HomeFeedRed = Red
 private val Bg = Color(0xFF0B0B10)
 private val Surface1 = Color(0xFF14151B)
 private val Surface2 = Color(0xFF1C1D24)
