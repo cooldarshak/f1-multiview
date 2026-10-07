@@ -26,9 +26,9 @@ class UnifiedMultiviewEngine(context: Context) {
 
     internal fun backendPlayer(id: String): ExoPlayer = decoderManager.get(id)
 
-    fun load(stream: StreamSource, forceReload: Boolean = false) {
+    fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         feedRegistry.put(stream)
-        decoderManager.load(stream, forceReload)
+        return decoderManager.load(stream, forceReload)
     }
 
     fun retain(ids: Set<String>) {
