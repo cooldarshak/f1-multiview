@@ -88,7 +88,12 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     val availableIds=allStreams.map { it.id }.toSet()
                     val restored=setup.streamIds.filter { it in availableIds }
                     val savedMain=setup.mainStreamId?.takeIf { it in restored }
-                    val maxFeeds=when(setup.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
+                    val maxFeeds=when(setup.layout){
+                        LayoutPreset.SINGLE->1
+                        LayoutPreset.SPLIT_2->2
+                        LayoutPreset.GRID_4->4
+                        LayoutPreset.GRID_6->if (setup.streamIds.any { it in availableIds } && openTiledCapable()) 24 else 4
+                    }
                     val mainId=savedMain ?: restored.firstOrNull()
                     val selected=(listOfNotNull(mainId)+restored.filterNot { it==mainId }).distinct().take(maxFeeds)
                     _ui.value=_ui.value.copy(layout=setup.layout,selectedStreamIds=selected,mainStreamId=mainId)
@@ -330,12 +335,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     }
 
     fun setLayout(layout:LayoutPreset){
-    val maxFeeds=when(layout){
-        LayoutPreset.SINGLE->1
-        LayoutPreset.SPLIT_2->2
-        LayoutPreset.GRID_4->4
-        LayoutPreset.GRID_6->if(openTiledCapable()) 24 else 4
-    }
+    val maxFeeds=maxLogicalFeeds(layout)
     _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=_ui.value.selectedStreamIds.take(maxFeeds))
     persist()
 }
@@ -364,7 +364,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
         needed<=4->LayoutPreset.GRID_4
         else->LayoutPreset.GRID_6
     }
-    val currentMax=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
+    val currentMax=maxLogicalFeeds()
     val targetLayout=if(currentMax<needed)requiredLayout else _ui.value.layout
     _ui.value=_ui.value.copy(layout=targetLayout,selectedStreamIds=current+id,providerError=null)
     persist()
