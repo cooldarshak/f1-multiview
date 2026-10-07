@@ -161,7 +161,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun retain(ids: Set<String>) {
         surfaceManager.boundFeedIds().filterNot(ids::contains).forEach { id ->
             surfaceManager.binding(id)?.let { binding ->
-                surfaceManager.detach(id, player(id))
+                surfaceManager.detach(id, binding.owner, binding.container)
             }
         }
         feedRegistry.retain(ids)
@@ -176,7 +176,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun suspend(id: String) = decoderManager.suspend(id)
 
     fun clear(id: String) {
-        if (surfaceManager.binding(id) != null) surfaceManager.detach(id, player(id))
+        surfaceManager.binding(id)?.let { binding -> surfaceManager.detach(id, binding.owner, binding.container) }
         feedRegistry.remove(id)
         decoderManager.clear(id)
     }
