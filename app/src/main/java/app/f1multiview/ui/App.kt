@@ -955,8 +955,9 @@ private fun PitWall(
     onToggleStream: (String) -> Unit,
     onSetMainStream: (String) -> Unit
 ) {
-    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     val backendStatus by engine.backendStatus.collectAsState()
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
+        .let { if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) it else it.take(4) }
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -977,7 +978,7 @@ private fun PitWall(
         Box(Modifier.width(5.dp).height(28.dp).background(Red, RoundedCornerShape(3.dp)))
         Text("LIVE PIT WALL", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 14.dp))
         Spacer(Modifier.weight(1f))
-        Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+        Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) "/24" else "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Surface(
             Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
