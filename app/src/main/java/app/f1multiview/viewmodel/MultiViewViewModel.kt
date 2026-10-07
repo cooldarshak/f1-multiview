@@ -285,9 +285,18 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     else _ui.value.tiledMultiviewSession,
                 selectedTiledFeedIds = if (isReference) {
                     val tiled = playback.tiledMultiview
-                    // One logical feed is the starting state. Layout selection and feed-rail
-                    // interactions add additional logical tiles without allocating players.
-                    if (tiled != null) tiled.feedIds.take(1) else _ui.value.selectedTiledFeedIds
+                    if (tiled != null) {
+                        val mainStream = _ui.value.streams.firstOrNull { it.id == _ui.value.mainStreamId }
+                        val channel = mainStream?.channelId?.trim().takeIf { !it.isNullOrBlank() }
+                        val mainIndex = channel?.let { ch ->
+                            tiled.feeds.indexOfFirst { it.channelId?.toString() == ch }
+                        } ?: -1
+                        listOfNotNull(
+                            if (mainIndex >= 0) tiled.feedIds.getOrNull(mainIndex) else tiled.feedIds.firstOrNull()
+                        )
+                    } else {
+                        _ui.value.selectedTiledFeedIds
+                    }
                 } else _ui.value.selectedTiledFeedIds,
                 streams=_ui.value.streams.map{
                     if(it.id==source.id) it.copy(
@@ -400,6 +409,34 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) resolveSource(source)
 }
+    private fun tiledFeedIdForStream(streamId: String): String? {
+        val session = _ui.value.tiledMultiviewSession ?: return null
+        val source = _ui.value.streams.firstOrNull { it.id == streamId } ?: return null
+        val channel = source.channelId?.trim().takeIf { !it.isNullOrBlank() }
+        if (channel != null) {
+            val index = session.feeds.indexOfFirst { it.channelId?.toString() == channel }
+            if (index >= 0) return session.feedIds.getOrNull(index)
+        }
+        return source.id.takeIf { it in session.feedIds }
+    }
+
+    fun toggleTiledStream(streamId: String) {
+        val tileId = tiledFeedIdForStream(streamId) ?: return
+        val session = _ui.value.tiledMultiviewSession ?: return
+        val validIds = session.feedIds.take(24)
+        if (tileId !in validIds) return
+        val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
+        if (tileId in current) {
+            if (current.size <= 1) return
+            _ui.value = _ui.value.copy(
+                selectedTiledFeedIds = current.filterNot { it == tileId },
+                providerError = null
+            )
+        } else {
+            ensureTiledFeedSelected(tileId)
+        }
+    }
+
     fun ensureTiledFeedSelected(feedId: String) {
         val session = _ui.value.tiledMultiviewSession ?: return
         val validIds = session.feedIds.take(24)
