@@ -51,12 +51,14 @@ class OpenTiledDecoderPlanTest {
         )
         assertNull(plan)
     }
+
     @Test
     fun twentyFourLogicalFeedsStillUseOnePhysicalDecoder() {
         val urls = List(24) { "https://cdn/mosaic.mpd" }
         val plan = OpenTiledDecoderPlan.from(
             session(urls),
-            sourceVideoWidth = 3840,
+            // 6 x 4 tiles of 960 x 540 exactly fill a 5760 x 2160 source.
+            sourceVideoWidth = 5760,
             sourceVideoHeight = 2160
         )
         assertNotNull(plan)
@@ -81,5 +83,4 @@ class OpenTiledDecoderPlanTest {
         assertEquals(1f, plan.bindings[3].sourceRect.right, 0.0001f)
         assertEquals(1f, plan.bindings[3].sourceRect.bottom, 0.0001f)
     }
-
 }
