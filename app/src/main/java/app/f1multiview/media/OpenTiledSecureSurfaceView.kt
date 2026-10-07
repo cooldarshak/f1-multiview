@@ -69,7 +69,7 @@ class OpenTiledSecureSurfaceView(context: Context) : SurfaceView(context) {
     fun focusFeed(feedId: String?) {
         val s = session ?: return
         focusedIndex = feedId?.let { id ->
-            s.feeds.indexOfFirst { (it.uuid ?: it.channelId?.toString() ?: "feed-${it.index}") == id }
+            s.feedIds.indexOf(id)
                 .takeIf { it >= 0 }
         }
         applyFocus()
