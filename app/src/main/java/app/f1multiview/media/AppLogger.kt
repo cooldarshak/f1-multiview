@@ -251,7 +251,10 @@ object AppLogger {
 
     private fun append(line: String) {
         if (logOutput == null || logUri == null) {
+            // ensurePersistentFileLocked() persists the complete retained buffer, including
+            // the line that triggered this retry. Do not append that line a second time.
             ensurePersistentFileLocked("log-write")
+            return
         }
         val output = logOutput ?: return
         runCatching {
