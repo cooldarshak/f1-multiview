@@ -29,9 +29,26 @@ data class TiledMultiviewSession(
     val tileHeight: Int?,
     val feeds: List<TiledMultiviewFeed>
 ) {
+    /**
+     * Stable logical identity for a TME feed.
+     *
+     * UUID is preferred because channel IDs are provider-scoped and are not a
+     * safe primary key when multiple TME payloads are present. The final
+     * de-duplication step keeps the identity usable even when a malformed
+     * payload repeats a UUID.
+     */
     val feedIds: List<String>
-        get() = feeds.mapIndexed { index, feed ->
-            feed.channelId?.toString() ?: feed.encoderId ?: feed.uuid ?: "feed-$index"
+        get() {
+            val used = mutableMapOf<String, Int>()
+            return feeds.mapIndexed { index, feed ->
+                val base = feed.uuid?.takeIf { it.isNotBlank() }
+                    ?: feed.channelId?.toString()
+                    ?: feed.encoderId?.takeIf { it.isNotBlank() }
+                    ?: "feed-$index"
+                val occurrence = used.getOrDefault(base, 0)
+                used[base] = occurrence + 1
+                if (occurrence == 0) base else "$base#$occurrence"
+            }
         }
 
     val hasTileGeometry: Boolean
