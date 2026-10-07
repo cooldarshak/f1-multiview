@@ -48,18 +48,6 @@ fun F1BrowserLogin(
     var loadError by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
 
-    DisposableEffect(reloadKey) {
-        onDispose {
-            handler.removeCallbacksAndMessages(null)
-            webViewRef?.apply {
-                stopLoading()
-                webViewClient = WebViewClient()
-                destroy()
-            }
-            webViewRef = null
-        }
-    }
-
     Box(Modifier.fillMaxSize().background(Bg)) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().height(6.dp).background(Red))
@@ -118,9 +106,10 @@ fun F1BrowserLogin(
                 }
             }
 
-            AndroidView(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                factory = { context: Context ->
+            key(reloadKey) {
+                AndroidView(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    factory = { context: Context ->
                     WebView(context).apply {
                         webViewRef = this
                         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -416,8 +405,16 @@ fun F1BrowserLogin(
                         handler.postDelayed({ installCookieConsentAutomation() }, 1800L)
                     }
                 },
-                update = { webView: WebView -> webViewRef = webView }
-            )
+                    update = { webView: WebView -> webViewRef = webView },
+                    onRelease = { webView ->
+                        handler.removeCallbacksAndMessages(null)
+                        if (webViewRef === webView) webViewRef = null
+                        webView.stopLoading()
+                        webView.webViewClient = WebViewClient()
+                        webView.destroy()
+                    }
+                )
+            }
         }
     }
 }
