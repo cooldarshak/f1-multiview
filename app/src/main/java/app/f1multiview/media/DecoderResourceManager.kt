@@ -43,7 +43,9 @@ class DecoderResourceManager(
         requests[stream.id] = Request(stream.kind, isReference, quality)
 
         leases[stream.id]?.let { existing ->
-            return Allocation(existing.copy(priority = priority, isReference = isReference))
+            val updated = existing.copy(priority = priority, isReference = isReference)
+            leases[stream.id] = updated
+            return Allocation(updated)
         }
 
         val usedSlots = leases.values.map { it.slotId }.toSet()
