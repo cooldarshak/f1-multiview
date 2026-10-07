@@ -106,6 +106,7 @@ class Media3DecoderManager(context: Context) {
     fun activeDecoderIds(): Set<String> = resourceManager.activeLeases().map { it.feedId }.toSet()
 
     fun get(id: String): ExoPlayer = players[id] ?: error("Decoder not allocated for feed " + id)
+    fun getOrNull(id: String): ExoPlayer? = players[id]
 
     private fun createPlayer(id: String): ExoPlayer = players.getOrPut(id) {
         preloadBuilder.buildExoPlayer(
