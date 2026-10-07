@@ -4,8 +4,6 @@ set -euo pipefail
 APK="$GITHUB_WORKSPACE/artifacts/f1-multiview-debug.apk"
 OUT="$GITHUB_WORKSPACE/test-artifacts"
 PKG="app.f1multiview"
-ACTIVITY="$PKG/.MainActivity"
-
 mkdir -p "$OUT"
 
 cleanup() {
