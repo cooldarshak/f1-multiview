@@ -140,7 +140,7 @@ class UnifiedMultiviewEngine(context: Context) {
 
     /** Returns the one physical tiled player for any logical feed in the active TME session. */
     internal fun openTiledPlayerOrNull(id: String): ExoPlayer? =
-        if (isOpenTiledActive() && id in openTiledEngine.state.value.session.feedIds) {
+        if (isOpenTiledActive() && id in openTiledEngine.state.value.tiles.map { it.feedId }) {
             openTiledEngine.playerOrNull()
         } else null
 
