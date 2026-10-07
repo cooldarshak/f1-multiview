@@ -87,10 +87,7 @@ class OpenTiledMultiviewEngine(
             ?: return false
 
         if (player != null && _state.value.sourceUrl == url) {
-            val ids = tme.feeds.mapIndexed { index, feed ->
-                feed.uuid ?: feed.channelId?.toString() ?: "feed-$index"
-            }
-            publish(selected = ids)
+            publish(selected = _state.value.tiles.map { it.feedId })
             return true
         }
 
@@ -151,7 +148,10 @@ class OpenTiledMultiviewEngine(
             }
         )
 
-        publish(tiles = tiles, selected = tiles.map { it.feedId })
+        val normalizedTiles = tiles.mapIndexed { index, tile ->
+            tile.copy(feedId = session!!.feedIds[index])
+        }
+        publish(tiles = normalizedTiles, selected = normalizedTiles.map { it.feedId })
         return true
     }
 
