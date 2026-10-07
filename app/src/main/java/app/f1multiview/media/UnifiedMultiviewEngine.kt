@@ -303,7 +303,14 @@ class UnifiedMultiviewEngine(context: Context) {
     fun qualityAvailable(id: String, quality: Quality): Boolean = decoderManager.qualityAvailable(id, quality)
 
     fun setAudioPlayer(id: String?) {
-        if (!isOpenTiledActive()) decoderManager.setAudioPlayer(id)
+        if (isOpenTiledActive()) {
+            // A genuine single-source TME mosaic has one physical audio clock/player.
+            // Logical feed selection therefore controls whether that shared player is
+            // audible, rather than trying to select a nonexistent per-tile player.
+            openTiledEngine.player()?.volume = if (id != null) 1f else 0f
+        } else {
+            decoderManager.setAudioPlayer(id)
+        }
     }
 
     fun setMuted(id: String, muted: Boolean) = decoderManager.setMuted(id, muted)
