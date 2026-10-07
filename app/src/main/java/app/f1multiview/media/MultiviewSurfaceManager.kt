@@ -22,6 +22,7 @@ class MultiviewSurfaceManager(private val context: Context) {
 
     fun attach(feedId: String, player: EnginePlayerHandle, stream: StreamSource, source: String, screenshotMode: Boolean = false): FrameLayout {
         bindings[feedId]?.let { existing ->
+            renderCoordinator.update(feedId, source)
             attachExisting(existing, player, source)
             return existing.container
         }
