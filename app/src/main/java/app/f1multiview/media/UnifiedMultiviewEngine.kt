@@ -82,6 +82,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun stopAll() = decoderManager.stopAll()
 
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
+    fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
 
     fun release() {
         playbackClock.clear()
@@ -127,6 +128,7 @@ private class DecoderManager(context: Context) {
     fun pauseAll() = backend.pauseAll()
     fun stopAll() = backend.stopAll()
     fun playbackStartupDiagnostics() = backend.playbackStartupDiagnostics()
+    fun decoderResourceDiagnostics() = backend.decoderResourceDiagnostics()
     fun release() = backend.release()
 }
 
