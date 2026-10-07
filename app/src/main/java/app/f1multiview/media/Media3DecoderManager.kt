@@ -411,13 +411,7 @@ class Media3DecoderManager(context: Context) {
         val attempts = sourceRecoveryAttempts[id] ?: 0
         if (attempts >= 3) return
         val requested = selectedQualities[id] ?: Quality.AUTO
-        val fallback = when (requested) {
-            Quality.UHD -> Quality.FHD
-            Quality.FHD -> Quality.HD
-            Quality.HD -> Quality.SD
-            Quality.SD -> Quality.AUTO
-            Quality.AUTO -> Quality.AUTO
-        }
+        val fallback = qualityManager.sourceRecoveryQuality(requested)
         sourceRecoveryAttempts[id] = attempts + 1
         if (fallback != requested) selectedQualities[id] = fallback
         player.trackSelectionParameters = qualityParameters(player, fallback, id == audioPlayerId)
