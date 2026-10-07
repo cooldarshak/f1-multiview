@@ -248,43 +248,14 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         return
     }
 
-    val backgroundArtwork = ui.session?.backgroundArtworkUrl
-        ?: ui.vodSessions.firstOrNull()?.backgroundArtworkUrl
-        ?: ui.selectedEvent?.backgroundArtworkUrl
-
     Box(Modifier.fillMaxSize().background(Bg)) {
-        if (!backgroundArtwork.isNullOrBlank()) {
-            F1Artwork(
-                backgroundArtwork,
-                ui.session?.name ?: ui.vodSessions.firstOrNull()?.title ?: "F1 TV",
-                Modifier.fillMaxSize(),
-                ContentScale.Crop
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Black.copy(alpha = .62f),
-                            Color.Black.copy(alpha = .72f),
-                            Bg.copy(alpha = .96f)
-                        )
-                    )
-                )
-            )
-        }
-        Column(Modifier.fillMaxSize()) {
-            Header(ui, vm, compactPhone)
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = if (compactPhone) 10.dp else 16.dp)) {
-            if (ui.continueWatching.isNotEmpty()) {
-                item { ContinueWatchingSection(ui.continueWatching, isTv, compactPhone, vm::resumeContinueWatching, vm::removeContinueWatching) }
-            }
-            item { Archive(ui, vm, isTv, compactPhone) }
-            item { ui.providerError?.let { ErrorBanner(it) } }
-            item {
-                PitWall(ui, pool, errors, isTv, compactPhone, { fullscreenMultiview = true }, vm::toggleStream, vm::setMainStream)
-            }
-        }
-        }
+        F1HomeScreen(
+            ui = ui,
+            vm = vm,
+            isTv = isTv,
+            compactPhone = compactPhone,
+            onOpenMultiview = { fullscreenMultiview = true }
+        )
         if (ui.selectedPanel != null) {
             UgisInfoPanel(
                 ui = ui,
@@ -309,7 +280,6 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 }
-
 private fun displaySupportsHdr(context: Context): Boolean {
     val display = (context as? Activity)?.display ?: return false
     return if (Build.VERSION.SDK_INT >= 34) {
