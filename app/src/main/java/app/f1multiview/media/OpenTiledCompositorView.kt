@@ -34,6 +34,7 @@ class OpenTiledCompositorView(
     private val renderer = Renderer()
     private var listener: Listener? = null
     private var feedTapListener: ((String) -> Unit)? = null
+    @Volatile private var hitTestSlots = emptyList<OpenTiledMultiviewEngine.OutputSlot>()
 
     init {
         setEGLContextClientVersion(2)
@@ -157,10 +158,17 @@ class OpenTiledCompositorView(
 
     override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
         if (event.action == android.view.MotionEvent.ACTION_UP) {
-            val feedId = renderer.feedAt(
-                event.x / width.coerceAtLeast(1),
-                event.y / height.coerceAtLeast(1)
-            )
+            val normalizedX = event.x / width.coerceAtLeast(1)
+            val normalizedY = event.y / height.coerceAtLeast(1)
+            val feedId = hitTestSlots
+                .sortedByDescending { it.zIndex }
+                .firstOrNull {
+                    normalizedX >= it.x &&
+                        normalizedX <= it.x + it.width &&
+                        normalizedY >= it.y &&
+                        normalizedY <= it.y + it.height
+                }
+                ?.feedId
             if (feedId != null) {
                 feedTapListener?.invoke(feedId)
                 performClick()
@@ -170,22 +178,24 @@ class OpenTiledCompositorView(
     }
 
     fun setSession(value: TiledMultiviewSession) {
-        renderer.setSession(value)
+        queueEvent { renderer.setSession(value) }
         requestRender()
     }
 
     fun setSelectedFeedIds(value: List<String>) {
-        renderer.setSelectedFeedIds(value)
+        queueEvent { renderer.setSelectedFeedIds(value) }
         requestRender()
     }
 
     fun setOutputSlots(value: List<OpenTiledMultiviewEngine.OutputSlot>) {
-        renderer.setOutputSlots(value)
+        val normalized = value.distinctBy { it.feedId }.sortedBy { it.zIndex }
+        hitTestSlots = normalized
+        queueEvent { renderer.setOutputSlots(normalized) }
         requestRender()
     }
 
     fun setSourceVideoSize(width: Int, height: Int) {
-        renderer.setSourceVideoSize(width, height)
+        queueEvent { renderer.setSourceVideoSize(width, height) }
         requestRender()
     }
 
