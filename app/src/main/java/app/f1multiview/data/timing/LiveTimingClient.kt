@@ -252,14 +252,34 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         }
         if(rows.isNotEmpty()) _teamRadio.value=rows.takeLast(20)
     }
-    private fun sectorSegments(lastLap:JSONObject?, line:JSONObject, key:String):List<String>{\n        val raw=lastLap?.opt(key) ?: line.opt(key)\n        val obj=raw as? JSONObject ?: return emptyList()\n        val segments=obj.optJSONArray("Segments") ?: obj.optJSONArray("segments")\n        if(segments!=null) return buildList { for(i in 0 until segments.length()){ val s=segments.optJSONObject(i); val status=s?.optInt("Status",-1) ?: -1; add(when(status){2049->"GREEN";2051->"PURPLE";2048,2052->"YELLOW";2064->"BLUE";else->"GRAY"}) } }\n        val keyed=obj.optJSONObject("Segments") ?: obj.optJSONObject("segments") ?: return emptyList()\n        return keyed.keys().asSequence().mapNotNull { key -> keyed.optJSONObject(key)?.optInt("Status",-1) }.map { status -> when(status){2049->"GREEN";2051->"PURPLE";2048,2052->"YELLOW";2064->"BLUE";else->"GRAY"} }.toList()\n    }\n\n    private fun sectorValue(lastLap:JSONObject?, line:JSONObject, key:String):Pair<String,String>{
-        val raw=lastLap?.opt(key) ?: line.opt(key)
-        val obj=raw as? JSONObject
+    private fun sectorObject(lastLap:JSONObject?, line:JSONObject, key:String):JSONObject? {
+        val direct=lastLap?.optJSONObject(key) ?: line.optJSONObject(key)
+        if(direct!=null) return direct
+        val index=key.removePrefix("Sector").toIntOrNull()?.minus(1) ?: return null
+        val array=line.optJSONArray("Sectors")
+        if(array!=null) return array.optJSONObject(index)
+        val keyed=line.optJSONObject("Sectors") ?: return null
+        return keyed.optJSONObject(index.toString())
+    }
+
+    private fun sectorSegments(lastLap:JSONObject?, line:JSONObject, key:String):List<String>{
+        val obj=sectorObject(lastLap,line,key) ?: return emptyList()
+        val segments=obj.optJSONArray("Segments") ?: obj.optJSONArray("segments")
+        if(segments!=null) return buildList { for(i in 0 until segments.length()){ val s=segments.optJSONObject(i); val status=s?.optInt("Status",-1) ?: -1; add(segmentStatus(status)) } }
+        val keyed=obj.optJSONObject("Segments") ?: obj.optJSONObject("segments") ?: return emptyList()
+        return keyed.keys().asSequence().mapNotNull { keyed.optJSONObject(it)?.optInt("Status",-1) }.map(::segmentStatus).toList()
+    }
+
+    private fun segmentStatus(status:Int):String = when(status){2049->"GREEN";2051->"PURPLE";2048,2052->"YELLOW";2064->"BLUE";else->"GRAY"}
+
+    private fun sectorValue(lastLap:JSONObject?, line:JSONObject, key:String):Pair<String,String>{
+        val obj=sectorObject(lastLap,line,key)
         if(obj!=null){
             val value=obj.optString("Value").ifBlank{obj.optString("value")}.ifBlank{"-"}
             val status=when{obj.optBoolean("OverallFastest",false)->"PURPLE";obj.optBoolean("PersonalFastest",false)->"GREEN";else->"YELLOW"}
             return value to status
         }
+        val raw=lastLap?.opt(key) ?: line.opt(key)
         val value=raw?.toString()?.takeIf{it.isNotBlank()} ?: "-"
         return value to "NORMAL"
     }
