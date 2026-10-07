@@ -97,6 +97,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun detachOpenTiledSecureView(view: OpenTiledSecureSurfaceView) {
+        view.clearOutputSurface()
         view.setListener(null)
     }
 
