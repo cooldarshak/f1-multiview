@@ -554,12 +554,13 @@ class Media3DecoderManager(context: Context) {
         resourceManager.updateReference(id)
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
-            // Audio selection must remain enabled on every feed. We switch the
-            // audible feed with volume only; disabling/re-enabling the renderer
-            // caused a secondary feed to remain silent after switching from main.
-            player.volume = if (isMain) 1f else 0f
+            val activeDecoder = resourceManager.hasLease(pid)
+            // Active decoder feeds keep audio selected so switching the audible feed is
+            // instantaneous. Logically retained/suspended feeds keep audio disabled so
+            // the warm-feed pool does not consume audio resources.
+            player.volume = if (isMain && activeDecoder) 1f else 0f
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !activeDecoder)
                 .build()
         }
     }
