@@ -356,6 +356,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
         val helicam=mutableListOf<StreamSource>()
         val onboard=mutableListOf<StreamSource>()
         val other=mutableListOf<StreamSource>()
+        val f1Dash=mutableListOf<StreamSource>()
 
         for(i in 0 until additional.length()){
             val s=additional.optJSONObject(i)?:continue
@@ -380,13 +381,14 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
 
             val titleUpper=title.uppercase()
             val kind=when {
-                identifier.contains("TIMING") || identifier.contains("DASH") ||
-                    type.contains("timing") || type.contains("telemetry") || type.contains("dashboard") ||
-                    titleUpper.contains("F1 DASH") || titleUpper.contains("LIVE TIMING") ||
-                    titleUpper.contains("TIMING") || titleUpper.contains("TELEMETRY") -> StreamKind.TIMING
-                identifier.contains("TRACK") || type.contains("tracker") ||
-                    titleUpper.contains("DRIVER TRACKER") || titleUpper.contains("TRACKER") -> StreamKind.TRACK
+                identifier.contains("F1_DASH") || identifier.contains("F1DASH") ||
+                    titleUpper.contains("F1 DASH") -> StreamKind.F1_DASH
+                identifier=="TRACKER" || type.contains("tracker") ||
+                    titleUpper.contains("DRIVER TRACKER") || titleUpper=="TRACKER" -> StreamKind.TRACK
                 identifier=="DATA" || type.contains("data") || titleUpper=="DATA" -> StreamKind.DATA
+                identifier=="TIMING" || type.contains("timing") || type.contains("telemetry") ||
+                    titleUpper.contains("LIVE TIMING") || titleUpper.contains("TIMING") ||
+                    titleUpper.contains("TELEMETRY") -> StreamKind.TIMING
                 identifier=="HELICAM" || type.contains("helicam") || type.contains("helicopter") -> StreamKind.HELICAM
                 identifier=="OBC" || type.contains("onboard") -> StreamKind.ONBOARD
                 identifier.contains("WORLD") || type.contains("world") || title.contains("F1 LIVE",true) || title.contains("WORLD",true) -> StreamKind.WORLD
@@ -402,7 +404,8 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                     when(kind){
                         StreamKind.DATA -> "Data"
                         StreamKind.TIMING -> "Timing"
-                        StreamKind.TRACK -> "Driver Tracker"
+                        StreamKind.TRACK -> "Tracker"
+                        StreamKind.F1_DASH -> "F1 Dash Data"
                         StreamKind.HELICAM -> "Helicam"
                         StreamKind.ONBOARD -> "Onboard "+(driver ?: channel)
                         else -> "F1 Live"
@@ -419,6 +422,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 StreamKind.DATA -> data += source
                 StreamKind.TIMING -> timing += source
                 StreamKind.TRACK -> tracker += source
+                StreamKind.F1_DASH -> f1Dash += source
                 StreamKind.HELICAM -> helicam += source
                 StreamKind.ONBOARD -> onboard += source
                 else -> other += source
@@ -427,7 +431,18 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
 
         // Put native analytics feeds immediately after the main feed so they are visible
         // in the feed picker without scrolling past every onboard feed.
-        (world + timing + tracker + data + helicam + other + onboard).distinctBy { it.id }
+        // TRACKER and DATA remain the original F1-provided playable feeds.
+        // F1 Dash Data is a separate native dashboard driven by the live timing client.
+        if (f1Dash.isEmpty()) {
+            f1Dash += StreamSource(
+                id = "f1-dash-data-" + sessionId,
+                title = "F1 Dash Data",
+                kind = StreamKind.F1_DASH,
+                contentId = null,
+                channelId = null
+            )
+        }
+        (world + tracker + data + f1Dash + timing + helicam + other + onboard).distinctBy { it.id }
     }
     override suspend fun resolve(request:PlaybackRequest):Result<PlaybackSession> = playbackResolveMutex.withLock {
         val waitMs = 450L - (System.currentTimeMillis() - lastPlaybackResolveAt)
