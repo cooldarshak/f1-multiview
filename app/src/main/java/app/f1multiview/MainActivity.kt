@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Screenshot capture is allowed at the window level. Protected F1 video
+        // surfaces remain individually secure, so this does not weaken Widevine
+        // content protection. UI Capture Mode removes those secure surfaces before
+        // the user takes a screenshot.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         AppLogger.initialize(this)
         requestLegacyStoragePermissionIfNeeded()
