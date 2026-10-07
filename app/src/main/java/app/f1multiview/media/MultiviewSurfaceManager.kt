@@ -22,14 +22,29 @@ class MultiviewSurfaceManager(private val context: Context) {
     private val renderCoordinator = MultiviewRenderCoordinator()
 
     /**
-     * AndroidView owns the root container. The surface manager must therefore never hand
-     * Compose a cached/previously parented container. A new attachment always gets a new
-     * FrameLayout; the previous binding is detached from Media3 first.
+     * Compose owns the root FrameLayout. This manager owns only the rendering child inside it.
+     *
+     * The root is intentionally passed in from AndroidView.update, not populated in
+     * AndroidView.factory. AndroidView adds the factory result to its own ViewHolder before
+     * update is executed, so the media layer can never return a pre-populated/externally
+     * parented root to Compose.
      */
-    fun attach(feedId: String, player: EnginePlayerHandle, stream: StreamSource, source: String, screenshotMode: Boolean = false): FrameLayout {
-        bindings.remove(feedId)?.let { releaseBinding(it, unbindCoordinator = false) }
+    fun bind(
+        feedId: String,
+        player: EnginePlayerHandle,
+        stream: StreamSource,
+        source: String,
+        container: FrameLayout,
+        screenshotMode: Boolean = false
+    ) {
+        val current = bindings[feedId]
+        if (current != null && current.container === container && current.owner === player) {
+            renderCoordinator.update(feedId, source)
+            attachExisting(current, player, source)
+            return
+        }
 
-        val container = FrameLayout(context)
+        current?.let { releaseBinding(it, unbindCoordinator = false) }
         val params = FrameLayout.LayoutParams(-1, -1)
         val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
         val protectedContent = renderSlot.protectedContent
@@ -72,7 +87,6 @@ class MultiviewSurfaceManager(private val context: Context) {
                 surfaceView = surface
             )
         }
-        return container
     }
 
     fun update(feedId: String, player: EnginePlayerHandle, source: String) {
