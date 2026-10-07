@@ -70,8 +70,8 @@ class UnifiedMultiviewEngine(context: Context) {
     fun isOpenTiledActive(): Boolean =
         selectedMultiviewBackend === openTiledBackend
 
-    fun openTiledView(context: Context): OpenTiledCompositorView =
-        OpenTiledCompositorView(context)
+    fun openTiledView(context: Context, protectedOutput: Boolean = false): OpenTiledCompositorView =
+        OpenTiledCompositorView(context, protectedOutput)
 
     fun selectOpenTiledFeeds(feedIds: List<String>) {
         openTiledEngine.selectVisibleFeeds(feedIds)
