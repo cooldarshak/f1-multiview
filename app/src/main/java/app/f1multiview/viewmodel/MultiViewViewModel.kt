@@ -12,6 +12,7 @@ import app.f1multiview.data.ResultRow
 import app.f1multiview.data.SavedSetupStore
 import app.f1multiview.data.ContinueWatchingStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
+import app.f1multiview.data.f1tv.TmePlaybackParser
 import app.f1multiview.data.timing.LiveTimingClient
 import app.f1multiview.data.timing.ReplayTimingClient
 import app.f1multiview.data.timing.TrackMapClient
@@ -315,24 +316,41 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         persist()
         picked.mapNotNull{id->streams.firstOrNull{it.id==id}}.filter{it.url==null && it.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)}.forEach{viewModelScope.launch{resolveSource(it)}}
     }
+    private fun openTiledCapable(): Boolean {
+        val mainId = _ui.value.mainStreamId ?: return false
+        val source = _ui.value.streams.firstOrNull { it.id == mainId } ?: return false
+        return source.tmeJson?.let(TmePlaybackParser::parse)?.isTiledSource == true &&
+            source.drmLicenseUrl == null
+    }
+
     fun setLayout(layout:LayoutPreset){
-    val maxFeeds=when(layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
+    val maxFeeds=when(layout){
+        LayoutPreset.SINGLE->1
+        LayoutPreset.SPLIT_2->2
+        LayoutPreset.GRID_4->4
+        LayoutPreset.GRID_6->if(openTiledCapable()) 24 else 4
+    }
     _ui.value=_ui.value.copy(layout=layout,selectedStreamIds=_ui.value.selectedStreamIds.take(maxFeeds))
     persist()
 }
 fun toggleStream(id:String)=viewModelScope.launch{
     val current=_ui.value.selectedStreamIds
-    val maxFeeds=when(_ui.value.layout){LayoutPreset.SINGLE->1;LayoutPreset.SPLIT_2->2;LayoutPreset.GRID_4->4;LayoutPreset.GRID_6->4}
+    val maxFeeds=when(_ui.value.layout){
+        LayoutPreset.SINGLE->1
+        LayoutPreset.SPLIT_2->2
+        LayoutPreset.GRID_4->4
+        LayoutPreset.GRID_6->if(openTiledCapable()) 24 else 4
+    }
     if(id in current){
         if(id == _ui.value.mainStreamId) return@launch
         _ui.value=_ui.value.copy(selectedStreamIds=current.filterNot{it==id})
         persist()
         return@launch
     }
-    // Five concurrent video decoders crashed on the validated S22 Ultra test.
-    // Four feeds are currently the safe supported ceiling; do not instantiate a
-    // fifth player and risk taking down the whole app.
-    if(current.size>=4){
+    // The four-feed ceiling applies only to the independent Media3 decoder
+    // fallback. A genuine single-source tiled session has one physical decoder,
+    // so logical tile count is bounded by the source and UI capacity instead.
+    if(current.size>=maxFeeds){
         _ui.value=_ui.value.copy(
             providerError="4 simultaneous video feeds is the current safe limit. The 5th feed was blocked to prevent a decoder crash."
         )
