@@ -14,6 +14,11 @@ import app.f1multiview.model.StreamSource
 class DecoderResourceManager(
     private val maxVideoDecoders: Int = 4
 ) {
+    data class Allocation(
+        val lease: DecoderLease?,
+        val evictedFeedId: String? = null
+    )
+
     data class DecoderLease(
         val slotId: Int,
         val feedId: String,
@@ -36,17 +41,17 @@ class DecoderResourceManager(
         stream: StreamSource,
         isReference: Boolean = false,
         quality: Quality = Quality.AUTO
-    ): DecoderLease? {
+    ): Allocation {
         val priority = priorityFor(stream.kind, isReference)
         requests[stream.id] = Request(stream.id, stream.kind, priority, isReference, quality)
-        leases[stream.id]?.let { return it }
+        leases[stream.id]?.let { return Allocation(it) }
 
         val usedSlots = leases.values.map { it.slotId }.toSet()
         val freeSlot = (0 until maxVideoDecoders).firstOrNull { it !in usedSlots }
         if (freeSlot != null) {
-            return DecoderLease(freeSlot, stream.id, priority, isReference).also {
+            return Allocation(DecoderLease(freeSlot, stream.id, priority, isReference).also {
                 leases[stream.id] = it
-            }
+            })
         }
 
         // Never evict an active reference feed. If the budget is full, a lower-priority
@@ -57,12 +62,15 @@ class DecoderResourceManager(
 
         if (victim != null && priority > victim.priority) {
             leases.remove(victim.feedId)
-            return DecoderLease(victim.slotId, stream.id, priority, isReference).also {
-                leases[stream.id] = it
-            }
+            return Allocation(
+                DecoderLease(victim.slotId, stream.id, priority, isReference).also {
+                    leases[stream.id] = it
+                },
+                evictedFeedId = victim.feedId
+            )
         }
 
-        return null
+        return Allocation(null)
     }
 
     fun release(feedId: String) {
