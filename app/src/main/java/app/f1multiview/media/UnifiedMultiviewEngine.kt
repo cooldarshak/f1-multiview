@@ -124,11 +124,23 @@ class UnifiedMultiviewEngine(context: Context) {
         tiledMultiviewController.setSlots(slots)
 
 
-    internal fun backendPlayer(id: String): ExoPlayer = decoderManager.get(id)
-    internal fun backendPlayerOrNull(id: String): ExoPlayer? = decoderManager.getOrNull(id)
-    /** Returns the real single tiled player only for its reference feed. */
+    /**
+     * Resolves a UI/logical feed to its physical player.
+     *
+     * A single-source TME session deliberately has one physical ExoPlayer for
+     * every logical feed. This is the hard ownership boundary: no caller,
+     * including older UI code, may accidentally fall through to the independent
+     * decoder manager for a tiled feed.
+     */
+    internal fun backendPlayer(id: String): ExoPlayer =
+        openTiledPlayerOrNull(id) ?: decoderManager.get(id)
+
+    internal fun backendPlayerOrNull(id: String): ExoPlayer? =
+        openTiledPlayerOrNull(id) ?: decoderManager.getOrNull(id)
+
+    /** Returns the one physical tiled player for any logical feed in the active TME session. */
     internal fun openTiledPlayerOrNull(id: String): ExoPlayer? =
-        if (isOpenTiledActive() && openTiledEngine.state.value.referenceFeedId == id) {
+        if (isOpenTiledActive() && id in openTiledEngine.state.value.session.feedIds) {
             openTiledEngine.playerOrNull()
         } else null
 
