@@ -1819,6 +1819,16 @@ private fun FullscreenMultiview(
                     Spacer(Modifier.width(5.dp))
                     Control(false, "FEEDS ${ui.streams.size}") { feedPickerOpen = !feedPickerOpen }
                     Spacer(Modifier.width(5.dp))
+                    if (openTiled) {
+                        Control(false, "PLAY") { engine.playAll() }
+                        Spacer(Modifier.width(4.dp))
+                        Control(false, "PAUSE") { engine.pauseAll() }
+                        Spacer(Modifier.width(4.dp))
+                        Control(false, "−10S") { engine.seekOpenTiled(-10_000L) }
+                        Spacer(Modifier.width(4.dp))
+                        Control(false, "+10S") { engine.seekOpenTiled(10_000L) }
+                        Spacer(Modifier.width(4.dp))
+                    }
                     Control(false, "SYNC ALL") {
                         engine.playAll()
                         val mainId = ui.mainStreamId ?: active?.id
