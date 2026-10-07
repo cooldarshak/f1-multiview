@@ -37,6 +37,15 @@ class MultiviewSurfaceManager(private val context: Context) {
             bindings[feedId] = SurfaceBinding(feedId, source, protectedContent, container, textureView = texture)
         } else {
             val surface = SurfaceView(context)
+            if (protectedContent) {
+                // Keep Widevine output on a secure surface.
+                surface.setSecure(true)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                // In scrolling feed rails, keep the surface alive with the view attachment
+                // rather than visibility so the next frame can start without a surface-creation wait.
+                surface.setSurfaceLifecycle(SurfaceView.SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT)
+            }
             container.addView(surface, params)
             player.setVideoSurfaceView(surface)
             HdrSurfaceHints.apply(surface, source)
