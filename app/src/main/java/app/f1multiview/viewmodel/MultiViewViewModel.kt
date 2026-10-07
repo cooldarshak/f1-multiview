@@ -414,6 +414,14 @@ fun toggleStream(id:String)=viewModelScope.launch{
     val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
     if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) resolveSource(source)
 }
+    fun streamIdForTiledFeed(feedId: String): String? {
+        val session = _ui.value.tiledMultiviewSession ?: return null
+        val index = session.feedIds.indexOf(feedId)
+        if (index < 0) return null
+        val channel = session.feeds.getOrNull(index)?.channelId?.toString()
+        return _ui.value.streams.firstOrNull { it.channelId?.trim() == channel }?.id
+    }
+
     private fun tiledFeedIdForStream(streamId: String): String? {
         val session = _ui.value.tiledMultiviewSession ?: return null
         val source = _ui.value.streams.firstOrNull { it.id == streamId } ?: return null
@@ -441,6 +449,10 @@ fun toggleStream(id:String)=viewModelScope.launch{
             ensureTiledFeedSelected(tileId)
         }
         persist()
+    }
+
+    fun ensureTiledStreamSelected(streamId: String) {
+        tiledFeedIdForStream(streamId)?.let(::ensureTiledFeedSelected)
     }
 
     fun ensureTiledFeedSelected(feedId: String) {
