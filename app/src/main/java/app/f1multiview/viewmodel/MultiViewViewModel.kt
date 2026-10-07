@@ -67,7 +67,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.telemetry.collect{items->if(items.isNotEmpty())_ui.value=_ui.value.copy(telemetry=items)}}
         viewModelScope.launch{timingClient.sessionInfo.collect{info->_ui.value=_ui.value.copy(liveSessionInfo=info)}}
         viewModelScope.launch{timingClient.trackPositions.collect{positions->_ui.value=_ui.value.copy(trackPositions=positions)}}
-        viewModelScope.launch{timingClient.trackStatus.collect{status->_ui.value=_ui.value.copy(trackStatus=status)}}\n        viewModelScope.launch{timingClient.lapCount.collect{laps->_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
+        viewModelScope.launch{timingClient.trackStatus.collect{status->_ui.value=_ui.value.copy(trackStatus=status)}}
+        viewModelScope.launch{timingClient.lapCount.collect{laps->_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
