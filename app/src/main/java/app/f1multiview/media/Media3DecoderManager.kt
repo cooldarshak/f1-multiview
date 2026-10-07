@@ -2,7 +2,6 @@ package app.f1multiview.media
 
 import android.content.Context
 import android.content.res.Configuration
-import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -150,7 +149,7 @@ class Media3DecoderManager(context: Context) {
                             _errors.value = _errors.value - id
                             startupRequestedAtMs[id]?.let { startedAt ->
                                 val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
-                                Log.i("Media3DecoderManager", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
+                                AppLogger.i("Media3DecoderManager", "STARTUP_READY id=$id elapsedMs=$elapsed players=${players.size}")
                             }
                             if (playAllRequested) desiredPlaying.add(id)
                             if (id in desiredPlaying) {
@@ -173,7 +172,7 @@ class Media3DecoderManager(context: Context) {
                             firstFrameRendered.add(id)
                             startupFirstFrameAtMs[id] = firstFrameAt
                             startupRequestedAtMs[id]?.let { requestedAt ->
-                                Log.i("Media3DecoderManager", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
+                                AppLogger.i("Media3DecoderManager", "STARTUP_FIRST_FRAME id=" + id + " elapsedMs=" + (firstFrameAt-requestedAt) + " players=" + players.size)
                             }
                             syncController.markFirstFrame(id)
                         }
@@ -183,7 +182,7 @@ class Media3DecoderManager(context: Context) {
                                 val playingAt = android.os.SystemClock.elapsedRealtime()
                                 startupPlayingAtMs[id] = playingAt
                                 startupRequestedAtMs.remove(id)?.let { requestedAt ->
-                                    Log.i("Media3DecoderManager", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
+                                    AppLogger.i("Media3DecoderManager", "STARTUP_PLAYING id=" + id + " elapsedMs=" + (playingAt-requestedAt) + " players=" + players.size)
                                 }
                             }
                         }
@@ -241,7 +240,7 @@ class Media3DecoderManager(context: Context) {
                         FrameworkMediaDrm.newInstance(uuid).also { mediaDrm ->
                             val current = runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrNull()
                             if (current != "L3") runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
-                            Log.i("Media3DecoderManager", "Secondary " + stream.id + ": Widevine security level=" + runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown"))
+                            AppLogger.i("Media3DecoderManager", "Secondary " + stream.id + ": Widevine security level=" + runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown"))
                         }
                     } catch (_: UnsupportedDrmException) {
                         DummyExoMediaDrm()
@@ -268,7 +267,7 @@ class Media3DecoderManager(context: Context) {
         val lease = allocation.lease
         if (lease == null) {
             _errors.value = _errors.value + (stream.id to "No decoder resource available; feed remains logical and decoderless")
-            Log.i("Media3DecoderManager", "RESOURCE_WAIT feed=" + stream.id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
+            AppLogger.i("Media3DecoderManager", "RESOURCE_WAIT feed=" + stream.id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
             return false
         }
         val player = createPlayer(stream.id)
@@ -296,7 +295,7 @@ class Media3DecoderManager(context: Context) {
         startupFirstFrameAtMs.remove(stream.id)
         startupPlayingAtMs.remove(stream.id)
         firstFrameRendered.remove(stream.id)
-        Log.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
+        AppLogger.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
         preloadedMediaSources[stream.id]?.let { old ->
             if (forceReload) {
@@ -327,9 +326,9 @@ class Media3DecoderManager(context: Context) {
             val source = buildMediaSourceFactory(stream).createMediaSource(mediaItem)
             preloadManager.add(source, rank)
             preloadedMediaSources[stream.id] = source
-            Log.i("Media3DecoderManager", "PRELOAD_REGISTER id=${stream.id} rank=$rank")
+            AppLogger.i("Media3DecoderManager", "PRELOAD_REGISTER id=${stream.id} rank=$rank")
         }.onFailure { error ->
-            Log.w("Media3DecoderManager", "PRELOAD_REGISTER_FAILED id=${stream.id}", error)
+            AppLogger.w("Media3DecoderManager", "PRELOAD_REGISTER_FAILED id=${stream.id}", error)
         }
     }
 
@@ -357,7 +356,7 @@ class Media3DecoderManager(context: Context) {
         resourceManager.release(id)
         firstFrameRendered.remove(id)
         syncController.onFeedRemoved(id)
-        Log.i("Media3DecoderManager", "DECODER_SUSPEND id=" + id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
+        AppLogger.i("Media3DecoderManager", "DECODER_SUSPEND id=" + id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
     }
 
     fun setQuality(id: String, quality: Quality) {
@@ -551,7 +550,7 @@ class Media3DecoderManager(context: Context) {
             "error_insufficient_resources"
         ).any(evidence::contains)
 
-        Log.w(
+        AppLogger.w(
             "Media3DecoderManager",
             "Decoder failure id=$id players=${players.size} drm=true capacityEvidence=$resourceEvidence " +
                 "code=${error.errorCodeName} message=${error.message}"
@@ -689,7 +688,7 @@ class Media3DecoderManager(context: Context) {
         if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
             player.playWhenReady = true
             player.play()
-            Log.i(
+            AppLogger.i(
                 "Media3DecoderManager",
                 "STARTUP_PLAY id=" + id + " immediate=true players=" + players.size
             )
