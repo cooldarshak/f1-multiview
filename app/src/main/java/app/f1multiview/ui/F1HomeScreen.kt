@@ -40,7 +40,7 @@ import app.f1multiview.core.playback.VodEvent
 import app.f1multiview.core.playback.VodSession
 import app.f1multiview.model.ContinueWatchingEntry
 import app.f1multiview.model.SavedSetup
-import app.f1multiview.model.UiState
+import app.f1multiview.viewmodel.UiState
 import app.f1multiview.viewmodel.MultiViewViewModel
 import kotlinx.coroutines.delay
 
@@ -66,7 +66,7 @@ fun F1HomeScreen(ui: UiState, vm: MultiViewViewModel, isTv: Boolean, compactPhon
         AnimatedVisibility(drawer, enter=fadeIn(tween(180)), exit=fadeOut(tween(140)), modifier=Modifier.fillMaxSize().zIndex(50f)) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.58f)).clickable { drawer=false })
         }
-        AnimatedVisibility(drawer, enter=slideInHorizontally({-it}, tween(260, easing=FastOutSlowInEasing)), exit=slideOutHorizontally({-it}, tween(200)), modifier=Modifier.align(Alignment.CenterStart).zIndex(51f)) {
+        AnimatedVisibility(drawer, enter=slideInHorizontally(initialOffsetX={-it}, animationSpec=tween(260, easing=FastOutSlowInEasing)), exit=slideOutHorizontally(targetOffsetX={-it}, animationSpec=tween(200)), modifier=Modifier.align(Alignment.CenterStart).zIndex(51f)) {
             F1Drawer(isTv, destination, { destination=it; drawer=false }) { drawer=false }
         }
         AnimatedVisibility(search, enter=fadeIn(tween(160)), exit=fadeOut(tween(120)), modifier=Modifier.fillMaxSize().zIndex(60f)) {
