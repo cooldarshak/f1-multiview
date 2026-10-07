@@ -378,6 +378,11 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     persist()
 }
 fun toggleStream(id:String)=viewModelScope.launch{
+    if (openTiledCapable()) {
+        toggleTiledStream(id)
+        persist()
+        return@launch
+    }
     val current=_ui.value.selectedStreamIds
     val maxFeeds=maxLogicalFeeds()
     if(id in current){
@@ -435,6 +440,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
         } else {
             ensureTiledFeedSelected(tileId)
         }
+        persist()
     }
 
     fun ensureTiledFeedSelected(feedId: String) {
@@ -462,6 +468,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
             selectedTiledFeedIds = (current + feedId).distinct().take(capacity),
             providerError = null
         )
+        persist()
     }
 
     fun toggleTiledFeed(feedId: String) {
