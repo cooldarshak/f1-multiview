@@ -138,7 +138,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl)
          val resume=continueStore.entries.first().firstOrNull { it.contentId == vod.contentId }
          _ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,pendingResume=resume)
-         loadStreams(session)
+         loadStreams(session, autoSelectFeeds = true)
          loadReplayTiming(session)
      }
     fun prepareStream(id:String)=viewModelScope.launch {
