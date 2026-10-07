@@ -45,7 +45,6 @@ class OpenTiledCompositorView(
     }
 
     private fun installProtectedEgl() {
-    private fun installProtectedEgl() {
         setEGLConfigChooser(object : EGLConfigChooser {
             override fun chooseConfig(
                 egl: javax.microedition.khronos.egl.EGL10,
