@@ -166,7 +166,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         val videoSelectedIds = ui.selectedStreamIds.filter { id ->
-            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK)
+            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TIMING, StreamKind.TRACK, StreamKind.F1_DASH)
         }.toSet()
         pool.retain(videoSelectedIds)
         val ordered = ui.selectedStreamIds.mapNotNull { id ->
@@ -1640,8 +1640,8 @@ private fun MultiviewFeedTile(
             .clickable { onFocus(stream.id) }.focusable()
     ) {
         when (stream.kind) {
-            StreamKind.TIMING -> TimingTelemetryFeed(ui, isTv, Modifier.fillMaxSize())
-            StreamKind.TRACK -> CompactDriverTrackerFeed(ui, isTv, Modifier.fillMaxSize())
+            StreamKind.F1_DASH -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
+            StreamKind.TIMING -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
             else -> PlayerTile(
                 stream, pool, error, Modifier.fillMaxSize(), {}, onFocus,
                 active = active, surfaceType = surfaceType
@@ -1651,14 +1651,14 @@ private fun MultiviewFeedTile(
 }
 
 @Composable
-private fun TimingTelemetryFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
+private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
     val rows = ui.timing
     val lap = rows.maxOfOrNull { it.lap }?.takeIf { it > 0 }
         ?: ui.telemetry.maxOfOrNull { it.lap }?.takeIf { it > 0 }
     Column(modifier.fillMaxSize().background(Color(0xFF101114)).padding(if (isTv) 5.dp else 3.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("TIMING / TELEMETRY", color = White, fontSize = if (isTv) 10.sp else 8.sp, fontWeight = FontWeight.Black)
+                Text("F1 DASH DATA", color = White, fontSize = if (isTv) 10.sp else 8.sp, fontWeight = FontWeight.Black)
                 Text(
                     ui.liveSessionInfo.name.ifBlank { "F1 SESSION" }.uppercase() + "  ·  " + ui.timingStatus +
                         (lap?.let { "  ·  LAP " + it } ?: ""),
