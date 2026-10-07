@@ -206,7 +206,7 @@ fun UgisInfoPanel(
                 "telemetry" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     item { InfoRow("SESSION",ui.liveSessionInfo.name,ui.liveSessionInfo.meeting+" · "+ui.liveSessionInfo.country,ui.liveSessionInfo.sessionType) }
                     items(ui.telemetry){t->
-                        InfoRow(t.driver,"SPEED "+t.speed+" km/h","RPM "+t.rpm+" · GEAR "+t.gear+" · THR "+t.throttle+"% · BRK "+t.brake+"%","LAP "+t.lap+" · "+if(t.drs)"DRS" else "DRS OFF")
+                        InfoRow(t.driver,"SPEED "+t.speed+" km/h","RPM "+t.rpm+" · GEAR "+t.gear+" · THR "+t.throttle+"% · BRK "+t.brake+"%","LAP "+t.lap+" · "+t.lapTime)
                     }
                 }
                 "calendar" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
