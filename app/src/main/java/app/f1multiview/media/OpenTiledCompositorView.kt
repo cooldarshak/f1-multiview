@@ -38,6 +38,9 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
     fun setListener(value: Listener?) {
         listener = value
+        if (value != null) {
+            queueEvent { renderer.notifyExistingOutput(value) }
+        }
     }
 
     fun setSession(value: TiledMultiviewSession) {
@@ -197,6 +200,10 @@ class OpenTiledCompositorView(context: Context) : GLSurfaceView(context) {
 
             GLES20.glDisableVertexAttribArray(position)
             GLES20.glDisableVertexAttribArray(texCoord)
+        }
+
+        fun notifyExistingOutput(value: Listener) {
+            outputSurface?.let(value::onOutputSurfaceReady)
         }
 
         fun setSession(value: TiledMultiviewSession) {
