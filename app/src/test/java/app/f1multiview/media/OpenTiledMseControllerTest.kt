@@ -24,4 +24,16 @@ class OpenTiledMseControllerTest {
         val c = OpenTiledMseController()
         assertEquals(OpenTiledMseAction.SetPlaybackRate(1f), c.reconcile(1000, 990))
     }
+    @Test
+    fun negativeSmallDriftSlowsPlayback() {
+        val action = OpenTiledMseController().reconcile(1000, 1040)
+        assertTrue(action is OpenTiledMseAction.SetPlaybackRate)
+        assertEquals(0.9666667f, (action as OpenTiledMseAction.SetPlaybackRate).rate, 0.0001f)
+    }
+
+    @Test
+    fun largeNegativeDriftSeeksToReference() {
+        assertEquals(OpenTiledMseAction.Seek(1000), OpenTiledMseController().reconcile(1000, 1500))
+    }
+
 }
