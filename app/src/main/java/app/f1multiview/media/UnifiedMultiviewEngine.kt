@@ -26,6 +26,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
     internal fun backendPlayer(id: String): ExoPlayer = decoderManager.get(id)
+    internal fun backendPlayerOrNull(id: String): ExoPlayer? = decoderManager.getOrNull(id)
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         feedRegistry.put(stream)
@@ -185,6 +186,7 @@ private class DecoderManager(context: Context) {
     fun availableDecoderSlots(): Int = backend.availableDecoderSlots()
     fun activeDecoderIds(): Set<String> = backend.activeDecoderIds()
     fun get(id: String): ExoPlayer = backend.get(id)
+    fun getOrNull(id: String): ExoPlayer? = backend.getOrNull(id)
     fun load(stream: StreamSource, forceReload: Boolean) = backend.load(stream, forceReload)
     fun retain(ids: Set<String>) = backend.retain(ids)
     fun suspend(id: String) = backend.suspend(id)
