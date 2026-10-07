@@ -2,6 +2,7 @@ package app.f1multiview.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -25,8 +26,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -1651,14 +1655,42 @@ private fun MultiviewFeedTile(
 }
 
 @Composable
+@Composable
 private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize().background(Color(0xFF111214)),
+        contentAlignment = Alignment.Center
+    ) {
+        val designWidth = 832f
+        val designHeight = 480f
+        val scaleX = maxWidth.value / designWidth
+        val scaleY = maxHeight.value / designHeight
+        val uiScale = minOf(scaleX, scaleY).coerceIn(0.45f, 1f)
+
+        Box(
+            Modifier
+                .requiredWidth(designWidth.dp)
+                .requiredHeight(designHeight.dp)
+                .scale(uiScale)
+        ) {
+            F1DashReferenceLayout(ui, isTv)
+        }
+    }
+}
+
+@Composable
+private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
     val rows = ui.timing.sortedBy { it.position }.take(8)
     val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
     val totalLaps = ui.totalLaps.takeIf { it > 0 }
     val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
     val status = ui.trackStatus.label.ifBlank { "GREEN" }
-    Column(modifier.fillMaxSize().background(Color(0xFF111214))) {
-        Row(Modifier.fillMaxWidth().height(62.dp).background(Color(0xFF17181A)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+
+    Column(Modifier.fillMaxSize().background(Color(0xFF111214))) {
+        Row(
+            Modifier.fillMaxWidth().height(62.dp).background(Color(0xFF17181A)).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(Modifier.size(46.dp, 38.dp).background(Color(0xFF101114), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
                 Text(countryFlag(ui.liveSessionInfo.country), fontSize = 24.sp)
             }
@@ -1666,61 +1698,128 @@ private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modi
             Column(Modifier.weight(1f)) {
                 Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    (if (currentLap > 0) "LIVE  " else "") + "Lap: " + currentLap + (totalLaps?.let { "/$it" } ?: ""),
-                    color = White, fontSize = if (isTv) 15.sp else 12.sp, fontWeight = FontWeight.Black, maxLines = 1
+                    (if (currentLap > 0) "LIVE  " else "") + "Lap: " + currentLap + (totalLaps?.let { "/$it" } ?: "") +
+                        (if (currentLap > 0 && totalLaps != null) " (" + (totalLaps - currentLap).coerceAtLeast(0) + " left)" else ""),
+                    color = White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1
                 )
             }
-            Surface(color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A), shape = RoundedCornerShape(3.dp)) {
-                Text(if (status.equals("GREEN", true)) "Track Clear" else status, color = if (status.equals("GREEN", true)) Color(0xFF70C96D) else Color(0xFFFF8C82), fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp))
+            Surface(
+                color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A),
+                shape = RoundedCornerShape(3.dp)
+            ) {
+                Text(
+                    if (status.equals("GREEN", true)) "Track Clear" else status,
+                    color = if (status.equals("GREEN", true)) Color(0xFF70C96D) else Color(0xFFFF8C82),
+                    fontSize = 9.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
+                )
             }
             Spacer(Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.End) { Text("Wind", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold); Text(formatWind(ui.weather.wind, ui.weather.windDirection), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Wind", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                Text(formatWind(ui.weather.wind, ui.weather.windDirection), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
             Spacer(Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.End) { Text("Track", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold); Text(ui.weather.track + if (ui.weather.track == "-" ) "" else "°C", color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Track", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                Text(if (ui.weather.track == "-") "-" else ui.weather.track + "°C", color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            }
         }
+
         if (rows.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
                 items(rows, key = { it.position }) { row ->
                     val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
-                    val telemetry = ui.telemetry.firstOrNull { it.driver.equals(meta?.number ?: "", true) || it.driver.equals(row.driver, true) || it.driver.contains(row.driver, true) }
+                    val telemetry = ui.telemetry.firstOrNull {
+                        it.driver.equals(meta?.number ?: "", true) ||
+                            it.driver.equals(row.driver, true) ||
+                            it.driver.contains(row.driver, true)
+                    }
                     val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
                     val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
+
                     Row(
-                        Modifier.fillMaxWidth().height(64.dp).background(if (row.position % 2 == 0) Color(0xFF242526) else Color(0xFF151617)).padding(horizontal = 7.dp, vertical = 5.dp),
+                        Modifier.fillMaxWidth()
+                            .height(68.dp)
+                            .background(if (row.position % 2 == 0) Color(0xFF242526) else Color(0xFF151617))
+                            .padding(horizontal = 7.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(Modifier.width(125.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(24.dp)) {
-                                Text(row.position.toString(), color = White, fontSize = 13.sp, fontWeight = FontWeight.Black)
-                                Text(if (row.position == 1) "−0" else "−0", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+                        // F1-style single team/position tag. This replaces the old separate position + TLA blocks.
+                        Surface(color = teamColor, shape = RoundedCornerShape(3.dp), modifier = Modifier.width(125.dp)) {
+                            Row(
+                                Modifier.height(42.dp).padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(27.dp))
+                                Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
                             }
-                            Spacer(Modifier.width(5.dp))
-                            Surface(color = teamColor, shape = RoundedCornerShape(3.dp)) {
-                                Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 13.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                            }
                         }
-                        Column(Modifier.width(44.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(if (row.drs) "DRS" else "DRS", color = if (row.drs) Color(0xFF58C77C) else Color(0xFF66676C), fontSize = 6.sp, fontWeight = FontWeight.Black)
-                            Box(Modifier.width(31.dp).height(21.dp).border(1.dp, if (row.drs) Color(0xFF58C77C) else Color(0xFF48494D), RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) { Text(if (row.drs) "ON" else "DRS", color = if (row.drs) Color(0xFF58C77C) else Color(0xFF5D5E63), fontSize = 6.sp, fontWeight = FontWeight.Black) }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        // 2026 has no DRS. Use this slot for the actual tyre compound instead.
+                        Column(
+                            Modifier.width(48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                row.tyre.take(4).uppercase().ifBlank { "-" },
+                                color = tyreDisplayColor(row.tyre),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1
+                            )
+                            Text("L" + row.lap, color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
                         }
-                        Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.size(36.dp).border(3.dp, Color(0xFF2999EA), RoundedCornerShape(50)), contentAlignment = Alignment.Center) { Text((telemetry?.gear ?: 0).toString(), color = White, fontSize = 12.sp, fontWeight = FontWeight.Black) }
-                            Text((telemetry?.rpm ?: 0).toString(), color = White, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                            Text((telemetry?.speed ?: row.speed).toString() + " km/h", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                        }
+
+                        GearGauge(
+                            gear = telemetry?.gear ?: 0,
+                            rpm = telemetry?.rpm ?: 0,
+                            speed = telemetry?.speed ?: row.speed.toIntOrNull() ?: 0,
+                            modifier = Modifier.width(72.dp)
+                        )
+
                         Column(Modifier.width(118.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) { Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp)); LapPill(row.lastLap, lapColor) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
+                                LapPill(row.lastLap, lapColor)
+                            }
                             Spacer(Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) { Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp)); LapPill(row.bestLap, if (row.position == 1) Color(0xFFD84BEB) else Color.Transparent, outlined = row.position != 1) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
+                                if (row.position == 1) {
+                                    LapPill(row.bestLap, Color(0xFFD84BEB))
+                                } else {
+                                    Text(row.bestLap, color = White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                                }
+                            }
                         }
+
                         Column(Modifier.width(98.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) { Text("INT", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp)); GapPill(row.interval, row.position != 1) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("INT", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
+                                GapPill(row.interval, row.position != 1)
+                            }
                             Spacer(Modifier.height(5.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) { Text("LDR", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp)); Text(row.leaderGap, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("LDR", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
+                                Text(if (row.position == 1) "—" else row.leaderGap, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
-                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+
+                        Row(
+                            Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
                             DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
                             DashSectorColumn(row.sector2, row.sector2Status, row.sector2Segments)
                             DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
@@ -1733,16 +1832,55 @@ private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modi
 }
 
 @Composable
-private fun LapPill(value: String, color: Color, outlined: Boolean = false) {
-    Box(Modifier.width(69.dp).height(24.dp).then(if (outlined) Modifier.border(1.dp, Color(0xFF6D6E72), RoundedCornerShape(12.dp)) else Modifier.background(color, RoundedCornerShape(12.dp))), contentAlignment = Alignment.Center) {
-        Text(value, color = if (outlined) White else Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+private fun GearGauge(gear: Int, rpm: Int, speed: Int, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 4.dp.toPx()
+                drawArc(
+                    color = Color(0xFF4A4B50),
+                    startAngle = 135f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+                val progress = (rpm / 12500f).coerceIn(0f, 1f)
+                drawArc(
+                    color = Color(0xFF2999EA),
+                    startAngle = 135f,
+                    sweepAngle = 270f * progress,
+                    useCenter = false,
+                    style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+            }
+            Text(gear.toString(), color = White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        }
+        Text(rpm.toString(), color = White, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+        Text("$speed km/h", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun LapPill(value: String, color: Color) {
+    Box(
+        Modifier.width(69.dp).height(24.dp).background(color, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(value, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
     }
 }
 
 @Composable
 private fun GapPill(value: String, visible: Boolean) {
-    if (visible && value.isNotBlank() && value != "-") Box(Modifier.border(1.dp, Color(0xFF7CCB82), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(value, color = White, fontSize = 8.sp, fontWeight = FontWeight.Black) }
-    else Text("—", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    if (visible && value.isNotBlank() && value != "-") {
+        Box(
+            Modifier.border(1.dp, Color(0xFF7CCB82), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(value, color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+        }
+    } else {
+        Text("—", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable
@@ -1750,10 +1888,24 @@ private fun DashSectorColumn(value: String, status: String, segments: List<Strin
     Column(Modifier.widthIn(min = 56.dp, max = 76.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             val source = if (segments.isNotEmpty()) segments else List(8) { status }
-            source.take(10).forEach { seg -> Box(Modifier.width(5.dp).height(6.dp).background(segmentColor(seg), RoundedCornerShape(1.dp))) }
+            source.take(10).forEach { seg ->
+                Box(
+                    Modifier.width(5.dp).height(6.dp)
+                        .background(segmentColor(seg), RoundedCornerShape(1.dp))
+                )
+            }
         }
         Text(value, color = sectorColor(status), fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+private fun tyreDisplayColor(tyre: String): Color = when (tyre.uppercase()) {
+    "SOFT", "S" -> Color(0xFFFF4B4B)
+    "MEDIUM", "M" -> Color(0xFFFFD34E)
+    "HARD", "H" -> Color(0xFFF4F4F4)
+    "INTERMEDIATE", "I" -> Color(0xFF4DB36B)
+    "WET", "W" -> Color(0xFF4C8DFF)
+    else -> Muted
 }
 
 private fun segmentColor(status: String): Color = when(status.uppercase()) {
@@ -1764,28 +1916,6 @@ private fun segmentColor(status: String): Color = when(status.uppercase()) {
     else -> Color(0xFF55565C)
 }
 
-private fun parseTeamColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor("#" + value.removePrefix("#").padStart(6, 'F'))) }.getOrDefault(Color(0xFF5B5D66))
-
-private fun countryFlag(country: String): String = when {
-    country.contains("Australia", true) -> "🇦🇺"
-    country.contains("United Kingdom", true) || country.equals("UK", true) -> "🇬🇧"
-    country.contains("Italy", true) -> "🇮🇹"
-    country.contains("Japan", true) -> "🇯🇵"
-    country.contains("Canada", true) -> "🇨🇦"
-    country.contains("Monaco", true) -> "🇲🇨"
-    country.contains("Singapore", true) -> "🇸🇬"
-    country.contains("United States", true) || country.equals("USA", true) -> "🇺🇸"
-    else -> "🏁"
-}
-
-private fun formatWind(wind: String, direction: String): String {
-    if (wind == "-") return "-"
-    val d = direction.toDoubleOrNull()
-    val compass = if (d == null) direction else listOf("N","NE","E","SE","S","SW","W","NW")[(Math.round(d / 45.0).toInt() % 8 + 8) % 8]
-    return wind + " km/h " + compass
-}
-
-private fun isLightColor(color: Color): Boolean = (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) > 0.62
 @Composable
 private fun SectorCell(label: String, value: String, status: String) {
     Column(Modifier.widthIn(min = 43.dp, max = 62.dp)) {
