@@ -1678,6 +1678,64 @@ private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modi
     }
 }
 
+private fun countryFlag(country: String): String {
+    val value = country.trim()
+    if (value.any { it.code in 0x1F1E6..0x1F1FF }) return value
+    return when (value.uppercase()) {
+        "AUSTRALIA" -> "🇦🇺"
+        "CHINA" -> "🇨🇳"
+        "JAPAN" -> "🇯🇵"
+        "BAHRAIN" -> "🇧🇭"
+        "SAUDI ARABIA" -> "🇸🇦"
+        "USA", "UNITED STATES", "UNITED STATES OF AMERICA" -> "🇺🇸"
+        "CANADA" -> "🇨🇦"
+        "MONACO" -> "🇲🇨"
+        "SPAIN" -> "🇪🇸"
+        "AUSTRIA" -> "🇦🇹"
+        "GREAT BRITAIN", "UNITED KINGDOM", "UK" -> "🇬🇧"
+        "BELGIUM" -> "🇧🇪"
+        "HUNGARY" -> "🇭🇺"
+        "NETHERLANDS" -> "🇳🇱"
+        "ITALY" -> "🇮🇹"
+        "AZERBAIJAN" -> "🇦🇿"
+        "SINGAPORE" -> "🇸🇬"
+        "MEXICO" -> "🇲🇽"
+        "BRAZIL" -> "🇧🇷"
+        "QATAR" -> "🇶🇦"
+        "ABU DHABI", "UNITED ARAB EMIRATES", "UAE" -> "🇦🇪"
+        else -> "🏁"
+    }
+}
+
+private fun formatWind(wind: String, direction: String): String {
+    val speed = wind.trim()
+    val dir = direction.trim()
+    if (speed.isBlank() || speed == "-") return if (dir.isBlank() || dir == "-") "-" else dir
+    if (dir.isBlank() || dir == "-") return if (speed.contains("km/h", true)) speed else "$speed km/h"
+    return if (speed.contains("km/h", true)) "$speed $dir" else "$speed km/h $dir"
+}
+
+private fun parseTeamColor(value: String): Color {
+    val hex = value.trim().removePrefix("#").let {
+        when (it.length) {
+            3 -> it.map { ch -> "$ch$ch" }.joinToString("")
+            6 -> it
+            8 -> it.takeLast(6)
+            else -> "55565D"
+        }
+    }
+    return try {
+        Color(android.graphics.Color.parseColor("#$hex"))
+    } catch (_: IllegalArgumentException) {
+        Color(0xFF55565D)
+    }
+}
+
+private fun isLightColor(color: Color): Boolean {
+    val luminance = 0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue
+    return luminance > 0.62f
+}
+
 private fun dashboardClock(value: String): String? {
     val raw = value.trim()
     if (raw.isBlank() || raw == "-") return null
