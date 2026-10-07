@@ -44,7 +44,8 @@ data class UiState(
     val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
-    val pendingResume: ContinueWatchingEntry? = null
+    val pendingResume: ContinueWatchingEntry? = null,
+    val tiledMultiviewSession: TiledMultiviewSession? = null
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -268,6 +269,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         val contentId=source.contentId?:return
         provider.resolve(PlaybackRequest(contentId,source.channelId,_ui.value.quality)).onSuccess{playback->
             _ui.value=_ui.value.copy(
+                tiledMultiviewSession = playback.tiledMultiview,
                 streams=_ui.value.streams.map{
                     if(it.id==source.id) it.copy(
                         url=playback.manifestUrl,
@@ -280,7 +282,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                         ascendonToken=playback.ascendonToken,
                         entitlementToken=playback.entitlementToken,
                         drmType=playback.drmType,
-                        playToken=playback.playToken
+                        playToken=playback.playToken,
+                        tmeJson=playback.tmeJson
                     ) else it
                 },
                 providerError=null
