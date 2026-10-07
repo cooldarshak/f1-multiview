@@ -1216,46 +1216,35 @@ private fun F1HdrPlayerSurface(
     protectedContent: Boolean
 ) {
     val context = LocalContext.current
+    val engine = LocalEngine.current
+    val stream = remember(player.id, protectedContent) {
+        StreamSource(
+            id = player.id,
+            title = player.id,
+            kind = StreamKind.WORLD,
+            drmLicenseUrl = if (protectedContent) "protected" else null
+        )
+    }
     val screenshotMode = BuildConfig.DEBUG &&
         DebugPresentationSettings.isScreenshotModeEnabled(context) &&
         !protectedContent
 
     AndroidView(
         modifier = modifier,
-        factory = { viewContext ->
-            android.widget.FrameLayout(viewContext).apply {
-                val layoutParams = android.widget.FrameLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                if (screenshotMode) {
-                    // Debug-only SDR screenshot path. TextureView is composited into the
-                    // app window, while normal playback remains SurfaceView for HDR support.
-                    val texture = android.view.TextureView(viewContext)
-                    addView(texture, layoutParams)
-                    player.setVideoTextureView(texture)
-                } else {
-                    val surface = android.view.SurfaceView(viewContext)
-                    addView(surface, layoutParams)
-                    player.setVideoSurfaceView(surface)
-                    HdrSurfaceHints.apply(surface, source)
-                    if (player.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
-                        HdrSurfaceHints.applyHlg(surface, source)
-                    }
-                }
-            }
+        factory = {
+            engine.attachSurface(
+                feedId = player.id,
+                player = player,
+                stream = stream,
+                source = source,
+                screenshotMode = screenshotMode
+            )
         },
-        update = { container ->
-            when (val child = container.getChildAt(0)) {
-                is android.view.TextureView -> player.setVideoTextureView(child)
-                is android.view.SurfaceView -> {
-                    player.setVideoSurfaceView(child)
-                    HdrSurfaceHints.apply(child, source)
-                    if (player.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
-                        HdrSurfaceHints.applyHlg(child, source)
-                    }
-                }
-            }
+        update = {
+            engine.updateSurface(player.id, player, source)
+        },
+        onRelease = {
+            engine.detachSurface(player.id, player)
         }
     )
 }
