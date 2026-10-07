@@ -957,6 +957,7 @@ private fun PitWall(
     onSetMainStream: (String) -> Unit
 ) {
     val backendStatus by engine.backendStatus.collectAsState()
+    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(4).orEmpty() }
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
         .let { if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) it else it.take(4) }
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
@@ -979,7 +980,7 @@ private fun PitWall(
         Box(Modifier.width(5.dp).height(28.dp).background(Red, RoundedCornerShape(3.dp)))
         Text("LIVE PIT WALL", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 14.dp))
         Spacer(Modifier.weight(1f))
-        Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) "/24" else "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+        Text(if (selected.isEmpty()) "SELECT FEEDS" else if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) tiledSelected.size.toString() + "/24" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Surface(
             Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
@@ -1096,7 +1097,7 @@ private fun PitWall(
             } else {
                 OpenTiledMultiviewWall(
                     engine = engine,
-                    feedIds = selected.map { it.id },
+                    feedIds = tiledSelected,
                     protectedSource = protectedSource,
                     modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
                 )
