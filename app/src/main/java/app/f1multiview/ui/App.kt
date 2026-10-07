@@ -1658,10 +1658,60 @@ private fun OpenTiledMultiviewWall(
     engine: UnifiedMultiviewEngine,
     feedIds: List<String>,
     protectedSource: Boolean,
-    modifier: Modifier = Modifier
+    layout: LayoutPreset,
+    modifier: Modifier = Modifier,
+    onFeedFocus: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
+
+    val outputSlots = remember(feedIds, layout) {
+        val ids = feedIds.distinct().take(24)
+        fun slot(id: String, x: Float, y: Float, width: Float, height: Float, z: Int) =
+            OpenTiledMultiviewEngine.OutputSlot(id, x, y, width, height, z)
+
+        when {
+            ids.isEmpty() -> emptyList()
+            ids.size == 1 -> listOf(slot(ids[0], 0f, 0f, 1f, 1f, 0))
+            ids.size == 2 -> listOf(
+                slot(ids[0], 0f, 0f, .5f, 1f, 0),
+                slot(ids[1], .5f, 0f, .5f, 1f, 1)
+            )
+            ids.size == 3 -> listOf(
+                slot(ids[0], 0f, 0f, .62f, 1f, 0),
+                slot(ids[1], .63f, 0f, .37f, .49f, 1),
+                slot(ids[2], .63f, .51f, .37f, .49f, 2)
+            )
+            layout == LayoutPreset.GRID_4 && ids.size >= 4 -> listOf(
+                slot(ids[0], 0f, 0f, .55f, 1f, 0),
+                slot(ids[1], .56f, 0f, .44f, .32f, 1),
+                slot(ids[2], .56f, .34f, .44f, .32f, 2),
+                slot(ids[3], .56f, .68f, .44f, .32f, 3)
+            )
+            layout == LayoutPreset.GRID_6 && ids.size >= 6 -> listOf(
+                slot(ids[0], 0f, 0f, .45f, 1f, 0),
+                slot(ids[1], .46f, 0f, .26f, .49f, 1),
+                slot(ids[2], .46f, .51f, .26f, .49f, 2),
+                slot(ids[3], .73f, 0f, .27f, .32f, 3),
+                slot(ids[4], .73f, .34f, .27f, .32f, 4),
+                slot(ids[5], .73f, .68f, .27f, .32f, 5)
+            )
+            else -> {
+                val columns = if (ids.size <= 4) 2 else 3
+                val rows = (ids.size + columns - 1) / columns
+                ids.mapIndexed { index, id ->
+                    slot(
+                        id,
+                        (index % columns).toFloat() / columns,
+                        (index / columns).toFloat() / rows,
+                        1f / columns,
+                        1f / rows,
+                        index
+                    )
+                }
+            }
+        }
+    }
 
     Box(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
 
@@ -1687,11 +1737,13 @@ private fun OpenTiledMultiviewWall(
                             FrameLayout.LayoutParams.MATCH_PARENT
                         )
                     )
+                    tiledView.setFeedTapListener(onFeedFocus)
                     engine.attachOpenTiledView(tiledView)
                 }
             },
             update = { container ->
                 engine.selectOpenTiledFeeds(feedIds)
+                engine.setOpenTiledOutputSlots(outputSlots)
             },
             onRelease = { released ->
                 val tiledView = released.getChildAt(0) as? OpenTiledCompositorView
@@ -2048,11 +2100,17 @@ private fun FullscreenFeedRail(
     modifier: Modifier
 ) {
     val isTv = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+    val openTiled = engine.isOpenTiledActive()
     val candidates = remember(ui.streams) { ui.streams }
     val listState = rememberLazyListState()
     val previewIds = remember { mutableStateListOf<String>() }
 
-    LaunchedEffect(activeId, listState.firstVisibleItemIndex, candidates, ui.streams) {
+    LaunchedEffect(activeId, listState.firstVisibleItemIndex, candidates, ui.streams, openTiled) {
+        if (openTiled) {
+            // The TME path has exactly one physical player and one output surface.
+            // Rail cards must never attach additional surfaces to that player.
+            return@LaunchedEffect
+        }
         val visibleItems = listState.layoutInfo.visibleItemsInfo
         val visibleIds = visibleItems
             .mapNotNull { candidates.getOrNull(it.index)?.id }
@@ -2131,7 +2189,7 @@ private fun FullscreenFeedRail(
                         when {
                             candidate.kind == StreamKind.TRACK_MAP -> Box(Modifier.fillMaxSize()) { TrackMapPanel(ui, isTv) }
                             candidate.kind == StreamKind.F1_DASH_DATA -> Box(Modifier.fillMaxSize()) { F1DashDataFeed(ui, isTv) }
-                            candidate.url != null && (candidate.id == activeId || candidate.id in previewIds) -> {
+                            !openTiled && candidate.url != null && (candidate.id == activeId || candidate.id in previewIds) -> {
                                 F1HdrPlayerSurface(
                                     engine = engine,
                                     player = previewPlayer,
@@ -2499,7 +2557,12 @@ private fun FullscreenMultiview(
                             engine = engine,
                             feedIds = tiledSelected,
                             protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null,
-                            modifier = Modifier.fillMaxSize()
+                            layout = ui.layout,
+                            modifier = Modifier.fillMaxSize(),
+                            onFeedFocus = { id ->
+                                activeFeedId = id
+                                menu = null
+                            }
                         )
                     } else {
                         MultiviewFeedTile(
@@ -2536,6 +2599,9 @@ private fun FullscreenMultiview(
                     vm = vm,
                     activeId = activeFeedId ?: ui.mainStreamId.orEmpty(),
                     onSwitchStream = { id ->
+                        if (openTiled) {
+                            vm.ensureTiledFeedSelected(id)
+                        }
                         activeFeedId = id
                         menu = null
                     },
