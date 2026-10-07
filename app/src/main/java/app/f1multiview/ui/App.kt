@@ -1367,52 +1367,47 @@ private fun F1HdrPlayerSurface(
     source: String
 ) {
     val context = LocalContext.current
-    val protectedContent = stream.drmLicenseUrl != null
-    val screenshotMode = BuildConfig.DEBUG &&
-        DebugPresentationSettings.isScreenshotModeEnabled(context)
+    val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
     val decoderGeneration by engine.decoderGeneration.collectAsState()
 
-    if (!screenshotMode) {
-        // A logical feed can exist before the decoder lease is allocated. The SurfaceView may
-        // therefore be created while its EnginePlayerHandle has no backend player. Rebind it
-        // whenever the engine allocates/reclaims a decoder; otherwise audio can play while the
-        // surface remains permanently black.
-        LaunchedEffect(player.id, decoderGeneration, source) {
-            if (engine.hasDecoder(player.id)) {
-                engine.updateSurface(player.id, player, source)
-            }
-        }
+    if (screenshotMode) {
+        ScreenshotPlaceholder(
+            label = stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
+            modifier = modifier
+        )
+        return
+    }
 
-        /*
-         * Feed identity is part of the native-view identity. Without this key, Compose can
-         * reuse the same AndroidView node when a grid position changes from feed A to feed B;
-         * the native SurfaceView then remains owned by A while update() starts targeting B.
-         */
-        key(player.id) {
-            AndroidView(
-                modifier = modifier,
-                factory = { FrameLayout(context) },
-                update = { container ->
-                    engine.attachSurface(
-                        feedId = player.id,
-                        player = player,
-                        stream = stream,
-                        source = source,
-                        container = container,
-                        screenshotMode = false
-                    )
-                },
-                onRelease = { released ->
-                    engine.detachSurface(player.id, player, released)
-                }
-            )
+    LaunchedEffect(player.id, decoderGeneration, source) {
+        if (engine.hasDecoder(player.id)) {
+            engine.updateSurface(player.id, player, source)
         }
+    }
+
+    key(player.id) {
+        AndroidView(
+            modifier = modifier,
+            factory = { FrameLayout(context) },
+            update = { container ->
+                engine.attachSurface(
+                    feedId = player.id,
+                    player = player,
+                    stream = stream,
+                    source = source,
+                    container = container,
+                    screenshotMode = false
+                )
+            },
+            onRelease = { released ->
+                engine.detachSurface(player.id, player, released)
+            }
+        )
     }
 }
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW) {
+private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW, showOverlay: Boolean = true) {
     val player = remember(stream.id) { engine.player(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1445,18 +1440,13 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
-            if (DebugPresentationSettings.screenshotMode.collectAsState().value) {
-                ScreenshotPlaceholder(
-                    label = stream.driver?.takeIf { it.isNotBlank() } ?: stream.title,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
                     Text("CONNECTING…", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            if (showOverlay) {
             Row(
                 Modifier.fillMaxWidth().align(Alignment.TopStart).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 9.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1480,6 +1470,7 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
                 Text(when { error != null -> "ERROR"; !ready -> "LOADING"; playing -> "PLAYING"; else -> "PAUSED" }, color = if (error != null) Color(0xFFFF7777) else Color.White.copy(alpha = .6f), fontSize = 7.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(7.dp))
 
+            }
             }
             if (error != null) {
                 Surface(Modifier.align(Alignment.Center).padding(12.dp), shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = .92f), border = BorderStroke(1.dp, Red.copy(alpha = .65f))) {
