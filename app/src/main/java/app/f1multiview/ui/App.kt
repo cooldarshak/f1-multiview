@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.rememberScrollState
@@ -1349,6 +1350,128 @@ private fun PlayerTile(stream: StreamSource, pool: PlayerPool, error: String?, m
 
 @OptIn(UnstableApi::class)
 @Composable
+private fun FullscreenFeedRail(
+    ui: UiState,
+    pool: PlayerPool,
+    vm: MultiViewViewModel,
+    activeId: String,
+    onSwitchStream: (String) -> Unit,
+    modifier: Modifier
+) {
+    val candidates = remember(ui.streams) {
+        ui.streams.filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+    }
+    val listState = rememberLazyListState()
+    val previewIds = remember { mutableStateListOf<String>() }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, candidates, ui.streams) {
+        val visibleIds = listState.layoutInfo.visibleItemsInfo
+            .mapNotNull { candidates.getOrNull(it.index)?.id }
+            .filter { it != activeId }
+            .take(3)
+        previewIds.filterNot { it in visibleIds }.toList().forEach {
+            pool.clear(it)
+            previewIds.remove(it)
+        }
+        visibleIds.forEach { id ->
+            if (id !in previewIds) previewIds.add(id)
+            vm.prepareStream(id)
+        }
+        candidates.filter { it.id in previewIds && it.url != null }.forEach {
+            pool.load(it)
+            pool.play(it.id)
+        }
+    }
+
+    Surface(
+        modifier = modifier,
+        color = Color(0xFF0F1015),
+        tonalElevation = 4.dp,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(candidates, key = { it.id }) { candidate ->
+                val active = candidate.id == activeId
+                Surface(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(104.dp)
+                        .clickable { onSwitchStream(candidate.id) }
+                        .focusable(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (active) HomeFeedRed else Color(0xFF17181F),
+                    border = BorderStroke(
+                        if (active) 2.dp else 1.dp,
+                        if (active) Color.White else Color.White.copy(alpha = .08f)
+                    )
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        val previewPlayer = remember(candidate.id) { pool.get(candidate.id) }
+                        if (candidate.url != null && candidate.id in previewIds) {
+                            F1HdrPlayerSurface(
+                                player = previewPlayer,
+                                modifier = Modifier.fillMaxSize(),
+                                source = "feed-rail-" + candidate.id,
+                                protectedContent = candidate.drmLicenseUrl != null
+                            )
+                        } else {
+                            F1Artwork(
+                                url = null,
+                                title = candidate.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                                fallbackSeed = candidate.id
+                            )
+                        }
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Black.copy(alpha = .05f), Color.Black.copy(alpha = .78f))
+                                )
+                            )
+                        )
+                        Column(Modifier.align(Alignment.BottomStart).padding(8.dp)) {
+                            Text(
+                                candidate.driver?.takeIf { it.isNotBlank() } ?: candidate.title,
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                if (active) "PLAYING" else if (candidate.url != null) "LIVE PREVIEW" else "LOAD PREVIEW",
+                                color = if (active) Color.White else Color.White.copy(alpha = .68f),
+                                fontSize = 7.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        if (candidate.isLive) {
+                            Surface(
+                                Modifier.align(Alignment.TopStart).padding(6.dp),
+                                color = HomeFeedRed,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text("LIVE", color = Color.White, fontSize = 6.sp, fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val HomeFeedRed = Color(0xFFE10600)
+
+@Composable
 private fun FullscreenMultiview(
     ui: UiState,
     pool: PlayerPool,
@@ -2386,7 +2509,26 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, pool: PlayerPool
             .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
         contentAlignment = Alignment.Center
     ) {
-        F1HdrPlayerSurface(player = player, modifier = Modifier.fillMaxSize(), source = "fullscreen-" + stream.id, protectedContent = stream.drmLicenseUrl != null)
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(0.73f).fillMaxHeight()) {
+                F1HdrPlayerSurface(
+                    player = player,
+                    modifier = Modifier.fillMaxSize(),
+                    source = "fullscreen-" + stream.id,
+                    protectedContent = stream.drmLicenseUrl != null
+                )
+            }
+            if (ui.streams.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) } > 1) {
+                FullscreenFeedRail(
+                    ui = ui,
+                    pool = pool,
+                    vm = vm,
+                    activeId = stream.id,
+                    onSwitchStream = onSwitchStream,
+                    modifier = Modifier.weight(0.27f).fillMaxHeight()
+                )
+            }
+        }
 
         if (!controlsVisible) {
             Surface(
