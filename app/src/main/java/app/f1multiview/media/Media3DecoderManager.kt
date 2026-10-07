@@ -798,7 +798,6 @@ class Media3DecoderManager(context: Context) {
 
     fun release() {
         mainHandler.removeCallbacksAndMessages(null)
-        syncMainId = null
         syncController.reset()
         players.values.forEach { it.release() }
         players.clear()
