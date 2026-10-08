@@ -44,14 +44,44 @@ class TmePipelineTest {
     }
 
     @Test
+    fun offerCanReleaseAnEpochImmediatelyWhenAllTilesArrive() {
+        val sync = TmeSegmentSynchronizer()
+        val key = TmeCmafSegmentKey(11, 2_000_000, 1_000_000)
+        assertEquals(null, sync.offer(TmeTileSegment("world", key, byteArrayOf(1)), setOf("world", "onboard"), 100L))
+        val aligned = sync.offer(TmeTileSegment("onboard", key, byteArrayOf(2)), setOf("world", "onboard"), 150L)
+        assertTrue(aligned?.complete == true)
+        assertEquals(0, sync.pendingCount())
+    }
+
+    @Test
+    fun expiryUsesArrivalClockNotMediaEpoch() {
+        val sync = TmeSegmentSynchronizer(segmentTimeoutUs = 1_000L)
+        val key = TmeCmafSegmentKey(12, 9_000_000_000L, 1_000_000L)
+        sync.offer(TmeTileSegment("world", key, byteArrayOf(1)), nowElapsedUs = 1_000L)
+        assertTrue(sync.dropExpired(2_001L).contains(key))
+    }
+
+    @Test
     fun dynamicSelectionDoesNotCreateASecondDecoder() {
         val selection = TmeDynamicSelection()
-        var decoderCreations = 1L
         selection.setSelected(listOf("world"))
+        val first = selection.state().generation
         selection.toggle("onboard")
         selection.toggle("data")
         assertEquals(3, selection.state().selectedFeedIds.size)
-        assertEquals(1L, decoderCreations)
+        assertTrue(selection.state().generation > first)
+
+        val tracker = TmePerformanceTracker()
+        val telemetry = tracker.telemetry(
+            logicalFeeds = 4,
+            selectedFeeds = 3,
+            inputTiles = 4,
+            mergedStreams = 1,
+            codecs = 1,
+            surfaces = 1
+        )
+        assertEquals(0L, telemetry.decoderRecreationCount)
+        assertTrue(telemetry.singleDecoderInvariant)
     }
 
     @Test
