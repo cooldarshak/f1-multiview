@@ -1787,6 +1787,11 @@ private fun OpenTiledMultiviewWall(
                 }
             },
             update = { container ->
+                val tiledView = container.getChildAt(0) as? OpenTiledCompositorView
+                tiledView?.setFeedTapListener { tileId ->
+                    onFeedFocus(tileId)
+                    onVideoTap()
+                }
                 engine.selectOpenTiledFeeds(feedIds)
                 engine.setOpenTiledOutputSlots(outputSlots)
             },
