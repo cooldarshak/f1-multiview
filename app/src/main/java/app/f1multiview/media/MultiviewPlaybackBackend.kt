@@ -43,15 +43,37 @@ interface MultiviewPlaybackBackend {
  * rest of the app from silently treating TME JSON as though it were a playable
  * tiled stream.
  */
-class NativeTmePlaybackBackend : MultiviewPlaybackBackend {
-    override val status = MultiviewBackendStatus(
-        kind = MultiviewBackendKind.NATIVE_TME,
-        available = false,
-        singlePlayer = true,
-        reason = "OpenTME single-MediaCodec owner is implemented; compressed-domain CMAF tile merger is not yet wired"
-    )
+class NativeTmePlaybackBackend(
+    context: android.content.Context
+) : MultiviewPlaybackBackend {
+    private val engine = NativeTmeMultiviewEngine(context)
 
-    override fun canHandle(session: TiledMultiviewSession): Boolean = false
+    override val status: MultiviewBackendStatus
+        get() = MultiviewBackendStatus(
+            kind = MultiviewBackendKind.NATIVE_TME,
+            available = runCatching { GpacNativeTmeMerger().available }.getOrDefault(false),
+            singlePlayer = true,
+            reason = if (runCatching { GpacNativeTmeMerger().available }.getOrDefault(false))
+                "GPAC hevcmerge -> one MediaCodec -> one Surface"
+            else
+                "ARM64 GPAC native merger is unavailable"
+        )
+
+    override fun canHandle(session: TiledMultiviewSession): Boolean = engine.canHandle(session)
+
+    fun prepare(session: TiledMultiviewSession, source: StreamSource): Boolean =
+        engine.prepare(session, source)
+
+    fun attach(view: OpenTiledCompositorView) = engine.attach(view)
+
+    fun selectFeeds(feedIds: List<String>) = engine.selectFeeds(feedIds)
+
+    fun setSlots(slots: List<OpenTiledMultiviewEngine.OutputSlot>) = engine.setSlots(slots)
+
+    fun play() = engine.play()
+    fun pause() = engine.pause()
+    fun release() = engine.release()
+    fun diagnostics(): Map<String, String> = engine.diagnostics()
 }
 
 /**
