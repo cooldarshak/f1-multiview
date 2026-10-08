@@ -71,10 +71,10 @@ jobs:
             --prefix=/tmp/gpac-sdk \
             --disable-all \
             --enable-threads \
+            --disable-dvbx \
             --enable-isoff \
             --enable-isoff-write \
             --enable-isoff-frag \
-            --enable-parsers \
             --enable-hevcmerge \
             --enable-hevcsplit \
             --enable-tileagg \
