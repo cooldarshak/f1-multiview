@@ -155,21 +155,30 @@ static void set_source_props(
     const uint8_t *dsi,
     uint32_t dsiSize
 ) {
-    gf_filter_pid_set_property(pid, GF_PROP_PID_STREAM_TYPE, &PROP_UINT(GF_STREAM_VISUAL));
-    gf_filter_pid_set_property(pid, GF_PROP_PID_CODECID, &PROP_UINT(GF_CODECID_HEVC));
+    GF_PropertyValue streamType = PROP_UINT(GF_STREAM_VISUAL);
+    GF_PropertyValue codecId = PROP_UINT(GF_CODECID_HEVC);
     // hevcmerge groups independent HEVC PIDs by the mergeable-set property.
     // Without a shared non-zero value, the graph has four HEVC inputs but no
     // explicit instruction that they form one compressed-domain tile set.
-    gf_filter_pid_set_property(pid, GF_PROP_PID_CODEC_MERGEABLE, &PROP_UINT(1));
-    gf_filter_pid_set_property(pid, GF_PROP_PID_TIMESCALE, &PROP_UINT(1000000));
-    gf_filter_pid_set_property(pid, GF_PROP_PID_ID, &PROP_UINT(id));
-    gf_filter_pid_set_property(pid, GF_PROP_PID_WIDTH, &PROP_UINT(width));
-    gf_filter_pid_set_property(pid, GF_PROP_PID_HEIGHT, &PROP_UINT(height));
-    gf_filter_pid_set_property(pid, GF_PROP_PID_CROP_POS, &PROP_VEC2I_INT(x, y));
+    GF_PropertyValue mergeable = PROP_UINT(1);
+    GF_PropertyValue timescale = PROP_UINT(1000000);
+    GF_PropertyValue pidId = PROP_UINT(id);
+    GF_PropertyValue pidWidth = PROP_UINT(width);
+    GF_PropertyValue pidHeight = PROP_UINT(height);
+    GF_PropertyValue cropPos = PROP_VEC2I_INT(x, y);
+
+    gf_filter_pid_set_property(pid, GF_PROP_PID_STREAM_TYPE, &streamType);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_CODECID, &codecId);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_CODEC_MERGEABLE, &mergeable);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_TIMESCALE, &timescale);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_ID, &pidId);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_WIDTH, &pidWidth);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_HEIGHT, &pidHeight);
+    gf_filter_pid_set_property(pid, GF_PROP_PID_CROP_POS, &cropPos);
+
     if (dsi && dsiSize) {
-        gf_filter_pid_set_property(
-            pid, GF_PROP_PID_DECODER_CONFIG, &PROP_DATA((u8 *)dsi, dsiSize)
-        );
+        GF_PropertyValue decoderConfig = PROP_DATA((u8 *)dsi, dsiSize);
+        gf_filter_pid_set_property(pid, GF_PROP_PID_DECODER_CONFIG, &decoderConfig);
     }
 }
 
