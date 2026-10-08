@@ -128,18 +128,34 @@ class F1TvApiClient {
     private fun playHeaders(): Map<String,String> = buildMap {
         putAll(authHeaders());put("Origin",BASE);put("Referer",BASE+"/");put("x-f1-device-info",deviceInfo())
     }
-    private fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
-        val result=JSONObject(response.body).optJSONObject("resultObj")?:JSONObject(response.body)
-        val tmeElement=result.opt("tmeJson") ?: result.opt("tme") ?: result.opt("TME")
+    internal fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
+        val root=JSONObject(response.body)
+        // F1's production ContentPlayResponse exposes tmeJson and playback fields
+        // directly on the response object. Some older/alternate responses wrap
+        // them under resultObj, so keep that as a compatibility fallback.
+        val resultObj=root.optJSONObject("resultObj")
+        val sources=listOf(root,resultObj).filterNotNull()
+        val tmeElement=sources.asSequence()
+            .mapNotNull { it.opt("tmeJson") ?: it.opt("tme") ?: it.opt("TME") }
+            .firstOrNull { value ->
+                when(value){
+                    is org.json.JSONObject, is org.json.JSONArray -> value.length()>0
+                    else -> value.toString().isNotBlank()
+                }
+            }
         val tmeJson=tmeElement?.let { if (it is org.json.JSONObject || it is org.json.JSONArray) it.toString() else it.toString() }
-        val manifest=firstString(result,"url","manifestUrl","manifestURL","playUrl")
+        val manifest=sources.asSequence().mapNotNull { firstString(it,"url","manifestUrl","manifestURL","playUrl") }.firstOrNull()
         if (manifest.isNullOrBlank() && tmeJson.isNullOrBlank()) throw F1TvException("CONTENT/PLAY returned neither a manifest URL nor TME JSON")
-        val license=firstString(result,"laURL","laUrl","licenseUrl","licenseURL")
-        val drmToken=firstString(result,"drmToken");val playEntitlement=firstString(result,"entitlementToken")
-        val streamType=firstString(result,"streamType");val pipelineVersion=result.optInt("pipelineVersion",-1).takeIf{it>=0}
-        val playToken=extractPlayToken(manifest.orEmpty());val playApiVersion=firstString(result,"playApiVersion","playAPIVersion")
-        val platform=firstString(result,"platform")?:requestedPlatform;val drmType=firstString(result,"drmType")
-        val channelViewMode=firstString(result,"channelViewMode","channelViewModeOverride")
+        val license=sources.asSequence().mapNotNull { firstString(it,"laURL","laUrl","licenseUrl","licenseURL") }.firstOrNull()
+        val drmToken=sources.asSequence().mapNotNull { firstString(it,"drmToken") }.firstOrNull()
+        val playEntitlement=sources.asSequence().mapNotNull { firstString(it,"entitlementToken") }.firstOrNull()
+        val streamType=sources.asSequence().mapNotNull { firstString(it,"streamType") }.firstOrNull()
+        val pipelineVersion=sources.asSequence().mapNotNull { it.optInt("pipelineVersion",-1).takeIf{v->v>=0} }.firstOrNull()
+        val playToken=extractPlayToken(manifest.orEmpty())
+        val playApiVersion=sources.asSequence().mapNotNull { firstString(it,"playApiVersion","playAPIVersion") }.firstOrNull()
+        val platform=sources.asSequence().mapNotNull { firstString(it,"platform") }.firstOrNull()?:requestedPlatform
+        val drmType=sources.asSequence().mapNotNull { firstString(it,"drmType") }.firstOrNull()
+        val channelViewMode=sources.asSequence().mapNotNull { firstString(it,"channelViewMode","channelViewModeOverride") }.firstOrNull()
         return PlaybackResponse(manifest.orEmpty(),license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType,tmeJson,channelViewMode)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
