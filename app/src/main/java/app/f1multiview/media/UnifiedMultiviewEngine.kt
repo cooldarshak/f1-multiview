@@ -62,7 +62,7 @@ class UnifiedMultiviewEngine(context: Context) {
         }
         tiledMultiviewController.configure(session)
         _backendStatus.value = selectedMultiviewBackend.status
-        AppLogger.i("Engine", "TME_BACKEND_SELECT topology=" + session.topology + " backend=" + selectedMultiviewBackend.status.kind + " singlePlayer=" + selectedMultiviewBackend.status.singlePlayer)
+        AppLogger.i("Engine", "TME_BACKEND_SELECT topology=" + session.topology + " backend=" + selectedMultiviewBackend.status.kind + " singlePlayer=" + selectedMultiviewBackend.status.singlePlayer + " feeds=" + session.feeds.size + " grid=" + (session.tileCountHorizontal ?: 0) + "x" + (session.tileCountVertical ?: 0) + " tile=" + (session.tileWidth ?: 0) + "x" + (session.tileHeight ?: 0))
     }
 
     fun tiledMultiviewState(): TiledMultiviewController.State = tiledMultiviewController.state()
