@@ -35,8 +35,8 @@ data class TmePlayback(
     val contentId: Int?,
     val tileWidth: Int?,
     val tileHeight: Int?,
-    val tileCountHorizontal: Int?,
-    val tileCountVertical: Int?,
+    val tileCountHorizontal: Int? = null,
+    val tileCountVertical: Int? = null,
     val feeds: List<TmeFeed>
 ) {
     val topology: TmeTopology
