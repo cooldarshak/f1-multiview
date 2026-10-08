@@ -194,7 +194,8 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             streams = ordered,
             visibleIds = videoSelectedIds,
             referenceId = mainId,
-            autoplay = false
+            autoplay = false,
+            tmeSession = ui.tiledMultiviewSession
         )
         startedFeeds.keys.retainAll(scheduled)
     }
@@ -958,7 +959,7 @@ private fun PitWall(
     val backendStatus by engine.backendStatus.collectAsState()
     val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
-        .let { if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) it else it.take(4) }
+        .let { if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) it else it.take(4) }
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -979,7 +980,7 @@ private fun PitWall(
         Box(Modifier.width(5.dp).height(28.dp).background(Red, RoundedCornerShape(3.dp)))
         Text("LIVE PIT WALL", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 14.dp))
         Spacer(Modifier.weight(1f))
-        Text(if (selected.isEmpty()) "SELECT FEEDS" else if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) tiledSelected.size.toString() + "/24" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+        Text(if (selected.isEmpty()) "SELECT FEEDS" else if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) tiledSelected.size.toString() + "/24" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Surface(
             Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
@@ -1001,7 +1002,7 @@ private fun PitWall(
     }
     if (feedPanelOpen) LazyRow(Modifier.fillMaxWidth().padding(top = 8.dp), contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(ui.streams) { stream ->
-            val picked = if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
+            val picked = if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) {
                 val session = ui.tiledMultiviewSession
                 val channel = stream.channelId?.trim().takeIf { !it.isNullOrBlank() }
                 val index = channel?.let { ch -> session?.feeds?.indexOfFirst { it.channelId?.toString() == ch } } ?: -1
@@ -1017,7 +1018,7 @@ private fun PitWall(
                     Row(
                         Modifier.fillMaxWidth()
                             .clickable {
-                                if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
+                                if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) {
                                     // TME selection is logical-feed state, not the generic
                                     // independent-player selection state.
                                     // The parent callback remains for fallback backends.
@@ -1058,7 +1059,7 @@ private fun PitWall(
         Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(170.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
             Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
                 Text("CHOOSE YOUR FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
-                Text(if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) "Choose up to 24 logical feeds. Mark any feed as MAIN to replace the current main feed." else "Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                Text(if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) "Choose up to 24 logical feeds. Mark any feed as MAIN to replace the current main feed." else "Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
         return
@@ -1100,7 +1101,7 @@ private fun PitWall(
         }
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
-        if (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME) {
+        if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) {
             val protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null
             val protectedCompositorSupported = remember(protectedSource) {
                 !protectedSource || engine.protectedTiledCompositorSupported()
@@ -2496,7 +2497,7 @@ private fun FullscreenMultiview(
     onReplayPosition: (Long) -> Unit
 ) {
     val backendStatus by engine.backendStatus.collectAsState()
-    val isTme = backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME
+    val isTme = (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)
     val selected = ui.selectedStreamIds
         .mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
         .take(if (isTme) 24 else 4)
