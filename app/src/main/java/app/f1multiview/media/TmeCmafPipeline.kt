@@ -241,7 +241,9 @@ class TmeCmafCoordinator(
                                 surface,
                                 outputWidth ?: sources.maxOf { (it.column + 1) * it.tileWidth },
                                 outputHeight ?: sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight },
-                                first.codecConfig
+                                requireNotNull(first.codecConfig) {
+                                    "GPAC HEVC merger produced no decoder configuration"
+                                }
                             )
                             decoder.start()
                             onDecoderReady()
