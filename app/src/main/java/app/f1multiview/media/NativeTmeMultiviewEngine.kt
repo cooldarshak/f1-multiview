@@ -94,7 +94,9 @@ class NativeTmeMultiviewEngine(
                 coordinatorContext,
                 merger,
                 decoder,
-                source?.requestHeaders.orEmpty()
+                source?.requestHeaders.orEmpty(),
+                session?.tileCountHorizontal?.let { it * requireNotNull(session?.tileWidth) },
+                session?.tileCountVertical?.let { it * requireNotNull(session?.tileHeight) }
             ).also { c ->
                 c.start(
                     currentSources,
@@ -177,7 +179,9 @@ class NativeTmeMultiviewEngine(
             coordinatorContext,
             merger,
             decoder,
-            currentSource.requestHeaders
+            currentSource.requestHeaders,
+            currentSession.tileCountHorizontal?.let { it * requireNotNull(currentSession.tileWidth) },
+            currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) }
         ).also { c ->
             c.start(
                 sources,
