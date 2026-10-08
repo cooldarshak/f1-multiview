@@ -21,7 +21,8 @@ kvazaar \
   --tiles 2x2 \
   --slices tiles \
   --mv-constraint frametilemargin \
-  --period 30 \
+  --period 32
+  --gop 16 \
   --qp 32 \
   -o "$WORK/source.hvc"
 
