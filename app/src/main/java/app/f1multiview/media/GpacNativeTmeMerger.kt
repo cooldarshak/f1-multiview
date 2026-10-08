@@ -40,7 +40,8 @@ class GpacNativeTmeMerger : NativeTmeMerger {
             segment.key.epochStartUs,
             segment.key.durationUs,
             segment.tiles.map { it.feedId }.toTypedArray(),
-            segment.tiles.map { it.payload }.toTypedArray()
+            segment.tiles.map { it.payload }.toTypedArray(),
+            segment.tiles.map { it.keyFrame }.toBooleanArray()
         ).toList()
     }
 
@@ -69,7 +70,8 @@ class GpacNativeTmeMerger : NativeTmeMerger {
         epochStartUs: Long,
         durationUs: Long,
         feedIds: Array<String>,
-        payloads: Array<ByteArray>
+        payloads: Array<ByteArray>,
+        keyFrames: BooleanArray
     ): Array<TmeMergedAccessUnit>
     private external fun nativeUpdateSelection(feedIds: Array<String>)
     private external fun nativeRelease()
