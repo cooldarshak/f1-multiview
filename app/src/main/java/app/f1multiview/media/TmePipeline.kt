@@ -22,7 +22,7 @@ data class TmeTileSource(
     val feedId: String,
     val url: String,
     val tileIndex: Int,
-    val row: Int,
+    val row: Int?,
     val column: Int,
     val tileWidth: Int,
     val tileHeight: Int
@@ -243,21 +243,11 @@ object F1TmeTileAdapter {
 
         val width = session.tileWidth!!
         val height = session.tileHeight!!
-        val columns = kotlin.math.ceil(kotlin.math.sqrt(session.feeds.size.toDouble())).toInt()
-            .coerceAtLeast(1)
 
-        return session.feeds.mapIndexedNotNull { index, feed ->
-            val url = feed.url?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
-            TmeTileSource(
-                feedId = session.feedIds[index],
-                url = url,
-                tileIndex = index,
-                row = index / columns,
-                column = index % columns,
-                tileWidth = width,
-                tileHeight = height
-            )
-        }
+        // TiledMultiviewSession currently exposes tile dimensions but not tile
+        // placement. Never invent a square grid from feed count: the native merger
+        // must receive authoritative F1 placement metadata.
+        error("F1 TME tile placement metadata is not available; refusing synthetic grid mapping")
     }
 }
 
