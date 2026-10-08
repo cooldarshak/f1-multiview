@@ -117,6 +117,7 @@ class TmeCmafFeedReader(
                     extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/hevc") == true
                 } ?: error("CMAF segment has no HEVC track")
                 val format = extractor.getTrackFormat(track)
+                AppLogger.i("TME", "CMAF_TRACK sequence=${segment.sequence} mime=${format.getString(MediaFormat.KEY_MIME)} size=${format.getInteger(MediaFormat.KEY_WIDTH, -1)}x${format.getInteger(MediaFormat.KEY_HEIGHT, -1)} encryptedTrack=${format.getInteger("encrypted", 0)}")
                 val csd = format.getByteBuffer("csd-0") ?: error("HEVC track has no csd-0")
                 val config = ByteArray(csd.remaining()).also { csd.duplicate().get(it) }
                 val width = format.getInteger(MediaFormat.KEY_WIDTH)
@@ -132,8 +133,9 @@ class TmeCmafFeedReader(
                     buffer.clear()
                     val size = extractor.readSampleData(buffer, 0)
                     if (size < 0) break
-                    check(extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED == 0) {
-                        "Encrypted CMAF is not accepted by the clear TME pipeline"
+                    if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED != 0) {
+                        AppLogger.e("TME", "CMAF_ENCRYPTED sequence=${segment.sequence} sampleTimeUs=${extractor.sampleTime}; refusing native clear-sample extraction")
+                        error("Encrypted CMAF is not accepted by the clear TME pipeline")
                     }
                     val rawSampleTimeUs = extractor.sampleTime
                     if (sampleTimestampOffsetUs == null) {
@@ -159,6 +161,7 @@ class TmeCmafFeedReader(
                     if (!extractor.advance()) break
                 }
 
+                AppLogger.i("TME", "CMAF_EXTRACTED sequence=${segment.sequence} samples=${samples.size} durationUs=${segment.durationUs} clearHevc=true")
                 val withDurations = samples.mapIndexed { i, sample ->
                     val next = samples.getOrNull(i + 1)?.timeUs
                     sample.copy(
