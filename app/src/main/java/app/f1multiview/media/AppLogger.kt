@@ -20,13 +20,14 @@ import java.util.Locale
 /**
  * Runtime diagnostics owned by the app.
  *
- * A new public log file is created for every process/app launch:
- * Download/F1 MultiView Logs/YYYY-MM-DD/F1MultiView-HH-mm-ss-SSS.log
+ * One public log file is maintained per calendar day:
+ * Download/F1 MultiView Logs/YYYY-MM-DD/F1MultiView-YYYY-MM-DD.log
  *
  * Logging is enabled by default and can be disabled from Settings. The public file is
  * intentionally separate per launch so a crash never overwrites an earlier session.
  *
- * Persistent storage uses MediaStore Downloads on Android 10+ and does not require
+ * A session-start marker is appended on every process launch so repeated launches remain
+ * distinguishable without creating dozens of files. Persistent storage uses MediaStore Downloads on Android 10+ and does not require
  * legacy external-storage permissions.
  */
 object AppLogger {
@@ -39,7 +40,7 @@ object AppLogger {
 
     private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private val dateFolderFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    private val fileNameFormatter = SimpleDateFormat("HH-mm-ss-SSS", Locale.US)
+    private val fileNameFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val _entries = MutableStateFlow<List<String>>(emptyList())
     val entries: StateFlow<List<String>> = _entries.asStateFlow()
 
@@ -57,7 +58,6 @@ object AppLogger {
         enabled = appContext!!.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_ENABLED, true)
 
-        // Do not reuse an old file: each process gets a distinct launch log.
         if (enabled) {
             ensurePersistentFileLocked("initialize")
         }
@@ -79,6 +79,7 @@ object AppLogger {
         }
         initialized = true
         i("AppLogger", "Initialized; enabled=$enabled; logFile=${logUri ?: "unavailable"}")
+        i("AppLogger", "===== SESSION START ${formatter.format(Date())} =====")
     }
 
     fun isEnabled(context: Context): Boolean {
@@ -187,21 +188,44 @@ object AppLogger {
 
         return runCatching {
             val now = Date()
+            val displayName = "F1MultiView-${fileNameFormatter.format(now)}.log"
+            val relativePath = Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/" +
+                dateFolderFormatter.format(now)
+            val resolver = context.contentResolver
+
+            // Reuse today's file across process launches. This keeps one searchable log
+            // per day while retaining every session's entries.
+            val existingUri = resolver.query(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Downloads._ID),
+                "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
+                arrayOf(displayName, relativePath),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                    Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
+                } else null
+            }
+
+            if (existingUri != null) {
+                val output = resolver.openOutputStream(existingUri, "wa")
+                    ?: error("MediaStore openOutputStream append returned null")
+                logUri = existingUri
+                logOutput = output
+                flushBufferedEntriesLocked()
+                output.flush()
+                Log.i(TAG, "Persistent daily log reused: $existingUri; reason=$reason")
+                return true
+            }
+
             val values = ContentValues().apply {
-                put(
-                    MediaStore.Downloads.DISPLAY_NAME,
-                    "F1MultiView-${fileNameFormatter.format(now)}.log"
-                )
+                put(MediaStore.Downloads.DISPLAY_NAME, displayName)
                 put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                put(
-                    MediaStore.Downloads.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/" +
-                        dateFolderFormatter.format(now)
-                )
+                put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
 
-            val resolver = context.contentResolver
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: error("MediaStore insert returned null")
 
