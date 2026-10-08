@@ -344,7 +344,7 @@ Java_app_f1multiview_media_GpacNativeTmeMerger_nativeConfigure(
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_app_f1multiview_media_GpacNativeTmeMerger_nativePush(
     JNIEnv *env, jobject, jlong sequence, jlong epochStartUs, jlong durationUs,
-    jobjectArray feedIds, jobjectArray payloads
+    jobjectArray feedIds, jobjectArray payloads, jbooleanArray keyFrames
 ) {
 #ifdef F1TME_WITH_GPAC
     (void) sequence;
@@ -356,6 +356,14 @@ Java_app_f1multiview_media_GpacNativeTmeMerger_nativePush(
     }
 
     const jsize count = env->GetArrayLength(payloads);
+    const jsize keyCount = env->GetArrayLength(keyFrames);
+    if (keyCount != count) {
+        jclass cls = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(cls, "TME key-frame count does not match tile count");
+        return nullptr;
+    }
+    std::vector<jboolean> keyValues(static_cast<size_t>(count));
+    env->GetBooleanArrayRegion(keyFrames, 0, count, keyValues.data());
     if (count != static_cast<jsize>(g_graph.sourcePids.size())) {
         jclass cls = env->FindClass("java/lang/IllegalArgumentException");
         env->ThrowNew(cls, "TME push tile count does not match configured tile count");
@@ -379,7 +387,9 @@ Java_app_f1multiview_media_GpacNativeTmeMerger_nativePush(
         gf_filter_pck_set_dts(pck, static_cast<u64>(epochStartUs));
         gf_filter_pck_set_duration(pck, static_cast<u32>(durationUs));
         gf_filter_pck_set_framing(pck, GF_TRUE, GF_TRUE);
-        gf_filter_pck_set_sap(pck, GF_FILTER_SAP_1);
+        if (keyValues[static_cast<size_t>(i)]) {
+            gf_filter_pck_set_sap(pck, GF_FILTER_SAP_1);
+        }
         gf_filter_pck_send(pck);
     }
 
