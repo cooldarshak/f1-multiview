@@ -66,8 +66,8 @@ jobs:
           ./configure \
             --target-os=android \
             --cpu=aarch64 \
-            --cc="$TOOLCHAIN/clang --target=aarch64-linux-android28" \
-            --cxx="$TOOLCHAIN/clang++ --target=aarch64-linux-android28" \
+            --cc="$TOOLCHAIN/aarch64-linux-android28-clang" \
+            --cxx="$TOOLCHAIN/aarch64-linux-android28-clang++" \
             --prefix=/tmp/gpac-sdk \
             --disable-all \
             --enable-threads \
