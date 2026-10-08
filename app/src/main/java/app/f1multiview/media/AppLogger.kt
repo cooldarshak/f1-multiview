@@ -46,6 +46,9 @@ object AppLogger {
     private var logOutput: OutputStream? = null
     private var previousHandler: Thread.UncaughtExceptionHandler? = null
     private var logBytes: Long = 0L
+    // Number of in-memory entries already persisted to the current file. This lets crash
+    // handling persist only entries that were buffered while persistent storage was unavailable.
+    private var persistedMemoryEntries: Int = 0
 
     @Synchronized
     fun initialize(context: Context) {
@@ -203,7 +206,7 @@ object AppLogger {
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("MediaStore insert returned null")
             try {
                 val output = resolver.openOutputStream(uri, "wa") ?: error("MediaStore openOutputStream returned null")
-                logUri = uri; logOutput = output; logBytes = 0L; output.flush()
+                logUri = uri; logOutput = output; logBytes = 0L; persistedMemoryEntries = _entries.value.size; output.flush()
                 resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
                 true
             } catch (failure: Throwable) { runCatching { resolver.delete(uri, null, null) }; throw failure }
@@ -221,14 +224,43 @@ object AppLogger {
         synchronized(this) {
             if (logOutput == null || logUri == null) ensurePersistentFileLocked("log-write")
             if (logOutput == null || logUri == null) return
-            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; ensurePersistentFileLocked("size-rotation", reuseExisting = false) }
+            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; persistedMemoryEntries = _entries.value.size; ensurePersistentFileLocked("size-rotation", reuseExisting = false) }
             val output = logOutput ?: return
-            runCatching { output.write(bytes); output.flush(); logBytes += bytes.size }
+            runCatching { output.write(bytes); output.flush(); logBytes += bytes.size; persistedMemoryEntries = _entries.value.size }
                 .onFailure { Log.w(TAG, "Unable to write app log", it); closeOutput() }
         }
     }
     private fun flush() {
         runCatching { logOutput?.flush() }
+    }
+
+    /**
+     * Persists entries that were retained in memory while the Downloads stream was unavailable.
+     * Must be called while synchronized(this). It deliberately does not replay entries already
+     * written to the current file.
+     */
+    private fun flushBufferedEntriesLocked() {
+        val output = logOutput ?: return
+        val entries = _entries.value
+        val start = persistedMemoryEntries.coerceIn(0, entries.size)
+        if (start >= entries.size) return
+        for (entry in entries.subList(start, entries.size)) {
+            val bytes = (entry + "\\n").toByteArray(Charsets.UTF_8)
+            if (logBytes + bytes.size > MAX_FILE_BYTES) {
+                closeOutput()
+                logUri = null
+                logBytes = 0L
+                persistedMemoryEntries = entries.size
+                if (!ensurePersistentFileLocked("crash-size-rotation", reuseExisting = false)) return
+                val newOutput = logOutput ?: return
+                runCatching { newOutput.write(bytes); newOutput.flush(); logBytes += bytes.size }
+                    .onFailure { Log.w(TAG, "Unable to persist buffered app log", it); closeOutput() }
+            } else {
+                runCatching { output.write(bytes); output.flush(); logBytes += bytes.size }
+                    .onFailure { Log.w(TAG, "Unable to persist buffered app log", it); closeOutput() }
+            }
+        }
+        persistedMemoryEntries = entries.size
     }
 
     private fun closeOutput() {
