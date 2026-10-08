@@ -62,6 +62,17 @@ jobs:
           export RANLIB="$TOOLCHAIN/llvm-ranlib"
           export STRIP="$TOOLCHAIN/llvm-strip"
           cd /tmp/gpac-src
+          python3 - <<'PY'
+from pathlib import Path
+p = Path("configure")
+s = p.read_text()
+start = s.index("#check dlopen support")
+end = s.index("#check st_mtim.tv_nsec support")
+replacement = """#check dlopen support
+has_dlopen="yes"
+"""
+p.write_text(s[:start] + replacement + s[end:])
+PY
           ./configure \
             --target-os=android \
             --cpu=aarch64 \
