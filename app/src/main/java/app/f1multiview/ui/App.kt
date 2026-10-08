@@ -1686,7 +1686,8 @@ private fun OpenTiledMultiviewWall(
     protectedSource: Boolean,
     layout: LayoutPreset,
     modifier: Modifier = Modifier,
-    onFeedFocus: (String) -> Unit = {}
+    onFeedFocus: (String) -> Unit = {},
+    onVideoTap: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
@@ -1770,7 +1771,10 @@ private fun OpenTiledMultiviewWall(
                             FrameLayout.LayoutParams.MATCH_PARENT
                         )
                     )
-                    tiledView.setFeedTapListener(onFeedFocus)
+                    tiledView.setFeedTapListener { tileId ->
+                        onFeedFocus(tileId)
+                        onVideoTap()
+                    }
                     engine.attachOpenTiledView(tiledView)
                 }
             },
@@ -1845,7 +1849,8 @@ private fun OpenTiledMultiviewWall(
 private fun OpenTiledSecureWall(
     engine: UnifiedMultiviewEngine,
     session: app.f1multiview.core.playback.TiledMultiviewSession?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onVideoTap: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
@@ -1859,6 +1864,7 @@ private fun OpenTiledSecureWall(
             FrameLayout(context).apply {
                 val secureView = OpenTiledSecureSurfaceView(context)
                 secureView.setSession(session)
+                secureView.setOnClickListener { onVideoTap() }
                 addView(
                     secureView,
                     FrameLayout.LayoutParams(
@@ -2662,7 +2668,8 @@ private fun FullscreenMultiview(
                         OpenTiledSecureWall(
                             engine = engine,
                             session = ui.tiledMultiviewSession,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            onVideoTap = { controlsVisible = !controlsVisible }
                         )
                     } else {
                         OpenTiledMultiviewWall(
@@ -2675,7 +2682,8 @@ private fun FullscreenMultiview(
                                 activeFeedId = vm.streamIdForTiledFeed(tileId) ?: activeFeedId
                                 controlsVisible = true
                                 menu = null
-                            }
+                            },
+                            onVideoTap = { controlsVisible = !controlsVisible }
                         )
                     }
                 } else {
