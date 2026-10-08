@@ -1,7 +1,9 @@
 package app.f1multiview.core.playback
 
+import app.f1multiview.data.f1tv.TmeFeed
 import app.f1multiview.data.f1tv.TmePlayback
 import app.f1multiview.data.f1tv.TmePlaybackParser
+import app.f1multiview.data.f1tv.TmeTopology
 
 data class TiledMultiviewFeed(
     val index: Int,
@@ -47,6 +49,16 @@ data class TiledMultiviewSession(
 
     val isUsable: Boolean
         get() = feeds.isNotEmpty() && hasTileGeometry
+
+    val topology: TmeTopology
+        get() {
+            if (feeds.size <= 1) return TmeTopology.UNKNOWN
+            val urls = feeds.map { it.url?.trim()?.takeIf(String::isNotBlank) }
+            if (urls.any { it == null }) return TmeTopology.UNKNOWN
+            val distinctUrls = urls.filterNotNull().distinct()
+            if (distinctUrls.size == 1 && hasTileGeometry) return TmeTopology.SINGLE_MOSAIC_SOURCE
+            return TmeTopology.INDEPENDENT_FEED_SOURCES
+        }
 }
 
 object TiledMultiviewSessionParser {
@@ -75,6 +87,33 @@ fun TmePlayback.toModel(): TiledMultiviewSession {
                 audioSpanish = feed.audioSpanish,
                 subtitleEnglish = feed.subtitleEnglish,
                 subtitleSpanish = feed.subtitleSpanish,
+                tileIndex = feed.tileIndex,
+                tileRow = feed.tileRow,
+                tileColumn = feed.tileColumn
+            )
+        }
+    )
+}
+
+fun TiledMultiviewSession.toPlayback(): TmePlayback {
+    return TmePlayback(
+        version = version,
+        channel = channel,
+        contentId = contentId,
+        tileWidth = tileWidth,
+        tileHeight = tileHeight,
+        tileCountHorizontal = tileCountHorizontal,
+        tileCountVertical = tileCountVertical,
+        feeds = feeds.map { feed ->
+            TmeFeed(
+                audioEnglish = feed.audioEnglish,
+                audioSpanish = feed.audioSpanish,
+                channelId = feed.channelId,
+                encoderId = feed.encoderId,
+                subtitleEnglish = feed.subtitleEnglish,
+                subtitleSpanish = feed.subtitleSpanish,
+                url = feed.url,
+                uuid = feed.uuid,
                 tileIndex = feed.tileIndex,
                 tileRow = feed.tileRow,
                 tileColumn = feed.tileColumn
