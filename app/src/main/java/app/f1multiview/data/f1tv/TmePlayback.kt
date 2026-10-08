@@ -88,7 +88,7 @@ object TmePlaybackParser {
         val root = JSONObject(json)
         val metadata = root.optJSONObject("metadata")
         val advanced = root.optJSONObject("advanced")
-        val tileSize = advanced?.optJSONObject("tileSize")
+        val tileSize = advanced?.optJSONObject("tileSize") ?: advanced?.optJSONObject("tile_size")
         val tileCountHorizontal = firstInt(
             root, metadata, advanced, tileSize,
             "tileCountHorizontal", "tile_count_horizontal"
@@ -112,7 +112,7 @@ object TmePlaybackParser {
                 val audio = feed.optJSONObject("audioTrackNames")
                 val feedMetadata = feed.optJSONObject("metadata")
                 val subtitles = feed.optJSONObject("subtitleTrackNames")
-                val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile", "index")
+                val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile_index", "tile", "index")
                 val row = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
                     tileIndex / resolvedTileCountHorizontal!! else null
                 val column = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
@@ -121,10 +121,10 @@ object TmePlaybackParser {
                     TmeFeed(
                         audioEnglish = audio?.optString("eng").takeUnless { it.isNullOrBlank() },
                         audioSpanish = audio?.optString("spa").takeUnless(String?::isNullOrBlank),
-                        channelId = feedMetadata?.optInt("channelId", -1)?.takeIf { it >= 0 },
+                        channelId = firstInt(feedMetadata, feed, "channelId", "channel_id"),
                         encoderId = feed.optString("encoderId").takeUnless(String::isNullOrBlank),
-                        subtitleEnglish = subtitles?.optString("engSubtitle").takeUnless(String?::isNullOrBlank),
-                        subtitleSpanish = subtitles?.optString("spaSubtitle").takeUnless(String?::isNullOrBlank),
+                        subtitleEnglish = (subtitles?.optString("engSubtitle") ?: subtitles?.optString("eng_subtitle")).takeUnless(String?::isNullOrBlank),
+                        subtitleSpanish = (subtitles?.optString("spaSubtitle") ?: subtitles?.optString("spa_subtitle")).takeUnless(String?::isNullOrBlank),
                         url = feed.optString("url").takeUnless(String::isNullOrBlank),
                         uuid = feed.optString("uuid").takeUnless(String::isNullOrBlank),
                         tileIndex = tileIndex,
@@ -138,7 +138,7 @@ object TmePlaybackParser {
         TmePlayback(
             version = root.optInt("version", -1).takeIf { it >= 0 },
             channel = root.optString("channel").takeUnless(String::isNullOrBlank),
-            contentId = metadata?.optInt("contentId", -1)?.takeIf { it >= 0 },
+            contentId = firstInt(metadata, "contentId", "content_id"),
             tileWidth = tileSize?.optInt("width", -1)?.takeIf { it > 0 },
             tileHeight = tileSize?.optInt("height", -1)?.takeIf { it > 0 },
             tileCountHorizontal = resolvedTileCountHorizontal,
