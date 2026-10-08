@@ -39,7 +39,8 @@ data class TmeCmafSegmentKey(
 data class TmeTileSegment(
     val feedId: String,
     val key: TmeCmafSegmentKey,
-    val payload: ByteArray
+    val payload: ByteArray,
+    val keyFrame: Boolean = false
 )
 
 data class TmeAlignedSegment(
