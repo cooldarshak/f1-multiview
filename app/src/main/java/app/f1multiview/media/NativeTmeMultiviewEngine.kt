@@ -61,6 +61,9 @@ class NativeTmeMultiviewEngine(
             override fun onOutputSurfaceReleased() {
                 coordinator?.stop()
                 coordinator = null
+                decoder.close()
+                merger.release()
+                configured = false
                 outputSurface = null
             }
         })
