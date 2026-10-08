@@ -48,7 +48,7 @@ class NativeTmePlaybackBackend : MultiviewPlaybackBackend {
         kind = MultiviewBackendKind.NATIVE_TME,
         available = false,
         singlePlayer = true,
-        reason = "Tiledmedia Player SDK is not bundled or licensed for this application"
+        reason = "OpenTME single-MediaCodec owner is implemented; compressed-domain CMAF tile merger is not yet wired"
     )
 
     override fun canHandle(session: TiledMultiviewSession): Boolean = false
