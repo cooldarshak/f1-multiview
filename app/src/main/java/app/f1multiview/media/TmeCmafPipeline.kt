@@ -374,7 +374,14 @@ class TmeCmafCoordinator(
 
     fun stop() {
         running = false
-        worker?.interrupt()
+        val current = worker
+        current?.interrupt()
+        if (current != null && current !== Thread.currentThread()) {
+            runCatching { current.join(2_000L) }
+                .onFailure { error ->
+                    AppLogger.w("TME", "Timed out waiting for CMAF worker shutdown: " + error.message)
+                }
+        }
         worker = null
     }
 }
