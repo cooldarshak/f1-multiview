@@ -114,11 +114,11 @@ class MultiviewSurfaceManager(private val context: Context) {
                 releaseVideoOutput(it)
                 if (it.surfaceView != null) player.setVideoSurfaceView(it.surfaceView)
                 if (it.textureView != null) player.setVideoTextureView(it.textureView)
-                bindings[feedId] = it.copy(owner = player, source = source, onTap = onTap)
-                attachExisting(it.copy(owner = player, onTap = onTap), player, source)
+                bindings[feedId] = it.copy(owner = player, source = source)
+                attachExisting(it.copy(owner = player), player, source)
             } else {
-                bindings[feedId] = it.copy(source = source, onTap = onTap)
-                attachExisting(it.copy(source = source, onTap = onTap), player, source)
+                bindings[feedId] = it.copy(source = source)
+                attachExisting(it.copy(source = source), player, source)
             }
         }
     }
