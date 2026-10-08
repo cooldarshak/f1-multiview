@@ -277,7 +277,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                                 it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
                         }.forEach(::add)
                     } else {
-                        mainSource?.takeIf { it.url == null && it.id != mainSource.id }?.let(::add)
+                        mainSource?.takeIf { it.url == null }?.let(::add)
                     }
                 }.distinctBy { it.id }
                 AppLogger.i(
