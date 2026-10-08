@@ -385,11 +385,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
         needed <= 2 -> LayoutPreset.SPLIT_2
         else -> LayoutPreset.GRID_4
     }
-    val targetLayout = if (current.size <= 1 || current.size + 1 > maxFeeds) {
-        requiredLayout
-    } else {
-        _ui.value.layout
-    }
+    val targetLayout = requiredLayout
 
     _ui.value = _ui.value.copy(
         layout = targetLayout,
