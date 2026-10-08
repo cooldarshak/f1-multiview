@@ -43,6 +43,24 @@ class TmePipelineTest {
     }
 
     @Test
+    fun synchronizerTreatsDurationAsMetadataNotEpochIdentity() {
+        val sync = TmeSegmentSynchronizer()
+        val first = TmeCmafSegmentKey(13, 3_000_000, 33_333)
+        val second = TmeCmafSegmentKey(13, 3_000_000, 33_334)
+
+        assertEquals(first, second)
+        assertEquals(
+            null,
+            sync.offer(TmeTileSegment("world", first, byteArrayOf(1)))
+        )
+        val aligned = sync.offer(
+            TmeTileSegment("onboard", second, byteArrayOf(2)),
+            setOf("world", "onboard")
+        )
+        assertTrue(aligned?.complete == true)
+    }
+
+    @Test
     fun offerCanReleaseAnEpochImmediatelyWhenAllTilesArrive() {
         val sync = TmeSegmentSynchronizer()
         val key = TmeCmafSegmentKey(11, 2_000_000, 1_000_000)
