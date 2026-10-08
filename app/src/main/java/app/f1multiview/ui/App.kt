@@ -2721,7 +2721,7 @@ private fun FullscreenMultiview(
                         // Feed selection is deliberately separate from active-feed focus.
                         // Clicking a right-rail item adds/removes it from the wall; it never
                         // replaces the large left feed.
-                        vm.toggleStream(id)
+                        if (ui.tiledMultiviewSession != null) vm.toggleTiledStream(id) else vm.toggleStream(id)
                         menu = null
                     },
                     modifier = Modifier
