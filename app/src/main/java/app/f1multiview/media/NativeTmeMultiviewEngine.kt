@@ -49,6 +49,10 @@ class NativeTmeMultiviewEngine(
     ): Boolean {
         if (!canHandle(session)) return false
         stop()
+        // Re-prepare means a new physical playback graph. Pause/resume deliberately
+        // keeps the existing decoder, but changing the TME session must not reuse it.
+        decoder.close()
+        merger.release()
         this.session = session
         this.source = source
         this.configured = false
@@ -113,6 +117,7 @@ class NativeTmeMultiviewEngine(
 
     fun pause() {
         coordinator?.stop()
+        coordinator = null
     }
 
     fun release() {
