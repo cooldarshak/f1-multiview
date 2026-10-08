@@ -216,13 +216,25 @@ class TmeCmafCoordinator(
                                 TmeTileSegment(
                                     source.feedId,
                                     TmeCmafSegmentKey(timestamp, sample.timeUs, sample.durationUs),
-                                    sample.payload
+                                    sample.payload,
+                                    sample.keyFrame
                                 )
                             }
                         }
                         if (tiles.size != sources.size) continue
-                        val key = tiles.first().key
-                        val merged = merger.merge(TmeAlignedSegment(key, tiles))
+
+                        val expectedFeedIds = sources.map { it.feedId }.toSet()
+                        var aligned: TmeAlignedSegment? = null
+                        tiles.forEach { tile ->
+                            if (aligned == null) {
+                                aligned = synchronizer.offer(tile, expectedFeedIds)
+                            } else {
+                                synchronizer.offer(tile, expectedFeedIds)
+                            }
+                        }
+                        aligned = aligned ?: synchronizer.pollComplete(expectedFeedIds)
+                        val complete = aligned ?: continue
+                        val merged = merger.merge(complete)
                         if (merged.isNotEmpty() && !decoder.telemetry().configured) {
                             val first = merged.first()
                             decoder.configure(
