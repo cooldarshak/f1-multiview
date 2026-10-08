@@ -377,11 +377,6 @@ class UnifiedMultiviewEngine(context: Context) {
         if (!isOpenTiledActive()) decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
 
-    fun play(id: String) {
-        if (isNativeTmeActive()) nativeTmeBackend.play()
-        else if (isOpenTiledActive()) openTiledEngine.play()
-        else decoderManager.play(id)
-    }
     fun prepare(id: String) = decoderManager.prepare(id)
     fun seekTo(id: String, positionMs: Long) = decoderManager.seekTo(id, positionMs)
     fun seekToDefaultPosition(id: String) = decoderManager.seekToDefaultPosition(id)
