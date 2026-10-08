@@ -32,7 +32,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ca-certificates curl gnupg ffmpeg build-essential cmake
           sudo install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://dist.gpac.io/gpac/linux/gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gpac.gpg
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors https://dist.gpac.io/gpac/linux/gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gpac.gpg
           sudo chmod a+r /etc/apt/keyrings/gpac.gpg
           . /etc/os-release
           CODENAME="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
