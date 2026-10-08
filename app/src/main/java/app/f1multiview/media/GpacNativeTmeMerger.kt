@@ -27,7 +27,7 @@ interface NativeTmeMerger : TmeBitstreamMerger {
 class GpacNativeTmeMerger : NativeTmeMerger {
     override val implementationName: String = "GPAC_NATIVE_TME"
     override val available: Boolean
-        get() = nativeAvailable
+        get() = nativeLoaded && nativeIsAvailable()
 
     override fun configure(tileSources: List<TmeTileSource>, outputWidth: Int, outputHeight: Int) {
         check(available) { "GPAC native TME library is not loaded" }
@@ -55,6 +55,7 @@ class GpacNativeTmeMerger : NativeTmeMerger {
         if (available) nativeRelease()
     }
 
+    private external fun nativeIsAvailable(): Boolean
     private external fun nativeConfigure(feedIds: Array<String>, width: Int, height: Int)
     private external fun nativePush(
         sequence: Long,
@@ -68,7 +69,7 @@ class GpacNativeTmeMerger : NativeTmeMerger {
     private external fun nativeRelease()
 
     private companion object {
-        val nativeAvailable: Boolean = runCatching {
+        val nativeLoaded: Boolean = runCatching {
             System.loadLibrary("f1tme")
             true
         }.getOrDefault(false)
