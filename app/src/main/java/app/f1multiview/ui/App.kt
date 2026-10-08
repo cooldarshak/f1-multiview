@@ -2204,11 +2204,11 @@ private fun FullscreenFeedRail(
                     )
                 ) {
                     Box(Modifier.fillMaxSize()) {
-                        val previewPlayer = remember(candidate.id) { engine.player(candidate.id) }
                         when {
                             candidate.kind == StreamKind.TRACK_MAP -> Box(Modifier.fillMaxSize()) { TrackMapPanel(ui, isTv) }
                             candidate.kind == StreamKind.F1_DASH_DATA -> Box(Modifier.fillMaxSize()) { F1DashDataFeed(ui, isTv) }
                             !openTiled && candidate.url != null && (candidate.id == activeId || candidate.id in previewIds) -> {
+                                val previewPlayer = remember(candidate.id) { engine.player(candidate.id) }
                                 F1HdrPlayerSurface(
                                     engine = engine,
                                     player = previewPlayer,
@@ -2450,7 +2450,11 @@ private fun FullscreenMultiview(
 ) {
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     val openTiled = engine.multiviewBackendStatus().kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME
-    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }.take(24)
+    // A TME source may expose many logical feeds, but only the selected layout should
+    // reach the compositor. Rendering all 24 by default creates avoidable GPU pressure.
+    val tiledSelected = ui.selectedTiledFeedIds
+        .ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(1).orEmpty() }
+        .take(24)
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
