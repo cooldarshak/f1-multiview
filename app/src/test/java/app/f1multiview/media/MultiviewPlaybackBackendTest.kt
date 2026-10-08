@@ -1,5 +1,6 @@
 package app.f1multiview.media
 
+import android.test.mock.MockContext
 import app.f1multiview.core.playback.TiledMultiviewFeed
 import app.f1multiview.core.playback.TiledMultiviewSession
 import org.junit.Assert.assertFalse
@@ -41,7 +42,7 @@ class MultiviewPlaybackBackendTest {
 
     @Test
     fun nativeTmeBackend_isExplicitlyUnavailableWithoutSdk() {
-        val backend = NativeTmePlaybackBackend()
+        val backend = NativeTmePlaybackBackend(MockContext())
 
         assertFalse(backend.status.available)
         assertTrue(backend.status.singlePlayer)
