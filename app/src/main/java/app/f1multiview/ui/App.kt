@@ -176,7 +176,14 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
 
-    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
+    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId, ui.tmeDiscoveryPending) {
+        // Never let the generic Media3 scheduler race ahead of session-level TME
+        // discovery. If the reference stream has not been resolved yet, allocating
+        // even one ExoPlayer is already the wrong physical architecture.
+        if (ui.tmeDiscoveryPending) {
+            AppLogger.i("Playback", "TME_GATE discovery pending; decoder scheduler held")
+            return@LaunchedEffect
+        }
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         val videoSelectedIds = ui.selectedStreamIds.filter { id ->
