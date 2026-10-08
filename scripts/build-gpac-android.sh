@@ -29,11 +29,18 @@ for tool in "$CC" "$CXX" "$AR" "$RANLIB" "$STRIP"; do
 done
 
 SRC="/tmp/gpac-v26.07.0-tme"
-rm -rf "$SRC"
+ZLIB_SRC="/tmp/zlib-v1.3.1"
+ZLIB_ROOT="/tmp/zlib-android"
+rm -rf "$SRC" "$ZLIB_SRC" "$ZLIB_ROOT"
 git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git "$SRC"
+git clone --depth 1 --branch v1.3.1 https://github.com/madler/zlib.git "$ZLIB_SRC"
 
 rm -rf "$ROOT"
 mkdir -p "$ROOT"
+
+cmake -S "$ZLIB_SRC" -B "$ZLIB_SRC/build"   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake"   -DANDROID_ABI=arm64-v8a   -DANDROID_PLATFORM="android-$API"   -DCMAKE_BUILD_TYPE=Release   -DBUILD_SHARED_LIBS=OFF   -DCMAKE_INSTALL_PREFIX="$ZLIB_ROOT"
+cmake --build "$ZLIB_SRC/build" --parallel "$(nproc)"
+cmake --install "$ZLIB_SRC/build"
 
 pushd "$SRC" >/dev/null
 export AR RANLIB STRIP
@@ -43,6 +50,8 @@ export AR RANLIB STRIP
   --cross-prefix="$CROSS_PREFIX" \
   --cc="$CC" \
   --cxx="$CXX" \
+  --extra-cflags="-I$ZLIB_ROOT/include" \
+  --extra-ldflags="-L$ZLIB_ROOT/lib" \
   --prefix="$ROOT" \
   --libdir=lib \
   --static-build \
