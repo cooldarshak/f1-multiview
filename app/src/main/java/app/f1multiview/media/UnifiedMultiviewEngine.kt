@@ -220,6 +220,18 @@ class UnifiedMultiviewEngine(context: Context) {
                 selectedMultiviewBackend = media3FallbackBackend
                 _backendStatus.value = selectedMultiviewBackend.status
             }
+        } else if (tme?.topology == app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES) {
+            // Never silently downgrade an F1 TME session into one ExoPlayer per feed.
+            // Independent F1 tile URLs require the compressed-domain OpenTME merger.
+            // Until that backend proves the one-stream/one-decoder invariant, fail closed.
+            selectedMultiviewBackend = nativeTmeBackend
+            _backendStatus.value = selectedMultiviewBackend.status
+            AppLogger.e(
+                "TME",
+                "Rejected independent-feed TME fallback: native compressed-domain merger is not available"
+            )
+            tiledMultiviewController.configure(tme.toModel())
+            return emptySet()
         } else {
             // A backend switch away from TME must release the single physical player before
             // Media3 fallback allocation begins. Never leave the old tiled player alive while
