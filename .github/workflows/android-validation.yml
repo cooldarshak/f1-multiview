@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      GPAC_ROOT: ${{ github.workspace }}/.native/gpac
     steps:
       - uses: actions/checkout@v4
 
@@ -51,17 +53,22 @@ jobs:
           chmod +x ./scripts/tme-gpac-smoke.sh
           ./scripts/tme-gpac-smoke.sh
 
-      - name: Validate GPAC ARM64 native build inputs
+      - name: Build GPAC ARM64 native TME dependency
         run: |
           set -euo pipefail
-          rm -rf /tmp/gpac-src
-          git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac-src
-          test -f /tmp/gpac-src/src/filters/hevcmerge.c
-          test -f /tmp/gpac-src/src/filters/hevcsplit.c
-          test -f /tmp/gpac-src/include/gpac/filters.h
+          chmod +x ./scripts/build-gpac-android.sh
+          ./scripts/build-gpac-android.sh "$GPAC_ROOT"
+
+      - name: Verify GPAC native inputs
+        run: |
+          set -euo pipefail
+          test -f "$GPAC_ROOT/include/gpac/filters.h"
+          test -f "$GPAC_ROOT/lib/libgpac.a"
+          test -f "/tmp/gpac-v26.07.0-tme/src/filters/hevcmerge.c"
+          test -f "/tmp/gpac-v26.07.0-tme/src/filters/hevcsplit.c"
           echo "GPAC_SOURCE_PIN=v26.07.0"
           echo "GPAC_TME_FILTERS=hevcmerge,hevcsplit"
-          echo "GPAC_ARM64_NATIVE_BUILD=DEFERRED_UNTIL_FILTER_GRAPH_IS_DETERMINISTIC"
+          echo "GPAC_ARM64_NATIVE_BUILD=READY"
 
       - name: Build debug APK
         run: |
