@@ -61,8 +61,10 @@ data class OpenTiledDecoderPlan(
                 it.tileRow != null && it.tileColumn != null
             }
             if (authoritativePlacement) {
-                val columns = session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 }
-                val rows = session.feeds.maxOf { requireNotNull(it.tileRow) + 1 }
+                val columns = session.tileCountHorizontal
+                    ?: (session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 })
+                val rows = session.tileCountVertical
+                    ?: (session.feeds.maxOf { requireNotNull(it.tileRow) + 1 })
                 val bindings = session.feeds.mapIndexed { index, feed ->
                     val feedId = session.feedIds[index]
                     val column = requireNotNull(feed.tileColumn)
