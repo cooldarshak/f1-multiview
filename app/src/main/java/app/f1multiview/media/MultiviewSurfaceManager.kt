@@ -43,7 +43,9 @@ class MultiviewSurfaceManager(private val context: Context) {
         val current = bindings[feedId]
         if (current != null && current.container === container && current.owner === player) {
             renderCoordinator.update(feedId, source)
-            attachExisting(current, player, source)
+            val updated = current.copy(onTap = onTap, source = source)
+            bindings[feedId] = updated
+            attachExisting(updated, player, source)
             AppLogger.d("Surface", "bind reused feed=$feedId container=${System.identityHashCode(container)}")
             return
         }
