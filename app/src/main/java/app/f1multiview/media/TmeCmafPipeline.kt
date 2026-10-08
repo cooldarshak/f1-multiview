@@ -125,6 +125,8 @@ class TmeCmafFeedReader(
                 val maxSize = format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 4 * 1024 * 1024)
                 val buffer = ByteBuffer.allocateDirect(maxSize.coerceAtLeast(1 * 1024 * 1024))
                 val samples = mutableListOf<TmeCmafSample>()
+                var sampleTimestampOffsetUs: Long? = null
+                val expectedSegmentStartUs = timelineOffsetUs + segment.startTimeUs
 
                 while (true) {
                     buffer.clear()
@@ -133,11 +135,23 @@ class TmeCmafFeedReader(
                     check(extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED == 0) {
                         "Encrypted CMAF is not accepted by the clear TME pipeline"
                     }
+                    val rawSampleTimeUs = extractor.sampleTime
+                    if (sampleTimestampOffsetUs == null) {
+                        // Some CMAF extractors expose tfdt/CTS on the presentation timeline,
+                        // while others expose timestamps relative to the isolated fragment.
+                        // Detect the former so the HLS timeline is not double-applied.
+                        sampleTimestampOffsetUs =
+                            if (kotlin.math.abs(rawSampleTimeUs - expectedSegmentStartUs) <= 100_000L) {
+                                0L
+                            } else {
+                                expectedSegmentStartUs
+                            }
+                    }
                     val payload = ByteArray(size)
                     buffer.flip()
                     buffer.get(payload)
                     samples += TmeCmafSample(
-                        timelineOffsetUs + segment.startTimeUs + extractor.sampleTime,
+                        rawSampleTimeUs + requireNotNull(sampleTimestampOffsetUs),
                         0L,
                         extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0,
                         payload
