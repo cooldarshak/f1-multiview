@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 #include <cstring>
-#include <mutex>
 
 #ifdef F1TME_WITH_GPAC
 #include <gpac/filters.h>
