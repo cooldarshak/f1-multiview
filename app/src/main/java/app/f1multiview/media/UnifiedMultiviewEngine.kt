@@ -3,14 +3,12 @@ package app.f1multiview.media
 import android.content.Context
 import android.view.SurfaceView
 import android.view.TextureView
-import android.os.Handler
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
-import app.f1multiview.core.playback.TiledMultiviewSessionParser
 import app.f1multiview.data.f1tv.TmePlaybackParser
 import app.f1multiview.core.playback.toModel
 import app.f1multiview.model.StreamSource
@@ -37,6 +35,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private var selectedMultiviewBackend: MultiviewPlaybackBackend = media3FallbackBackend
     private val _backendStatus = MutableStateFlow(media3FallbackBackend.status)
     private var openTiledMuted = false
+    private var activeTmeSession: app.f1multiview.core.playback.TiledMultiviewSession? = null
     val backendStatus: StateFlow<MultiviewBackendStatus> = _backendStatus
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
@@ -150,11 +149,16 @@ class UnifiedMultiviewEngine(context: Context) {
      * including older UI code, may accidentally fall through to the independent
      * decoder manager for a tiled feed.
      */
-    internal fun backendPlayer(id: String): ExoPlayer =
-        openTiledPlayerOrNull(id) ?: decoderManager.get(id)
+    internal fun backendPlayer(id: String): ExoPlayer {
+        openTiledPlayerOrNull(id)?.let { return it }
+        if (isNativeTmeActive()) throw IllegalStateException("Native TME owns playback; logical feed $id has no ExoPlayer")
+        return decoderManager.get(id)
+    }
 
-    internal fun backendPlayerOrNull(id: String): ExoPlayer? =
-        openTiledPlayerOrNull(id) ?: decoderManager.getOrNull(id)
+    internal fun backendPlayerOrNull(id: String): ExoPlayer? {
+        if (isNativeTmeActive()) return null
+        return openTiledPlayerOrNull(id) ?: decoderManager.getOrNull(id)
+    }
 
     /**
      * Returns the single physical tiled player for a logical feed.
@@ -173,6 +177,10 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         feedRegistry.put(stream)
+        if (isNativeTmeActive() || isOpenTiledActive()) {
+            AppLogger.d("Engine", "load bypassed: tiled backend owns physical playback feed=${stream.id}")
+            return true
+        }
         return decoderManager.load(stream, forceReload)
     }
 
@@ -215,29 +223,49 @@ class UnifiedMultiviewEngine(context: Context) {
         streams.forEach(feedRegistry::put)
 
         val reference = streams.firstOrNull { it.id == referenceId }
+        val tmeSource = reference ?: streams.firstOrNull()
         var openTiledPrepared = false
 
         // Director multiview is TME-first. A TME session is a session-level playback
         // contract, so it is resolved before the logical-feed decoder scheduler. This
         // keeps the UI free to resize/select logical tiles without allocating one player
         // per tile.
-        val tme = reference?.tmeJson?.let(TmePlaybackParser::parse)
-        if (tme != null && openTiledBackend.canHandle(tme, reference)) {
-            openTiledPrepared = openTiledBackend.prepare(tme, reference, referenceId)
+        val tme = streams.asSequence()
+            .mapNotNull { it.tmeJson?.let(TmePlaybackParser::parse) }
+            .firstOrNull { it.feeds.size >= 2 }
+            ?: streams.asSequence()
+                .mapNotNull { it.tmeJson?.let(TmePlaybackParser::parse) }
+                .firstOrNull()
+        AppLogger.i("Engine", "TME_SESSION_RESOLVE streams=${streams.size} reference=$referenceId tme=${tme != null} topology=${tme?.topology ?: "NONE"} feeds=${tme?.feeds?.size ?: 0}")
+        if (tme != null && tme.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
+            openTiledPrepared = tmeSource?.let { openTiledBackend.prepare(tme, it, referenceId) } == true
             if (openTiledPrepared) {
+                decoderManager.release()
+                activeTmeSession = tme.toModel()
                 selectedMultiviewBackend = openTiledBackend
                 _backendStatus.value = selectedMultiviewBackend.status
                 tiledMultiviewController.configure(tme.toModel())
             } else {
-                selectedMultiviewBackend = media3FallbackBackend
+                decoderManager.release()
+                activeTmeSession = tme.toModel()
+                selectedMultiviewBackend = openTiledBackend
                 _backendStatus.value = selectedMultiviewBackend.status
+                tiledMultiviewController.configure(tme.toModel())
+                AppLogger.e("TME", "Single-source tiled backend could not be prepared; refusing Media3 multi-player fallback")
+                return emptySet()
             }
         } else if (tme?.topology == app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES) {
             // Never silently downgrade an F1 TME session into one ExoPlayer per feed.
             // Independent F1 tile URLs require the compressed-domain OpenTME merger.
             // Until that backend proves the one-stream/one-decoder invariant, fail closed.
             val model = tme.toModel()
-            if (nativeTmeBackend.prepare(model, reference)) {
+            decoderManager.release()
+            if (isOpenTiledActive()) {
+                openTiledEngine.stopClockCorrection()
+                openTiledEngine.release()
+            }
+            if (tmeSource != null && nativeTmeBackend.prepare(model, tmeSource)) {
+                activeTmeSession = model
                 selectedMultiviewBackend = nativeTmeBackend
                 _backendStatus.value = selectedMultiviewBackend.status
                 tiledMultiviewController.configure(model)
@@ -257,9 +285,13 @@ class UnifiedMultiviewEngine(context: Context) {
                 openTiledEngine.release()
                 tiledMultiviewController.clear()
             }
+            if (tme != null) {
+                AppLogger.e("TME", "TME metadata is present but topology is ${tme.topology}; refusing Media3 multi-player fallback")
+                return emptySet()
+            }
+            activeTmeSession = null
             selectedMultiviewBackend = media3FallbackBackend
             _backendStatus.value = selectedMultiviewBackend.status
-            tme?.let { configureTiledMultiview(it.toModel()) }
         }
 
         if (openTiledPrepared) {
@@ -393,10 +425,22 @@ class UnifiedMultiviewEngine(context: Context) {
         if (isOpenTiledActive()) openTiledEngine.setPlaybackSpeed(speed)
         else if (!isNativeTmeActive()) decoderManager.setPlaybackSpeed(id, speed)
     }
-    internal fun attachSurfaceView(id: String, surface: SurfaceView) = decoderManager.attachSurfaceView(id, surface)
-    internal fun detachSurfaceView(id: String, surface: SurfaceView) = decoderManager.detachSurfaceView(id, surface)
-    internal fun attachTextureView(id: String, texture: TextureView) = decoderManager.attachTextureView(id, texture)
-    internal fun detachTextureView(id: String, texture: TextureView) = decoderManager.detachTextureView(id, texture)
+    internal fun attachSurfaceView(id: String, surface: SurfaceView) {
+        if (isNativeTmeActive()) return
+        decoderManager.attachSurfaceView(id, surface)
+    }
+    internal fun detachSurfaceView(id: String, surface: SurfaceView) {
+        if (isNativeTmeActive()) return
+        decoderManager.detachSurfaceView(id, surface)
+    }
+    internal fun attachTextureView(id: String, texture: TextureView) {
+        if (isNativeTmeActive()) return
+        decoderManager.attachTextureView(id, texture)
+    }
+    internal fun detachTextureView(id: String, texture: TextureView) {
+        if (isNativeTmeActive()) return
+        decoderManager.detachTextureView(id, texture)
+    }
     fun pause(id: String) {
         if (isNativeTmeActive()) nativeTmeBackend.pause()
         else if (isOpenTiledActive()) openTiledEngine.pause()
@@ -442,13 +486,23 @@ class UnifiedMultiviewEngine(context: Context) {
         container: android.widget.FrameLayout,
         screenshotMode: Boolean = false,
         onVideoTap: (() -> Unit)? = null
-    ) = surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
+    ) {
+        if (isNativeTmeActive()) {
+            AppLogger.d("Surface", "logical surface ignored: native TME owns one compositor surface feed=$feedId")
+            return
+        }
+        surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
+    }
 
-    fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) =
+    fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) {
+        if (isNativeTmeActive()) return
         surfaceManager.update(feedId, player, source)
+    }
 
-    fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout) =
+    fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout) {
+        if (isNativeTmeActive()) return
         surfaceManager.detach(feedId, player, container)
+    }
 
     fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = surfaceManager.renderSlots()
 
@@ -456,6 +510,8 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun release() {
         openTiledMuted = false
+        activeTmeSession = null
+        nativeTmeBackend.release()
         tiledMultiviewController.clear()
         surfaceManager.clear()
         feedRegistry.clear()
