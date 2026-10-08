@@ -20,11 +20,11 @@ import java.util.Locale
 /**
  * Runtime diagnostics owned by the app.
  *
- * One public log file is maintained per calendar day:
- * Download/F1 MultiView Logs/YYYY-MM-DD/F1MultiView-YYYY-MM-DD.log
+ * Exactly one public log file is maintained per app process/session:
+ * Download/F1 MultiView Logs/YYYY-MM-DD/F1MultiView-YYYY-MM-DD-HHmmss-SSS.log
  *
  * Logging is enabled by default and can be disabled from Settings. The public file is
- * intentionally separate per launch so a crash never overwrites an earlier session.
+ * uniquely named per launch so a crash never overwrites an earlier session.
  *
  * A session-start marker is appended on every process launch so repeated launches remain
  * distinguishable without creating dozens of files. Persistent storage uses MediaStore Downloads on Android 10+ and does not require
@@ -40,7 +40,7 @@ object AppLogger {
 
     private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private val dateFolderFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    private val fileNameFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    private val fileNameFormatter = SimpleDateFormat("yyyy-MM-dd-HHmmss-SSS", Locale.US)
     private val _entries = MutableStateFlow<List<String>>(emptyList())
     val entries: StateFlow<List<String>> = _entries.asStateFlow()
 
@@ -90,22 +90,17 @@ object AppLogger {
     @Synchronized
     fun setEnabled(context: Context, value: Boolean) {
         initialize(context)
-        enabled = value
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_ENABLED, value).apply()
 
         if (value) {
-            // Enabling after launch gets its own file as well, so disabled time is never
-            // silently merged into an earlier session.
-            closeOutput()
-            logUri = null
+            enabled = true
             ensurePersistentFileLocked("logging-enabled")
-            i("AppLogger", "Logging enabled; new log file=$logUri")
+            i("AppLogger", "Logging enabled; log file=$logUri")
         } else {
-            write("INFO", "AppLogger", "Logging disabled")
+            if (enabled) write("INFO", "AppLogger", "Logging disabled")
             flush()
-            closeOutput()
-            logUri = null
+            enabled = false
         }
     }
 
@@ -192,32 +187,6 @@ object AppLogger {
             val relativePath = Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/" +
                 dateFolderFormatter.format(now)
             val resolver = context.contentResolver
-
-            // Reuse today's file across process launches. This keeps one searchable log
-            // per day while retaining every session's entries.
-            val existingUri = resolver.query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.Downloads._ID),
-                "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
-                arrayOf(displayName, relativePath),
-                null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
-                    Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
-                } else null
-            }
-
-            if (existingUri != null) {
-                val output = resolver.openOutputStream(existingUri, "wa")
-                    ?: error("MediaStore openOutputStream append returned null")
-                logUri = existingUri
-                logOutput = output
-                flushBufferedEntriesLocked()
-                output.flush()
-                Log.i(TAG, "Persistent daily log reused: $existingUri; reason=$reason")
-                return true
-            }
 
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, displayName)
