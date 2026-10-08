@@ -12,6 +12,7 @@ import app.f1multiview.core.playback.Quality
 import app.f1multiview.core.playback.TiledMultiviewSession
 import app.f1multiview.data.f1tv.TmePlaybackParser
 import app.f1multiview.core.playback.toModel
+import app.f1multiview.core.playback.toPlayback
 import app.f1multiview.model.StreamSource
 
 /**
@@ -252,10 +253,10 @@ class UnifiedMultiviewEngine(context: Context) {
                 tiledMultiviewController.configure(resolvedTmeSession)
             } else {
                 decoderManager.release()
-                activeTmeSession = tme.toModel()
+                activeTmeSession = resolvedTmeSession
                 selectedMultiviewBackend = openTiledBackend
                 _backendStatus.value = selectedMultiviewBackend.status
-                tiledMultiviewController.configure(tme.toModel())
+                tiledMultiviewController.configure(resolvedTmeSession)
                 AppLogger.e("TME", "Single-source tiled backend could not be prepared; refusing Media3 multi-player fallback")
                 return emptySet()
             }
