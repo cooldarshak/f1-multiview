@@ -22,6 +22,7 @@ CXX="$TOOLCHAIN/aarch64-linux-android${API}-clang++"
 AR="$TOOLCHAIN/llvm-ar"
 RANLIB="$TOOLCHAIN/llvm-ranlib"
 STRIP="$TOOLCHAIN/llvm-strip"
+CROSS_PREFIX="$TOOLCHAIN/aarch64-linux-android-"
 
 for tool in "$CC" "$CXX" "$AR" "$RANLIB" "$STRIP"; do
   test -x "$tool" || { echo "Missing NDK tool $tool" >&2; exit 2; }
@@ -35,14 +36,13 @@ rm -rf "$ROOT"
 mkdir -p "$ROOT"
 
 pushd "$SRC" >/dev/null
+export AR RANLIB STRIP
 ./configure \
   --target-os=android \
   --cpu=aarch64 \
+  --cross-prefix="$CROSS_PREFIX" \
   --cc="$CC" \
   --cxx="$CXX" \
-  --ar="$AR" \
-  --ranlib="$RANLIB" \
-  --strip="$STRIP" \
   --prefix="$ROOT" \
   --libdir=lib \
   --static-build \
