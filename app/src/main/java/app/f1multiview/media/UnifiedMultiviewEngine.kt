@@ -70,8 +70,11 @@ class UnifiedMultiviewEngine(context: Context) {
 
     /** Runtime diagnostics for the active multiview backend. No URLs or auth tokens. */
     fun multiviewDiagnostics(): Map<String, String> =
-        if (isOpenTiledActive()) openTiledEngine.diagnostics()
-        else decoderResourceDiagnostics()
+        when {
+            isNativeTmeActive() -> nativeTmeBackend.diagnostics()
+            isOpenTiledActive() -> openTiledEngine.diagnostics()
+            else -> decoderResourceDiagnostics()
+        }
 
     fun isOpenTiledActive(): Boolean =
         selectedMultiviewBackend === openTiledBackend
@@ -374,21 +377,50 @@ class UnifiedMultiviewEngine(context: Context) {
         if (!isOpenTiledActive()) decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
 
-    fun play(id: String) { if (isOpenTiledActive()) openTiledEngine.play() else decoderManager.play(id) }
+    fun play(id: String) {
+        if (isNativeTmeActive()) nativeTmeBackend.play()
+        else if (isOpenTiledActive()) openTiledEngine.play()
+        else decoderManager.play(id)
+    }
     fun prepare(id: String) = decoderManager.prepare(id)
     fun seekTo(id: String, positionMs: Long) = decoderManager.seekTo(id, positionMs)
     fun seekToDefaultPosition(id: String) = decoderManager.seekToDefaultPosition(id)
     fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) = decoderManager.setPlaybackParameters(id, parameters)
-    fun setPlaybackSpeed(id: String, speed: Float) { if (isOpenTiledActive()) openTiledEngine.setPlaybackSpeed(speed) else decoderManager.setPlaybackSpeed(id, speed) }
+    fun setPlaybackSpeed(id: String, speed: Float) {
+        if (isOpenTiledActive()) openTiledEngine.setPlaybackSpeed(speed)
+        else if (!isNativeTmeActive()) decoderManager.setPlaybackSpeed(id, speed)
+    }
     internal fun attachSurfaceView(id: String, surface: SurfaceView) = decoderManager.attachSurfaceView(id, surface)
     internal fun detachSurfaceView(id: String, surface: SurfaceView) = decoderManager.detachSurfaceView(id, surface)
     internal fun attachTextureView(id: String, texture: TextureView) = decoderManager.attachTextureView(id, texture)
     internal fun detachTextureView(id: String, texture: TextureView) = decoderManager.detachTextureView(id, texture)
-    fun pause(id: String) { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.pause(id) }
-    fun playAll() { if (isOpenTiledActive()) openTiledEngine.play() else decoderManager.playAll() }
-    fun pauseAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.pauseAll() }
-    fun stopAll() { if (isOpenTiledActive()) openTiledEngine.pause() else decoderManager.stopAll() }
+    fun pause(id: String) {
+        if (isNativeTmeActive()) nativeTmeBackend.pause()
+        else if (isOpenTiledActive()) openTiledEngine.pause()
+        else decoderManager.pause(id)
+    }
+    fun play(id: String) {
+        if (isNativeTmeActive()) nativeTmeBackend.play()
+        else if (isOpenTiledActive()) openTiledEngine.play()
+        else decoderManager.play(id)
+    }
+    fun playAll() {
+        if (isNativeTmeActive()) nativeTmeBackend.play()
+        else if (isOpenTiledActive()) openTiledEngine.play()
+        else decoderManager.playAll()
+    }
+    fun pauseAll() {
+        if (isNativeTmeActive()) nativeTmeBackend.pause()
+        else if (isOpenTiledActive()) openTiledEngine.pause()
+        else decoderManager.pauseAll()
+    }
+    fun stopAll() {
+        if (isNativeTmeActive()) nativeTmeBackend.pause()
+        else if (isOpenTiledActive()) openTiledEngine.pause()
+        else decoderManager.stopAll()
+    }
     fun seekOpenTiled(deltaMs: Long) {
+        if (isNativeTmeActive()) return
         if (isOpenTiledActive()) {
             val p = openTiledEngine.player() ?: return
             openTiledEngine.seekTo((p.currentPosition + deltaMs).coerceAtLeast(0L))
