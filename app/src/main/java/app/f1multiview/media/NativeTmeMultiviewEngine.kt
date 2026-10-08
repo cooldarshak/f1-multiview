@@ -29,11 +29,18 @@ class NativeTmeMultiviewEngine(
         merger.available &&
             session.isUsable &&
             session.feeds.size >= 2 &&
+            session.tileCountHorizontal != null &&
+            session.tileCountHorizontal > 0 &&
+            session.tileCountVertical != null &&
+            session.tileCountVertical > 0 &&
             session.feeds.all {
                 !it.url.isNullOrBlank() &&
                     it.tileIndex != null &&
                     it.tileRow != null &&
-                    it.tileColumn != null
+                    it.tileColumn != null &&
+                    it.tileIndex < session.tileCountHorizontal * session.tileCountVertical &&
+                    it.tileColumn < session.tileCountHorizontal &&
+                    it.tileRow < session.tileCountVertical
             }
 
     fun prepare(
