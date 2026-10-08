@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.BaseColumns
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,15 +21,9 @@ import java.util.Locale
 /**
  * Runtime diagnostics owned by the app.
  *
- * Exactly one public log file is maintained per app process/session:
- * Download/F1 MultiView Logs/YYYY-MM-DD/F1MultiView-YYYY-MM-DD-HHmmss-SSS.log
- *
- * Logging is enabled by default and can be disabled from Settings. The public file is
- * uniquely named per launch so a crash never overwrites an earlier session.
- *
- * A session-start marker is appended on every process launch so repeated launches remain
- * distinguishable without creating dozens of files. Persistent storage uses MediaStore Downloads on Android 10+ and does not require
- * legacy external-storage permissions.
+ * Logs are kept in Download/F1 MultiView Logs. A log is reused across app launches and
+ * rotated only when it exceeds 5 MiB. This deliberately avoids tiny per-session files.
+ * Persistent storage uses MediaStore Downloads on Android 10+.
  */
 object AppLogger {
     private const val TAG = "F1MultiView"
@@ -36,7 +31,8 @@ object AppLogger {
     private const val KEY_ENABLED = "app_logging_enabled"
     private const val ROOT_FOLDER = "F1 MultiView Logs"
     private const val MAX_MEMORY_ENTRIES = 2000
-    private const val MAX_FILE_BYTES = 4L * 1024L * 1024L
+    private const val MAX_FILE_BYTES = 5L * 1024L * 1024L
+    private const val BASE_FILE_NAME = "F1MultiView.log"
 
     private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private val dateFolderFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -50,6 +46,7 @@ object AppLogger {
     private var logUri: Uri? = null
     private var logOutput: OutputStream? = null
     private var previousHandler: Thread.UncaughtExceptionHandler? = null
+    private var logBytes: Long = 0L
 
     @Synchronized
     fun initialize(context: Context) {
@@ -176,117 +173,61 @@ object AppLogger {
     private fun ensurePersistentFileLocked(reason: String): Boolean {
         if (logOutput != null && logUri != null) return true
         val context = appContext ?: return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Log.w(TAG, "Persistent Downloads logging requires Android 10+; API=\${Build.VERSION.SDK_INT}; reason=\${reason}")
-            return false
-        }
-
-        // One file is the invariant for one app process. If the existing MediaStore
-        // output stream was interrupted, reopen the same URI instead of inserting a
-        // second Downloads item.
-        if (logUri != null && logOutput == null) {
-            return runCatching {
-                logOutput = context.contentResolver.openOutputStream(logUri!!, "wa")
-                    ?: error("MediaStore reopen returned null")
-                flushBufferedEntriesLocked()
-                logOutput?.flush()
-                true
-            }.onFailure {
-                closeOutput()
-                Log.w(TAG, "Unable to reopen existing Downloads log; reason=\${reason}", it)
-            }.getOrDefault(false)
-        }
-
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        val resolver = context.contentResolver
+        runCatching {
+            resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(BaseColumns._ID, MediaStore.Downloads.SIZE),
+                "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.IS_PENDING}=0",
+                arrayOf(Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/"),
+                "${MediaStore.Downloads.DATE_MODIFIED} DESC")?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val id = cursor.getLong(cursor.getColumnIndexOrThrow(BaseColumns._ID))
+                        val size = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)).coerceAtLeast(0L)
+                        if (size < MAX_FILE_BYTES) {
+                            val uri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
+                            val output = resolver.openOutputStream(uri, "wa")
+                            if (output != null) { logUri = uri; logOutput = output; logBytes = size; return true }
+                        }
+                    }
+                }
+        }.onFailure { Log.w(TAG, "Unable to find existing Downloads log; reason=$reason", it) }
         return runCatching {
             val now = Date()
-            val displayName = "F1MultiView-${fileNameFormatter.format(now)}.log"
-            val relativePath = Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/" +
-                dateFolderFormatter.format(now)
-            val resolver = context.contentResolver
-
+            val displayName = if (reason == "initialize" && !hasAnyLogLocked(resolver)) BASE_FILE_NAME
+                else "F1MultiView-${fileNameFormatter.format(now)}.log"
+            val relativePath = Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/"
             val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, displayName)
-                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
-                put(MediaStore.Downloads.IS_PENDING, 1)
+                put(MediaStore.Downloads.DISPLAY_NAME, displayName); put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                put(MediaStore.Downloads.RELATIVE_PATH, relativePath); put(MediaStore.Downloads.IS_PENDING, 1)
             }
-
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: error("MediaStore insert returned null")
-
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("MediaStore insert returned null")
             try {
-                val output = resolver.openOutputStream(uri, "wa")
-                    ?: error("MediaStore openOutputStream returned null")
-
-                // Keep the item pending until the stream is proven usable and the startup
-                // buffer has been written. This avoids exposing an empty/corrupt file.
-                logUri = uri
-                logOutput = output
-                flushBufferedEntriesLocked()
-                output.flush()
-
-                resolver.update(
-                    uri,
-                    ContentValues().apply {
-                        put(MediaStore.Downloads.IS_PENDING, 0)
-                    },
-                    null,
-                    null
-                )
-
-                Log.i(TAG, "Persistent log created: $uri; reason=$reason")
+                val output = resolver.openOutputStream(uri, "wa") ?: error("MediaStore openOutputStream returned null")
+                logUri = uri; logOutput = output; logBytes = 0L; output.flush()
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
                 true
-            } catch (failure: Throwable) {
-                runCatching { resolver.delete(uri, null, null) }
-                throw failure
-            }
-        }.onFailure {
-            logUri = null
-            closeOutput()
-            Log.w(TAG, "Unable to create Downloads log file; reason=$reason", it)
-        }.getOrDefault(false)
+            } catch (failure: Throwable) { runCatching { resolver.delete(uri, null, null) }; throw failure }
+        }.onFailure { logUri = null; logBytes = 0L; closeOutput(); Log.w(TAG, "Unable to create Downloads log file; reason=$reason", it) }.getOrDefault(false)
     }
 
-    /**
-     * Writes all retained in-memory entries to a newly created stream. This is what makes
-     * startup failures recoverable: events generated before MediaStore became available
-     * are not lost.
-     *
-     * This must be called while synchronized(this).
-     */
-    private fun flushBufferedEntriesLocked() {
-        val output = logOutput ?: return
-        runCatching {
-            _entries.value.forEach { line ->
-                output.write((line + "\n").toByteArray(Charsets.UTF_8))
-            }
-            output.flush()
-        }.onFailure {
-            Log.w(TAG, "Unable to persist buffered app logs", it)
-            closeOutput()
-            // Keep logUri so this session never silently creates a second file.
-        }
-    }
+    private fun hasAnyLogLocked(resolver: android.content.ContentResolver): Boolean = runCatching {
+        resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, arrayOf(BaseColumns._ID),
+            "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.IS_PENDING}=0",
+            arrayOf(Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_FOLDER + "/"), null)?.use { it.moveToFirst() } ?: false
+    }.getOrDefault(false)
 
     private fun append(line: String) {
-        if (logOutput == null || logUri == null) {
-            // ensurePersistentFileLocked() persists the complete retained buffer, including
-            // the line that triggered this retry. Do not append that line a second time.
-            ensurePersistentFileLocked("log-write")
-            return
-        }
-        val output = logOutput ?: return
-        runCatching {
-            if (output is java.io.FileOutputStream && output.channel.size() > MAX_FILE_BYTES) return
-            output.write((line + "\n").toByteArray(Charsets.UTF_8))
-            output.flush()
-        }.onFailure {
-            Log.w(TAG, "Unable to write app log", it)
-            closeOutput()
-            // Keep logUri so the next write reopens the same session file.
+        val bytes = (line + "\n").toByteArray(Charsets.UTF_8)
+        synchronized(this) {
+            if (logOutput == null || logUri == null) ensurePersistentFileLocked("log-write")
+            if (logOutput == null || logUri == null) return
+            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; ensurePersistentFileLocked("size-rotation") }
+            val output = logOutput ?: return
+            runCatching { output.write(bytes); output.flush(); logBytes += bytes.size }
+                .onFailure { Log.w(TAG, "Unable to write app log", it); closeOutput() }
         }
     }
-
     private fun flush() {
         runCatching { logOutput?.flush() }
     }
