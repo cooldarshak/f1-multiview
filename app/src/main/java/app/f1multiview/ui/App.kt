@@ -1145,7 +1145,8 @@ private fun MultiviewFeedTile(
     onFocus: (String) -> Unit,
     active: Boolean,
     surfaceType: Int,
-    showOverlay: Boolean = true
+    showOverlay: Boolean = true,
+    onVideoTap: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { isTelevision(context) }
@@ -1158,7 +1159,8 @@ private fun MultiviewFeedTile(
             StreamKind.F1_DASH_DATA -> F1DashDataFeed(ui, isTv, Modifier.fillMaxSize())
             else -> PlayerTile(
                 stream, engine, error, Modifier.fillMaxSize(), {}, onFocus,
-                active = active, surfaceType = surfaceType, showOverlay = showOverlay
+                active = active, surfaceType = surfaceType, showOverlay = showOverlay,
+                onVideoTap = onVideoTap
             )
         }
     }
@@ -1539,7 +1541,8 @@ private fun CanonicalMultiviewLayout(
     onFocus: (String) -> Unit,
     activeId: String? = null,
     modifier: Modifier = Modifier,
-    surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW
+    surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW,
+    onVideoTap: (() -> Unit)? = null
 ) {
     val gap = 6.dp
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -1568,21 +1571,21 @@ private fun CanonicalMultiviewLayout(
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
             selected.size == 1 ->
-                MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
             selected.size == 2 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                 }
             selected.size == 3 ->
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
+                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                     ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                         ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                     }
                 }
             selected.size == 4 ->
@@ -1662,7 +1665,7 @@ private fun CanonicalMultiviewLayout(
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
                         MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
@@ -1925,8 +1928,8 @@ private fun ResizeHandle(
         )
         .then(
             if (orientation == Orientation.Horizontal) {
-                Modifier.width(10.dp).fillMaxHeight()
-            } else Modifier.height(10.dp).fillMaxWidth()
+                Modifier.width(3.dp).fillMaxHeight()
+            } else Modifier.height(3.dp).fillMaxWidth()
         )
         .draggable(
             orientation = orientation,
@@ -1934,7 +1937,7 @@ private fun ResizeHandle(
             state = rememberDraggableState { onDelta(it) }
         )
         .background(if (enabled) Red.copy(alpha = .75f) else Color.White.copy(alpha = .08f))
-        .then(if (focused) Modifier.border(2.dp, White, RoundedCornerShape(3.dp)) else Modifier)
+        .then(if (focused) Modifier.border(1.dp, White, RoundedCornerShape(2.dp)) else Modifier)
 
     Box(modifier, contentAlignment = Alignment.Center) {
         if (enabled) {
@@ -1976,7 +1979,8 @@ private fun F1HdrPlayerSurface(
     player: EnginePlayerHandle,
     stream: StreamSource,
     modifier: Modifier,
-    source: String
+    source: String,
+    onVideoTap: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
@@ -2007,7 +2011,8 @@ private fun F1HdrPlayerSurface(
                     stream = stream,
                     source = source,
                     container = container,
-                    screenshotMode = false
+                    screenshotMode = false,
+                    onVideoTap = onVideoTap
                 )
             },
             onRelease = { released ->
@@ -2602,7 +2607,8 @@ private fun FullscreenMultiview(
                     },
                     activeId = activeFeedId,
                     modifier = Modifier.fillMaxSize(),
-                    surfaceType = SURFACE_TYPE_SURFACE_VIEW
+                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                    onVideoTap = { controlsVisible = !controlsVisible }
                 )
             }
 
