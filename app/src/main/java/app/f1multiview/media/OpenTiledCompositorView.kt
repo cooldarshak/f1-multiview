@@ -204,6 +204,11 @@ class OpenTiledCompositorView(
         queueEvent { renderer.releaseOutput(releaseListener) }
     }
 
+    override fun onDetachedFromWindow() {
+        releaseOutput()
+        super.onDetachedFromWindow()
+    }
+
     private inner class Renderer : GLSurfaceView.Renderer {
         private var textureId = 0
         private var surfaceTexture: SurfaceTexture? = null
@@ -244,6 +249,15 @@ class OpenTiledCompositorView(
         """.trimIndent()
 
         override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: javax.microedition.khronos.egl.EGLConfig?) {
+            // EGL/GL recreation invalidates the previous decoder target. Tear down the
+            // old physical graph before handing the decoder a new Surface.
+            if (outputSurface != null || surfaceTexture != null) {
+                listener?.onOutputSurfaceReleased()
+                runCatching { outputSurface?.release() }
+                runCatching { surfaceTexture?.release() }
+                outputSurface = null
+                surfaceTexture = null
+            }
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             program = ShaderProgram(vertexShader, fragmentShader)
             vertexBuffer = floatBuffer(
