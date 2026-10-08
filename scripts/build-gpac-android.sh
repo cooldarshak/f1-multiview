@@ -47,12 +47,9 @@ pushd "$SRC" >/dev/null
   --libdir=lib \
   --static-build \
   --static-modules \
-  --disable-all \
+  --isomedia-only \
   --enable-log \
   --enable-threads \
-  --enable-parsers \
-  --enable-isoff \
-  --enable-isoff-write \
   --enable-hevcmerge \
   --enable-hevcsplit \
   --enable-tileagg \
