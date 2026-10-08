@@ -48,7 +48,7 @@ static GF_Err source_initialize(GF_Filter *filter) {
 }
 
 static GF_Err source_process(GF_Filter *) {
-    return GF_EOS;
+    return GF_OK;
 }
 
 static const GF_FilterCapability SourceCaps[] = {
@@ -365,15 +365,8 @@ Java_app_f1multiview_media_GpacNativeTmeMerger_nativePush(
     for (jsize i = 0; i < count; ++i) {
         auto *bytes = static_cast<jbyteArray>(env->GetObjectArrayElement(payloads, i));
         const jsize n = bytes ? env->GetArrayLength(bytes) : 0;
-        GF_FilterPacket *pck = gf_filter_pck_new_alloc(g_graph.sourcePids[i], static_cast<u32>(n), nullptr);
-        if (!pck) {
-            if (bytes) env->DeleteLocalRef(bytes);
-            jclass cls = env->FindClass("java/lang/OutOfMemoryError");
-            env->ThrowNew(cls, "Unable to allocate GPAC tile packet");
-            return nullptr;
-        }
         u8 *dst = nullptr;
-        pck = gf_filter_pck_new_alloc(g_graph.sourcePids[i], static_cast<u32>(n), &dst);
+        GF_FilterPacket *pck = gf_filter_pck_new_alloc(g_graph.sourcePids[i], static_cast<u32>(n), &dst);
         if (!pck || (n && !dst)) {
             if (bytes) env->DeleteLocalRef(bytes);
             jclass cls = env->FindClass("java/lang/OutOfMemoryError");
