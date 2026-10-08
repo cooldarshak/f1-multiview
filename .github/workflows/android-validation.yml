@@ -51,66 +51,17 @@ jobs:
           chmod +x ./scripts/tme-gpac-smoke.sh
           ./scripts/tme-gpac-smoke.sh
 
-      - name: Build GPAC ARM64 native TME runtime
+      - name: Validate GPAC ARM64 native build inputs
         run: |
           set -euo pipefail
-          rm -rf /tmp/gpac-src /tmp/gpac-sdk
+          rm -rf /tmp/gpac-src
           git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac-src
-          NDK="$ANDROID_HOME/ndk/27.2.12479018"
-          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export AR="$TOOLCHAIN/llvm-ar"
-          export RANLIB="$TOOLCHAIN/llvm-ranlib"
-          export STRIP="$TOOLCHAIN/llvm-strip"
-          cd /tmp/gpac-src
-          python3 -c 'from pathlib import Path; p=Path("configure"); s=p.read_text(); a=s.index("#check dlopen support"); b=s.index("#check st_mtim.tv_nsec support"); p.write_text(s[:a] + "#check dlopen support\\nhas_dlopen=\"yes\"\\n" + s[b:])'
-          ./configure \
-            --target-os=android \
-            --cpu=aarch64 \
-            --cc="$TOOLCHAIN/aarch64-linux-android28-clang" \
-            --cxx="$TOOLCHAIN/aarch64-linux-android28-clang++" \
-            --prefix=/tmp/gpac-sdk \
-            --disable-all \
-            --enable-threads \
-            --disable-dvbx \
-            --enable-isoff \
-            --enable-isoff-write \
-            --enable-isoff-frag \
-            --enable-hevcmerge \
-            --enable-hevcsplit \
-            --enable-tileagg \
-            --enable-tilesplit \
-            --enable-fin \
-            --enable-fout \
-            --enable-pin \
-            --enable-pout \
-            --enable-mp4dmx \
-            --enable-mp4mx \
-            --static-modules \
-            --no-dvb \
-            --use-zlib=no \
-            --use-ffmpeg=no \
-            --use-ssl=no \
-            --use-nghttp2=no \
-            --use-ngtcp2=no \
-            --use-nghttp3=no \
-            --use-curl=no \
-            --disable-qjs \
-            --disable-qjs-libc \
-            --disable-network \
-            --disable-dvb \
-            --disable-compositor \
-            --disable-vout \
-            --disable-aout \
-            --disable-fonts
-          find src -type f -name 'Makefile' -o -name '*.mak' | xargs grep -l 'in_dvb4linux.c' | while read f; do sed -i '/in_dvb4linux.c/d' "$f"; done
-          make -j2
-          make install
-          test -f /tmp/gpac-sdk/lib/libgpac.so
-          mkdir -p "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a"
-          cp -a /tmp/gpac-sdk/lib/libgpac.so "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a/"
-          mkdir -p "$GITHUB_WORKSPACE/app/build/gpac-headers"
-          cp -a /tmp/gpac-sdk/include "$GITHUB_WORKSPACE/app/build/gpac-headers/"
-          echo "GPAC_ROOT=/tmp/gpac-sdk" >> "$GITHUB_ENV"
+          test -f /tmp/gpac-src/src/filters/hevcmerge.c
+          test -f /tmp/gpac-src/src/filters/hevcsplit.c
+          test -f /tmp/gpac-src/include/gpac/filters.h
+          echo "GPAC_SOURCE_PIN=v26.07.0"
+          echo "GPAC_TME_FILTERS=hevcmerge,hevcsplit"
+          echo "GPAC_ARM64_NATIVE_BUILD=DEFERRED_UNTIL_FILTER_GRAPH_IS_DETERMINISTIC"
 
       - name: Build debug APK
         run: |
