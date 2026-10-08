@@ -96,6 +96,13 @@ object TmePlaybackParser {
             root, metadata, advanced, tileSize,
             "tileCountVertical", "tile_count_vertical"
         )
+        val feedArray = root.optJSONArray("feeds")
+        val firstFeedMetadata = feedArray?.optJSONObject(0)?.optJSONObject("metadata")
+
+        val resolvedTileCountHorizontal = tileCountHorizontal
+            ?: firstInt(firstFeedMetadata, "tileCountHorizontal", "tile_count_horizontal")
+        val resolvedTileCountVertical = tileCountVertical
+            ?: firstInt(firstFeedMetadata, "tileCountVertical", "tile_count_vertical")
 
         val feeds = buildList {
             val array: JSONArray = root.optJSONArray("feeds") ?: JSONArray()
@@ -105,10 +112,10 @@ object TmePlaybackParser {
                 val feedMetadata = feed.optJSONObject("metadata")
                 val subtitles = feed.optJSONObject("subtitleTrackNames")
                 val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile", "index")
-                val row = if (tileIndex != null && tileCountHorizontal != null && tileCountHorizontal > 0)
-                    tileIndex / tileCountHorizontal else null
+                val row = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
+                    tileIndex / resolvedTileCountHorizontal!! else null
                 val column = if (tileIndex != null && tileCountHorizontal != null && tileCountHorizontal > 0)
-                    tileIndex % tileCountHorizontal else null
+                    tileIndex % resolvedTileCountHorizontal!! else null
                 add(
                     TmeFeed(
                         audioEnglish = audio?.optString("eng").takeUnless { it.isNullOrBlank() },
@@ -133,8 +140,8 @@ object TmePlaybackParser {
             contentId = metadata?.optInt("contentId", -1)?.takeIf { it >= 0 },
             tileWidth = tileSize?.optInt("width", -1)?.takeIf { it > 0 },
             tileHeight = tileSize?.optInt("height", -1)?.takeIf { it > 0 },
-            tileCountHorizontal = tileCountHorizontal,
-            tileCountVertical = tileCountVertical,
+            tileCountHorizontal = resolvedTileCountHorizontal,
+            tileCountVertical = resolvedTileCountVertical,
             feeds = feeds
         )
     }.getOrNull()
