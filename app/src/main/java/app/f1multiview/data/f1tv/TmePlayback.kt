@@ -62,10 +62,25 @@ data class TmeFeed(
     val subtitleEnglish: String?,
     val subtitleSpanish: String?,
     val url: String?,
-    val uuid: String?
+    val uuid: String?,
+    val tileIndex: Int?,
+    val tileRow: Int?,
+    val tileColumn: Int?
 )
 
 object TmePlaybackParser {
+    private fun firstInt(vararg sourcesAndNames: Any?): Int? {
+        val sources = sourcesAndNames.filterIsInstance<JSONObject>()
+        val names = sourcesAndNames.filterIsInstance<String>()
+        for (source in sources) for (name in names) {
+            if (source.has(name) && !source.isNull(name)) {
+                val value = source.optInt(name, Int.MIN_VALUE)
+                if (value != Int.MIN_VALUE) return value
+            }
+        }
+        return null
+    }
+
     fun parse(json: String): TmePlayback? = runCatching {
         val root = JSONObject(json)
         val metadata = root.optJSONObject("metadata")
@@ -88,7 +103,10 @@ object TmePlaybackParser {
                         subtitleEnglish = subtitles?.optString("engSubtitle").takeUnless(String?::isNullOrBlank),
                         subtitleSpanish = subtitles?.optString("spaSubtitle").takeUnless(String?::isNullOrBlank),
                         url = feed.optString("url").takeUnless(String::isNullOrBlank),
-                        uuid = feed.optString("uuid").takeUnless(String::isNullOrBlank)
+                        uuid = feed.optString("uuid").takeUnless(String::isNullOrBlank),
+                        tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile", "index"),
+                        tileRow = firstInt(feed, feedMetadata, "tileRow", "row", "rowIndex"),
+                        tileColumn = firstInt(feed, feedMetadata, "tileColumn", "column", "columnIndex", "col")
                     )
                 )
             }
