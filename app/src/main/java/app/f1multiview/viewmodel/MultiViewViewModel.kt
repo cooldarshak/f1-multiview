@@ -261,11 +261,30 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     mainStreamId=mainSource?.id,
                     providerError=null
                 )
-                val sourcesToResolve = if (autoSelectFeeds) {
-                    visible.filter { it.id in selectedDistinct && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
-                } else {
-                    listOfNotNull(mainSource?.takeIf { it.url == null })
-                }
+                // TME discovery is session-level. A catalogue entry may already have a manifest
+                // URL while omitting the TME payload; resolving only when url == null therefore
+                // silently sends multiview into the per-feed Media3 path.
+                val mainNeedsTmeDiscovery = mainSource != null &&
+                    mainSource.tmeJson.isNullOrBlank() &&
+                    mainSource.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+                val sourcesToResolve = buildList {
+                    if (mainNeedsTmeDiscovery) add(mainSource!!)
+                    if (autoSelectFeeds) {
+                        visible.filter {
+                            it.id in selectedDistinct &&
+                                it.id != mainSource?.id &&
+                                it.url == null &&
+                                it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+                        }.forEach(::add)
+                    } else {
+                        mainSource?.takeIf { it.url == null && it.id != mainSource.id }?.let(::add)
+                    }
+                }.distinctBy { it.id }
+                AppLogger.i(
+                    "Playback",
+                    "TME_DISCOVERY main=${mainSource?.id} resolveMain=$mainNeedsTmeDiscovery " +
+                        "selected=${selectedDistinct.joinToString(",")} existingTme=${mainSource?.tmeJson?.isNullOrBlank() == false}"
+                )
                 for (source in sourcesToResolve) {
                     resolveSource(source)
                 }
