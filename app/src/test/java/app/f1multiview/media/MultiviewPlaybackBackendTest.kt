@@ -1,11 +1,16 @@
 package app.f1multiview.media
 
-import android.test.mock.MockContext
+import android.content.Context
+import android.content.ContextWrapper
 import app.f1multiview.core.playback.TiledMultiviewFeed
 import app.f1multiview.core.playback.TiledMultiviewSession
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+private class TestContext : ContextWrapper(null) {
+    override fun getApplicationContext(): Context = this
+}
 
 class MultiviewPlaybackBackendTest {
     private val session = TiledMultiviewSession(
@@ -42,7 +47,7 @@ class MultiviewPlaybackBackendTest {
 
     @Test
     fun nativeTmeBackend_isExplicitlyUnavailableWithoutSdk() {
-        val backend = NativeTmePlaybackBackend(MockContext())
+        val backend = NativeTmePlaybackBackend(TestContext())
 
         assertFalse(backend.status.available)
         assertTrue(backend.status.singlePlayer)
