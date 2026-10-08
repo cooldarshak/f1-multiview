@@ -281,3 +281,34 @@ object TmeAcceptanceGate {
         }
     }
 }
+
+
+/**
+ * Contract for the compressed-domain side of OpenTME.
+ *
+ * The merger produces complete HEVC access units. The decoder consumes those
+ * access units on exactly one MediaCodec instance and never knows how many
+ * logical tiles contributed to them.
+ */
+data class TmeMergedAccessUnit(
+    val ptsUs: Long,
+    val dtsUs: Long,
+    val durationUs: Long,
+    val keyFrame: Boolean,
+    val codecConfig: ByteArray? = null,
+    val payload: ByteArray
+)
+
+data class TmeDecoderTelemetry(
+    val codecName: String?,
+    val configured: Boolean,
+    val started: Boolean,
+    val queuedAccessUnits: Long,
+    val renderedAccessUnits: Long,
+    val decoderRecreationCount: Long,
+    val outputSurfaceAttached: Boolean
+) {
+    val singleDecoderInvariant: Boolean
+        get() = configured && started && decoderRecreationCount == 0L &&
+            outputSurfaceAttached
+}
