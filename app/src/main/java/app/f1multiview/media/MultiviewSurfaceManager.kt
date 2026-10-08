@@ -14,6 +14,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         val protectedContent: Boolean,
         val container: FrameLayout,
         val owner: EnginePlayerHandle,
+        val onTap: (() -> Unit)? = null,
         val surfaceView: SurfaceView? = null,
         val textureView: TextureView? = null
     )
@@ -35,7 +36,8 @@ class MultiviewSurfaceManager(private val context: Context) {
         stream: StreamSource,
         source: String,
         container: FrameLayout,
-        screenshotMode: Boolean = false
+        screenshotMode: Boolean = false,
+        onTap: (() -> Unit)? = null
     ) {
         AppLogger.d("Surface", "bind start feed=$feedId player=${player.id} source=$source container=${System.identityHashCode(container)}")
         val current = bindings[feedId]
@@ -56,12 +58,17 @@ class MultiviewSurfaceManager(private val context: Context) {
             val texture = TextureView(context)
             container.addView(texture, params)
             player.setVideoTextureView(texture)
+            texture.setOnTouchListener { _, event ->
+                if (event.actionMasked == android.view.MotionEvent.ACTION_UP) onTap?.invoke()
+                false
+            }
             bindings[feedId] = SurfaceBinding(
                 feedId = feedId,
                 source = source,
                 protectedContent = protectedContent,
                 container = container,
                 owner = player,
+                onTap = onTap,
                 textureView = texture
             )
         } else {
@@ -76,6 +83,10 @@ class MultiviewSurfaceManager(private val context: Context) {
                 surface.setSurfaceLifecycle(SurfaceView.SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT)
             }
             container.addView(surface, params)
+            surface.setOnTouchListener { _, event ->
+                if (event.actionMasked == android.view.MotionEvent.ACTION_UP) onTap?.invoke()
+                false
+            }
             player.setVideoSurfaceView(surface)
             HdrSurfaceHints.apply(surface, source)
             if (player.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
@@ -87,6 +98,7 @@ class MultiviewSurfaceManager(private val context: Context) {
                 protectedContent = protectedContent,
                 container = container,
                 owner = player,
+                onTap = onTap,
                 surfaceView = surface
             )
         }
@@ -100,9 +112,11 @@ class MultiviewSurfaceManager(private val context: Context) {
                 releaseVideoOutput(it)
                 if (it.surfaceView != null) player.setVideoSurfaceView(it.surfaceView)
                 if (it.textureView != null) player.setVideoTextureView(it.textureView)
-                bindings[feedId] = it.copy(owner = player, source = source)
+                bindings[feedId] = it.copy(owner = player, source = source, onTap = onTap)
+                attachExisting(it.copy(owner = player, onTap = onTap), player, source)
             } else {
-                attachExisting(it, player, source)
+                bindings[feedId] = it.copy(source = source, onTap = onTap)
+                attachExisting(it.copy(source = source, onTap = onTap), player, source)
             }
         }
     }
@@ -158,6 +172,14 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     private fun attachExisting(binding: SurfaceBinding, player: EnginePlayerHandle, source: String) {
+        binding.textureView?.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) binding.onTap?.invoke()
+            false
+        }
+        binding.surfaceView?.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) binding.onTap?.invoke()
+            false
+        }
         binding.textureView?.let(player::setVideoTextureView)
         binding.surfaceView?.let {
             player.setVideoSurfaceView(it)
