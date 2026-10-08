@@ -5,6 +5,7 @@ import app.f1multiview.core.playback.TiledMultiviewSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class TmePipelineTest {
@@ -23,12 +24,10 @@ class TmePipelineTest {
     )
 
     @Test
-    fun f1AdapterMapsEveryIndependentFeedWithoutClaimingOneUrl() {
-        val mapped = F1TmeTileAdapter.map(session())
-        assertEquals(4, mapped.size)
-        assertEquals(setOf("world", "onboard", "data", "tracker"), mapped.map { it.feedId }.toSet())
-        assertEquals(0, mapped[0].tileIndex)
-        assertEquals(1, mapped[1].tileIndex)
+    fun f1AdapterRejectsSyntheticPlacementWhenF1MetadataHasNoTileCoordinates() {
+        runCatching { F1TmeTileAdapter.map(session()) }
+            .onSuccess { fail("adapter must not invent tile coordinates from feed count") }
+            .onFailure { assertTrue(it.message.orEmpty().contains("placement metadata")) }
     }
 
     @Test
