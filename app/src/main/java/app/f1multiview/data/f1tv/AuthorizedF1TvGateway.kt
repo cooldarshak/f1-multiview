@@ -465,8 +465,18 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             listOf("WEB_DASH","BIG_SCREEN_DASH","WEB_HLS","BIG_SCREEN_HLS","MOBILE_DASH","MOBILE_HLS")
         }
         var last:Throwable?=null
+        var firstSuccessful: PlaybackSession? = null
+        var firstSuccessfulPlatform: String? = null
         for((index,platform) in platforms.withIndex()){try{
-            val result=api.contentPlay(request.contentId,request.channelId,platform);var playToken=result.playToken;var manifestLicense:String?=null
+            val result=api.contentPlay(request.contentId,request.channelId,platform)
+            AppLogger.i(
+                "F1Playback",
+                "CONTENT_PLAY platform=${platform} apiVersion=${result.playApiVersion ?: "unknown"} " +
+                    "manifest=${if (result.manifestUrl.isBlank()) "none" else if (result.manifestUrl.contains(".mpd", true)) "dash" else "hls"} " +
+                    "tme=${!result.tmeJson.isNullOrBlank()} channelViewMode=${result.channelViewMode ?: "none"}"
+            )
+            var playToken=result.playToken
+            var manifestLicense:String?=null
             if(result.manifestUrl.contains(".mpd",true)){
                 val probe=api.prepareManifest(result.manifestUrl)
                 if(!probe.successful){
@@ -477,10 +487,28 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             }
             val license=result.licenseUrl?:manifestLicense?:if(result.manifestUrl.contains(".mpd",true))api.fallbackLicense(request.contentId,request.channelId,platform,result.pipelineVersion,result.streamType)else null
             if(result.manifestUrl.contains(".mpd",true)&&license==null)throw F1TvException("Protected DASH manifest has no Widevine license endpoint")
-            val streamHeaders=buildMap{put("Origin",F1TvApiClient.BASE);put("Referer",F1TvApiClient.BASE+"/");put("User-Agent",F1TvApiClient.BROWSER_UA);put("x-f1-device-info",api.deviceInfo());api.authHeaders()["ascendontoken"]?.let{put("ascendontoken",it)};(result.entitlementToken?:api.authHeaders()["entitlementtoken"])?.let{put("entitlementtoken",it)};playToken?.let{put("Cookie","playToken="+it)}}
-            val licenseHeaders=buildMap{putAll(streamHeaders);result.drmToken?.let{put("drmtoken",it);put("Authorization","Bearer "+it)}}
-            return@runCatching PlaybackSession(result.manifestUrl,if(result.manifestUrl.contains(".m3u8",true))"application/x-mpegURL" else "application/dash+xml",license,licenseHeaders,streamHeaders,request.contentId.startsWith("live-"),request.contentId,request.channelId,result.playApiVersion,result.platform,result.streamType,api.authHeaders()["ascendontoken"],result.entitlementToken?:api.authHeaders()["entitlementtoken"],result.drmType,playToken,result.tmeJson,result.channelViewMode)
+            val streamHeaders=buildMap<String,String>{put("Origin",F1TvApiClient.BASE);put("Referer",F1TvApiClient.BASE+"/");put("User-Agent",F1TvApiClient.BROWSER_UA);put("x-f1-device-info",api.deviceInfo());api.authHeaders()["ascendontoken"]?.let{put("ascendontoken",it)};(result.entitlementToken?:api.authHeaders()["entitlementtoken"])?.let{put("entitlementtoken",it)};playToken?.let{put("Cookie","playToken="+it)}}
+            val licenseHeaders=buildMap<String,String>{putAll(streamHeaders);result.drmToken?.let{put("drmtoken",it);put("Authorization","Bearer "+it)}}
+            val playback=PlaybackSession(result.manifestUrl,if(result.manifestUrl.contains(".m3u8",true))"application/x-mpegURL" else "application/dash+xml",license,licenseHeaders,streamHeaders,request.contentId.startsWith("live-"),request.contentId,request.channelId,result.playApiVersion,result.platform,result.streamType,api.authHeaders()["ascendontoken"],result.entitlementToken?:api.authHeaders()["entitlementtoken"],result.drmType,playToken,result.tmeJson,result.channelViewMode)
+            if (firstSuccessful == null) {
+                firstSuccessful = playback
+                firstSuccessfulPlatform = platform
+            }
+            // TME is a session-level contract. Do not stop at the first playable profile
+            // when it returned a normal manifest without TME metadata. Continue through the
+            // authorized F1 playback profiles so the profile carrying TME can win.
+            if (!result.tmeJson.isNullOrBlank()) {
+                AppLogger.i("F1Playback", "TME_PROFILE_SELECTED platform=${platform}")
+                return@runCatching playback
+            }
         }catch(t:Throwable){last=t;if(index<platforms.lastIndex)delay(450)}}
+        firstSuccessful?.let {
+            AppLogger.w(
+                "F1Playback",
+                "NO_TME_PROFILE_FOUND firstSuccessful=${firstSuccessfulPlatform ?: "unknown"}; returning normal authorized playback"
+            )
+            return@runCatching it
+        }
         throw last?:F1TvException("No F1 TV playback profile succeeded")
         }
     }
