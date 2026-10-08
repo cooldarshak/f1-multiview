@@ -238,6 +238,7 @@ class UnifiedMultiviewEngine(context: Context) {
                 .firstOrNull()
         AppLogger.i("Engine", "TME_SESSION_RESOLVE streams=${streams.size} reference=$referenceId tme=${tme != null} topology=${tme?.topology ?: "NONE"} feeds=${tme?.feeds?.size ?: 0}")
         if (tme != null && tme.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
+            if (isNativeTmeActive()) nativeTmeBackend.release()
             openTiledPrepared = tmeSource?.let { openTiledBackend.prepare(tme, it, referenceId) } == true
             if (openTiledPrepared) {
                 decoderManager.release()
@@ -283,6 +284,10 @@ class UnifiedMultiviewEngine(context: Context) {
             if (isOpenTiledActive()) {
                 openTiledEngine.stopClockCorrection()
                 openTiledEngine.release()
+                tiledMultiviewController.clear()
+            }
+            if (isNativeTmeActive()) {
+                nativeTmeBackend.release()
                 tiledMultiviewController.clear()
             }
             if (tme != null) {
