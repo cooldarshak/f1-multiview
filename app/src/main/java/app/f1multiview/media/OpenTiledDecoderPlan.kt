@@ -1,7 +1,6 @@
 package app.f1multiview.media
 
 import app.f1multiview.core.playback.TiledMultiviewSession
-import app.f1multiview.data.f1tv.TmeTopology
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.sqrt
