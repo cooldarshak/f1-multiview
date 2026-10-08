@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y ca-certificates curl gnupg ffmpeg build-essential cmake
+          sudo apt-get install -y ca-certificates curl gnupg ffmpeg build-essential cmake unzip
           sudo install -m 0755 -d /etc/apt/keyrings
           curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors https://dist.gpac.io/gpac/linux/gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gpac.gpg
           sudo chmod a+r /etc/apt/keyrings/gpac.gpg
@@ -51,37 +51,20 @@ jobs:
           chmod +x ./scripts/tme-gpac-smoke.sh
           ./scripts/tme-gpac-smoke.sh
 
-
       - name: Prepare official GPAC Android native runtime
         run: |
           set -euo pipefail
           GPAC_VERSION="26.07"
-          GPAC_REV="a07cbfff"
           GPAC_APK="/tmp/gpac-android.apk"
           curl --fail --silent --show-error --location --retry 6 --retry-delay 5 --retry-all-errors \
             -o "$GPAC_APK" \
             "https://download.tsi.telecom-paristech.fr/gpac/release/$GPAC_VERSION/gpac-26.07-rev0-ga07cbfff-master.apk"
-          rm -rf /tmp/gpac-sdk
-          mkdir -p /tmp/gpac-sdk/lib/arm64-v8a /tmp/gpac-sdk/include
-          unzip -l "$GPAC_APK" | grep -E 'lib/.+\.so
-          git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac_headers
-          cp -a /tmp/gpac_headers/include /tmp/gpac-sdk/
-          mkdir -p "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a"
-          cp -a /tmp/gpac-sdk/lib/arm64-v8a/*.so "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a/"
-          echo "GPAC_ROOT=/tmp/gpac-sdk" >> "$GITHUB_ENV"
-
-      - name: Build debug APK
-        run: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest assembleDebug
- | tee /tmp/gpac-libs.txt
+          rm -rf /tmp/gpac-sdk /tmp/gpac-unpacked
+          mkdir -p /tmp/gpac-sdk/lib/arm64-v8a
+          unzip -l "$GPAC_APK" | grep -E 'lib/.+\.so$' | tee /tmp/gpac-libs.txt
           unzip -q "$GPAC_APK" 'lib/*' -d /tmp/gpac-unpacked
-          if [ -d /tmp/gpac-unpacked/lib/arm64-v8a ]; then
-            find /tmp/gpac-unpacked/lib/arm64-v8a -name '*.so' -exec cp -a {} /tmp/gpac-sdk/lib/arm64-v8a/ \;
-          else
-            echo "Official GPAC Android APK has no arm64-v8a native libraries" >&2
-            exit 1
-          fi
+          test -d /tmp/gpac-unpacked/lib/arm64-v8a
+          find /tmp/gpac-unpacked/lib/arm64-v8a -name '*.so' -exec cp -a {} /tmp/gpac-sdk/lib/arm64-v8a/ \;
           test -f /tmp/gpac-sdk/lib/arm64-v8a/libgpac.so
           git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac_headers
           cp -a /tmp/gpac_headers/include /tmp/gpac-sdk/
