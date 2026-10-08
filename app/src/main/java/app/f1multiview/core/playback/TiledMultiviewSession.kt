@@ -13,9 +13,9 @@ data class TiledMultiviewFeed(
     val audioSpanish: String?,
     val subtitleEnglish: String?,
     val subtitleSpanish: String?,
-    val tileIndex: Int?,
-    val tileRow: Int?,
-    val tileColumn: Int?
+    val tileIndex: Int? = null,
+    val tileRow: Int? = null,
+    val tileColumn: Int? = null
 )
 
 data class TiledMultiviewSession(
