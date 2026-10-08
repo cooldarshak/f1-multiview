@@ -58,7 +58,7 @@ jobs:
           GPAC_APK="/tmp/gpac-android.apk"
           curl --fail --silent --show-error --location --retry 6 --retry-delay 5 --retry-all-errors \
             -o "$GPAC_APK" \
-            "https://download.tsi.telecom-paristech.fr/gpac/nightly/android/gpac_latest_head_android.apk"
+            "https://download.tsi.telecom-paristech.fr/gpac/new_builds/gpac_latest_head_android.apk"
           rm -rf /tmp/gpac-sdk /tmp/gpac-unpacked
           mkdir -p /tmp/gpac-sdk/lib/arm64-v8a
           unzip -l "$GPAC_APK" | grep -E 'lib/.+\.so$' | tee /tmp/gpac-libs.txt
