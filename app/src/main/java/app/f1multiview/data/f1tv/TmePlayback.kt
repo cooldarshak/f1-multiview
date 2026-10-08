@@ -63,9 +63,9 @@ data class TmeFeed(
     val subtitleSpanish: String?,
     val url: String?,
     val uuid: String?,
-    val tileIndex: Int?,
-    val tileRow: Int?,
-    val tileColumn: Int?
+    val tileIndex: Int? = null,
+    val tileRow: Int? = null,
+    val tileColumn: Int? = null
 )
 
 object TmePlaybackParser {
