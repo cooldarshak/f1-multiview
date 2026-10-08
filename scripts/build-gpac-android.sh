@@ -46,9 +46,21 @@ mkdir -p "$SRC/extra_lib/include/zlib" "$SRC/extra_lib/lib/gcc"
 cp "$ZLIB_ROOT/include/zlib.h" "$ZLIB_ROOT/include/zconf.h" "$SRC/extra_lib/include/zlib/"
 cp "$ZLIB_ROOT/lib/libz.a" "$SRC/extra_lib/lib/gcc/"
 
+cat > /tmp/f1-zlib-probe.c <<'EOF'
+#include <string.h>
+#include <stdio.h>
+#include <zlib.h>
+int main(void) {
+    if (strcmp(zlibVersion(), ZLIB_VERSION)) return 1;
+    puts(zlibVersion());
+    return 0;
+}
+EOF
+"$CC" -I"$SRC/extra_lib/include/zlib"   -L"$SRC/extra_lib/lib/gcc"   /tmp/f1-zlib-probe.c -lz -o /tmp/f1-zlib-probe
+
 pushd "$SRC" >/dev/null
 export AR RANLIB STRIP
-./configure \
+if ! ./configure \
   --target-os=android \
   --cpu=aarch64 \
   --cross-prefix="$CROSS_PREFIX" \
@@ -78,6 +90,10 @@ export AR RANLIB STRIP
   --disable-x11 \
   --disable-dvb4linux \
   --disable-ffmpeg
+then
+  cat config.log >&2 || true
+  exit 1
+fi
 
 make -j"$(nproc)" lib
 make install-lib
