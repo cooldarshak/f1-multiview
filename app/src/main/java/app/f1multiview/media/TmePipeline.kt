@@ -51,7 +51,7 @@ data class TmeAlignedSegment(
 class TmeSegmentSynchronizer(
     private val segmentTimeoutUs: Long = 1_500_000L,
     private val clockUs: () -> Long = {
-        android.os.SystemClock.elapsedRealtimeNanos() / 1_000L
+        System.nanoTime() / 1_000L
     }
 ) {
     private data class Bucket(
