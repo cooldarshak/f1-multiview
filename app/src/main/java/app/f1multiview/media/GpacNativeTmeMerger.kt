@@ -1,42 +1,31 @@
 package app.f1multiview.media
 
-/**
- * Narrow boundary between Android/Kotlin scheduling and the native compressed-domain merger.
- *
- * Native implementations are expected to wrap GPAC/OpenTME. This interface intentionally
- * carries timestamps and codec configuration so no Media3 player is needed between the
- * merger and TmeNativeDecoder.
- */
 interface NativeTmeMerger : TmeBitstreamMerger {
     override val available: Boolean
-
     fun configure(tileSources: List<TmeTileSource>, outputWidth: Int, outputHeight: Int)
-
     fun push(segment: TmeAlignedSegment): List<TmeMergedAccessUnit>
-
     fun updateSelection(selectedFeedIds: Set<String>)
-
-    override fun merge(segment: TmeAlignedSegment): List<TmeMergedAccessUnit> =
-        push(segment)
+    override fun merge(segment: TmeAlignedSegment): List<TmeMergedAccessUnit> = push(segment)
 }
 
 /**
- * JNI-backed implementation is deliberately unavailable until the native library is
- * present. It must fail closed rather than silently falling back to N Media3 players.
+ * Availability is stricter than native library presence: the native layer must report
+ * that the complete compressed-domain merger graph is ready.
  */
 class GpacNativeTmeMerger : NativeTmeMerger {
     override val implementationName: String = "GPAC_NATIVE_TME"
     override val available: Boolean
-        get() = nativeLoaded && nativeIsAvailable()
+        get() = nativeLoaded && runCatching { nativeIsAvailable() }.getOrDefault(false)
 
     override fun configure(tileSources: List<TmeTileSource>, outputWidth: Int, outputHeight: Int) {
-        check(available) { "GPAC native TME library is not loaded" }
+        check(available) { "GPAC native TME merger graph is not ready" }
         require(tileSources.size >= 2)
+        require(outputWidth > 0 && outputHeight > 0)
         nativeConfigure(tileSources.map { it.feedId }.toTypedArray(), outputWidth, outputHeight)
     }
 
     override fun push(segment: TmeAlignedSegment): List<TmeMergedAccessUnit> {
-        check(available) { "GPAC native TME library is not loaded" }
+        check(available) { "GPAC native TME merger graph is not ready" }
         return nativePush(
             segment.key.sequence,
             segment.key.epochStartUs,
@@ -47,12 +36,12 @@ class GpacNativeTmeMerger : NativeTmeMerger {
     }
 
     override fun updateSelection(selectedFeedIds: Set<String>) {
-        check(available) { "GPAC native TME library is not loaded" }
+        check(available) { "GPAC native TME merger graph is not ready" }
         nativeUpdateSelection(selectedFeedIds.toTypedArray())
     }
 
     override fun release() {
-        if (available) nativeRelease()
+        if (nativeLoaded) runCatching { nativeRelease() }
     }
 
     private external fun nativeIsAvailable(): Boolean
@@ -64,7 +53,6 @@ class GpacNativeTmeMerger : NativeTmeMerger {
         feedIds: Array<String>,
         payloads: Array<ByteArray>
     ): Array<TmeMergedAccessUnit>
-
     private external fun nativeUpdateSelection(feedIds: Array<String>)
     private external fun nativeRelease()
 
