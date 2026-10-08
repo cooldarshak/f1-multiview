@@ -486,14 +486,24 @@ class UnifiedMultiviewEngine(context: Context) {
         else decoderManager.pause(id)
     }
     fun play(id: String) {
-        if (isNativeTmeActive()) nativeTmeBackend.play()
-        else if (isOpenTiledActive()) openTiledEngine.play()
-        else decoderManager.play(id)
+        if (isNativeTmeActive()) {
+            nativeTmeBackend.play()
+        } else if (isOpenTiledActive()) {
+            openTiledEngine.play()
+        } else if (media3MultiviewBlocked) {
+            AppLogger.w("TME", "PLAY_BLOCKED feed=$id; multiview requires a resolved TME backend")
+        } else if (!decoderManager.hasDecoder(id)) {
+            AppLogger.w("Engine", "PLAY_BLOCKED feed=$id; no decoder allocated")
+        } else {
+            decoderManager.play(id)
+        }
     }
     fun playAll() {
         if (isNativeTmeActive()) nativeTmeBackend.play()
         else if (isOpenTiledActive()) openTiledEngine.play()
-        else decoderManager.playAll()
+        else if (media3MultiviewBlocked) {
+            AppLogger.w("TME", "PLAY_ALL_BLOCKED; multiview requires a resolved TME backend")
+        } else decoderManager.playAll()
     }
     fun pauseAll() {
         if (isNativeTmeActive()) nativeTmeBackend.pause()

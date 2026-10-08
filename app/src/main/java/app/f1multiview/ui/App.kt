@@ -187,11 +187,25 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         val videoSelectedIds = ui.selectedStreamIds.filter { id ->
-            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(
+                StreamKind.TRACK_MAP,
+                StreamKind.F1_DASH_DATA,
+                StreamKind.TIMING,
+                StreamKind.TRACK
+            )
         }.toSet()
         engine.retain(videoSelectedIds)
         val ordered = ui.selectedStreamIds.mapNotNull { id ->
-            ui.streams.firstOrNull { it.id == id && it.url != null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+            ui.streams.firstOrNull {
+                it.id == id &&
+                    it.url != null &&
+                    it.kind !in setOf(
+                        StreamKind.TRACK_MAP,
+                        StreamKind.F1_DASH_DATA,
+                        StreamKind.TIMING,
+                        StreamKind.TRACK
+                    )
+            }
         }
         val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
         // Timing and Driver Tracker are native data feeds, not video decoders.
