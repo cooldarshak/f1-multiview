@@ -194,7 +194,8 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             streams = ordered,
             visibleIds = videoSelectedIds,
             referenceId = mainId,
-            autoplay = false
+            autoplay = false,
+            allowTiledBackend = false
         )
         startedFeeds.keys.retainAll(scheduled)
     }
