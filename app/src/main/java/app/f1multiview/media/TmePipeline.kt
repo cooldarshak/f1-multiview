@@ -51,26 +51,48 @@ data class TmeAlignedSegment(
 class TmeSegmentSynchronizer(
     private val segmentTimeoutUs: Long = 1_500_000L
 ) {
-    private val pending = linkedMapOf<TmeCmafSegmentKey, MutableMap<String, TmeTileSegment>>()
+    private data class Bucket(
+        val firstSeenElapsedUs: Long,
+        val tiles: MutableMap<String, TmeTileSegment>
+    )
 
-    fun offer(segment: TmeTileSegment): TmeAlignedSegment? {
-        val bucket = pending.getOrPut(segment.key) { linkedMapOf() }
-        bucket[segment.feedId] = segment
+    private val pending = linkedMapOf<TmeCmafSegmentKey, Bucket>()
+
+    /**
+     * Media epoch timestamps are not wall-clock time. Expiration therefore uses a
+     * monotonic arrival clock, while the segment key remains the media-time identity.
+     */
+    fun offer(
+        segment: TmeTileSegment,
+        expectedFeedIds: Set<String>? = null,
+        nowElapsedUs: Long = android.os.SystemClock.elapsedRealtimeNanos() / 1_000L
+    ): TmeAlignedSegment? {
+        val bucket = pending.getOrPut(segment.key) {
+            Bucket(nowElapsedUs, linkedMapOf())
+        }
+        bucket.tiles[segment.feedId] = segment
+
+        if (expectedFeedIds != null && expectedFeedIds.isNotEmpty() &&
+            expectedFeedIds.all(bucket.tiles::containsKey)
+        ) {
+            pending.remove(segment.key)
+            return TmeAlignedSegment(segment.key, bucket.tiles.values.toList())
+        }
         return null
     }
 
     fun pollComplete(expectedFeedIds: Set<String>): TmeAlignedSegment? {
         val entry = pending.entries.firstOrNull { (_, bucket) ->
-            expectedFeedIds.all(bucket::containsKey)
+            expectedFeedIds.all(bucket.tiles::containsKey)
         } ?: return null
         pending.remove(entry.key)
-        return TmeAlignedSegment(entry.key, entry.value.values.toList())
+        return TmeAlignedSegment(entry.key, entry.value.tiles.values.toList())
     }
 
-    fun dropExpired(nowEpochUs: Long): List<TmeCmafSegmentKey> {
-        val expired = pending.keys.filter { key ->
-            nowEpochUs - key.epochStartUs > segmentTimeoutUs
-        }
+    fun dropExpired(nowElapsedUs: Long = android.os.SystemClock.elapsedRealtimeNanos() / 1_000L): List<TmeCmafSegmentKey> {
+        val expired = pending.entries
+            .filter { (_, bucket) -> nowElapsedUs - bucket.firstSeenElapsedUs > segmentTimeoutUs }
+            .map { it.key }
         expired.forEach(pending::remove)
         return expired
     }
