@@ -194,8 +194,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             streams = ordered,
             visibleIds = videoSelectedIds,
             referenceId = mainId,
-            autoplay = false,
-            allowTiledBackend = false
+            autoplay = false
         )
         startedFeeds.keys.retainAll(scheduled)
     }
@@ -1692,55 +1691,62 @@ private fun OpenTiledMultiviewWall(
     val context = LocalContext.current
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
 
-    val outputSlots = remember(feedIds, layout) {
+    var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
+    var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
+    var mainX by rememberSaveable { mutableFloatStateOf(.55f) }
+    var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
+    var fourSideH2 by rememberSaveable { mutableFloatStateOf(.34f) }
+    var topX by rememberSaveable { mutableFloatStateOf(.33f) }
+    var topX2 by rememberSaveable { mutableFloatStateOf(.5f) }
+    var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
+    var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
+    var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
+
+    val outputSlots = remember(
+        feedIds, layout, splitX, splitY, mainX, fourSideH1, fourSideH2,
+        topX, topX2, bottomX, bottomX2, gridY
+    ) {
         val ids = feedIds.distinct().take(24)
         fun slot(id: String, x: Float, y: Float, width: Float, height: Float, z: Int) =
             OpenTiledMultiviewEngine.OutputSlot(id, x, y, width, height, z)
-
         when {
             ids.isEmpty() -> emptyList()
             ids.size == 1 -> listOf(slot(ids[0], 0f, 0f, 1f, 1f, 0))
             ids.size == 2 -> listOf(
-                slot(ids[0], 0f, 0f, .5f, 1f, 0),
-                slot(ids[1], .5f, 0f, .5f, 1f, 1)
+                slot(ids[0], 0f, 0f, splitX, 1f, 0),
+                slot(ids[1], splitX, 0f, 1f - splitX, 1f, 1)
             )
             ids.size == 3 -> listOf(
-                slot(ids[0], 0f, 0f, .62f, 1f, 0),
-                slot(ids[1], .63f, 0f, .37f, .49f, 1),
-                slot(ids[2], .63f, .51f, .37f, .49f, 2)
+                slot(ids[0], 0f, 0f, mainX, 1f, 0),
+                slot(ids[1], mainX, 0f, 1f - mainX, splitY, 1),
+                slot(ids[2], mainX, splitY, 1f - mainX, 1f - splitY, 2)
             )
             layout == LayoutPreset.GRID_4 && ids.size >= 4 -> listOf(
-                slot(ids[0], 0f, 0f, .55f, 1f, 0),
-                slot(ids[1], .56f, 0f, .44f, .32f, 1),
-                slot(ids[2], .56f, .34f, .44f, .32f, 2),
-                slot(ids[3], .56f, .68f, .44f, .32f, 3)
+                slot(ids[0], 0f, 0f, mainX, 1f, 0),
+                slot(ids[1], mainX, 0f, 1f - mainX, fourSideH1, 1),
+                slot(ids[2], mainX, fourSideH1, 1f - mainX, fourSideH2, 2),
+                slot(ids[3], mainX, fourSideH1 + fourSideH2, 1f - mainX, (1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f), 3)
             )
             layout == LayoutPreset.GRID_6 && ids.size >= 6 -> listOf(
-                slot(ids[0], 0f, 0f, .45f, 1f, 0),
-                slot(ids[1], .46f, 0f, .26f, .49f, 1),
-                slot(ids[2], .46f, .51f, .26f, .49f, 2),
-                slot(ids[3], .73f, 0f, .27f, .32f, 3),
-                slot(ids[4], .73f, .34f, .27f, .32f, 4),
-                slot(ids[5], .73f, .68f, .27f, .32f, 5)
+                slot(ids[0], 0f, 0f, topX, gridY, 0),
+                slot(ids[1], topX, 0f, (1f - topX) * topX2, gridY, 1),
+                slot(ids[2], topX + (1f - topX) * topX2, 0f, (1f - topX) * (1f - topX2), gridY, 2),
+                slot(ids[3], 0f, gridY, bottomX, 1f - gridY, 3),
+                slot(ids[4], bottomX, gridY, (1f - bottomX) * bottomX2, 1f - gridY, 4),
+                slot(ids[5], bottomX + (1f - bottomX) * bottomX2, gridY, (1f - bottomX) * (1f - bottomX2), 1f - gridY, 5)
             )
             else -> {
                 val columns = if (ids.size <= 4) 2 else 3
                 val rows = (ids.size + columns - 1) / columns
                 ids.mapIndexed { index, id ->
-                    slot(
-                        id,
-                        (index % columns).toFloat() / columns,
-                        (index / columns).toFloat() / rows,
-                        1f / columns,
-                        1f / rows,
-                        index
-                    )
+                    slot(id, (index % columns).toFloat() / columns, (index / columns).toFloat() / rows,
+                        1f / columns, 1f / rows, index)
                 }
             }
         }
     }
 
-    Box(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
+    BoxWithConstraints(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
 
     /*
      * AndroidView owns the View instance it creates. Never return a remembered/external
@@ -1783,6 +1789,55 @@ private fun OpenTiledMultiviewWall(
     }
         if (screenshotMode) {
             ScreenshotPlaceholder(label = "TILED MULTIVIEW", modifier = Modifier.fillMaxSize())
+        }
+        if (!screenshotMode) {
+            when {
+                feedIds.size == 2 -> {
+                    Box(Modifier.offset(x = maxWidth * splitX - 1.5.dp).height(maxHeight).width(3.dp)) {
+                        ResizeHandle(Orientation.Horizontal, true) { splitX = (splitX + it / 900f).coerceIn(.2f, .8f) }
+                    }
+                }
+                feedIds.size == 3 -> {
+                    Box(Modifier.offset(x = maxWidth * mainX - 1.5.dp).height(maxHeight).width(3.dp)) {
+                        ResizeHandle(Orientation.Horizontal, true) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
+                    }
+                    Box(Modifier.offset(x = maxWidth * mainX, y = maxHeight * splitY - 1.5.dp).width(maxWidth * (1f - mainX)).height(3.dp)) {
+                        ResizeHandle(Orientation.Vertical, true) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
+                    }
+                }
+                layout == LayoutPreset.GRID_4 && feedIds.size >= 4 -> {
+                    Box(Modifier.offset(x = maxWidth * mainX - 1.5.dp).height(maxHeight).width(3.dp)) {
+                        ResizeHandle(Orientation.Horizontal, true) { mainX = (mainX + it / 1000f).coerceIn(.45f, .78f) }
+                    }
+                    Box(Modifier.offset(x = maxWidth * mainX, y = maxHeight * fourSideH1 - 1.5.dp).width(maxWidth * (1f - mainX)).height(3.dp)) {
+                        ResizeHandle(Orientation.Vertical, true) {
+                            val d = it / 900f
+                            fourSideH1 = (fourSideH1 + d).coerceIn(.16f, .58f)
+                            fourSideH2 = (fourSideH2 - d).coerceIn(.16f, .58f)
+                        }
+                    }
+                    Box(Modifier.offset(x = maxWidth * mainX, y = maxHeight * (fourSideH1 + fourSideH2) - 1.5.dp).width(maxWidth * (1f - mainX)).height(3.dp)) {
+                        ResizeHandle(Orientation.Vertical, true) { fourSideH2 = (fourSideH2 + it / 900f).coerceIn(.16f, .58f) }
+                    }
+                }
+                layout == LayoutPreset.GRID_6 && feedIds.size >= 6 -> {
+                    Box(Modifier.offset(y = maxHeight * gridY - 1.5.dp).width(maxWidth).height(3.dp)) {
+                        ResizeHandle(Orientation.Vertical, true) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
+                    }
+                    Box(Modifier.offset(x = maxWidth * topX - 1.5.dp).width(3.dp).height(maxHeight * gridY)) {
+                        ResizeHandle(Orientation.Horizontal, true) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
+                    }
+                    Box(Modifier.offset(x = maxWidth * (topX + (1f - topX) * topX2) - 1.5.dp).width(3.dp).height(maxHeight * gridY)) {
+                        ResizeHandle(Orientation.Horizontal, true) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
+                    }
+                    Box(Modifier.offset(x = maxWidth * bottomX - 1.5.dp, y = maxHeight * gridY).width(3.dp).height(maxHeight * (1f - gridY))) {
+                        ResizeHandle(Orientation.Horizontal, true) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
+                    }
+                    Box(Modifier.offset(x = maxWidth * (bottomX + (1f - bottomX) * bottomX2) - 1.5.dp, y = maxHeight * gridY).width(3.dp).height(maxHeight * (1f - gridY))) {
+                        ResizeHandle(Orientation.Horizontal, true) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
+                    }
+                }
+            }
         }
     }
 }
