@@ -106,6 +106,10 @@ make -j"$(nproc)" lib
 make install-lib
 popd >/dev/null
 
+if [[ -f "$ROOT/lib/libgpac_static.a" && ! -f "$ROOT/lib/libgpac.a" ]]; then
+  cp "$ROOT/lib/libgpac_static.a" "$ROOT/lib/libgpac.a"
+fi
+
 test -f "$ROOT/lib/libgpac.a"
 test -f "$ROOT/include/gpac/filters.h"
 echo "GPAC_ROOT=$ROOT"
