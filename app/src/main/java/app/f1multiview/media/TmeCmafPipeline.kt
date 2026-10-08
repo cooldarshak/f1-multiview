@@ -176,11 +176,11 @@ class TmeCmafCoordinator(
         worker = Thread({
             try {
                 val readers = sources.associateWith { TmeCmafFeedReader(context, requestHeaders) }
-                val playlists = sources.associateWith { readers[it]!!.load(it.url) }
                 val processed = mutableSetOf<Long>()
                 var configured = false
 
                 while (running) {
+                    val playlists = sources.associateWith { readers[it]!!.load(it.url) }
                     val current = sources.mapNotNull { source ->
                         val playlist = playlists[source] ?: return@mapNotNull null
                         playlist.segments.lastOrNull { it.sequence !in processed }
