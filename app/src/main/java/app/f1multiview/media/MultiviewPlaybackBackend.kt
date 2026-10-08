@@ -46,18 +46,27 @@ interface MultiviewPlaybackBackend {
 class NativeTmePlaybackBackend(
     context: android.content.Context
 ) : MultiviewPlaybackBackend {
-    private val engine = NativeTmeMultiviewEngine(context)
+    // Do not construct the physical engine merely to query backend capability/status.
+    // The engine owns MediaCodec/native resources and is only needed when playback is
+    // actually requested. This also keeps capability tests independent of Android
+    // framework objects.
+    private val engine by lazy(LazyThreadSafetyMode.NONE) {
+        NativeTmeMultiviewEngine(context)
+    }
 
     override val status: MultiviewBackendStatus
-        get() = MultiviewBackendStatus(
-            kind = MultiviewBackendKind.NATIVE_TME,
-            available = runCatching { GpacNativeTmeMerger().available }.getOrDefault(false),
-            singlePlayer = true,
-            reason = if (runCatching { GpacNativeTmeMerger().available }.getOrDefault(false))
-                "GPAC hevcmerge -> one MediaCodec -> one Surface"
-            else
-                "ARM64 GPAC native merger is unavailable"
-        )
+        get() {
+            val available = runCatching { GpacNativeTmeMerger().available }.getOrDefault(false)
+            return MultiviewBackendStatus(
+                kind = MultiviewBackendKind.NATIVE_TME,
+                available = available,
+                singlePlayer = true,
+                reason = if (available)
+                    "GPAC hevcmerge -> one MediaCodec -> one Surface"
+                else
+                    "ARM64 GPAC native merger is unavailable"
+            )
+        }
 
     override fun canHandle(session: TiledMultiviewSession): Boolean = engine.canHandle(session)
 

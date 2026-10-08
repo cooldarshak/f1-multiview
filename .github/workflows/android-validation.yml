@@ -19,14 +19,28 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Keep Gradle dependencies/build state warm across validation runs. The
+      # fast Kotlin/unit-test gate below deliberately runs before the expensive
+      # native GPAC build so a test compile failure consumes seconds, not minutes.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
       - uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools"
 
       - name: Install Android SDK packages
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Fast Kotlin and unit-test gate
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon testDebugUnitTest
 
       - name: Install GPAC and FFmpeg for TME smoke test
         run: |
@@ -50,6 +64,7 @@ jobs:
 
       - name: Run TME compressed-domain smoke test
         run: |
+          set -euo pipefail
           chmod +x ./scripts/tme-gpac-smoke.sh
           ./scripts/tme-gpac-smoke.sh
 
@@ -75,8 +90,8 @@ jobs:
 
       - name: Build debug APK
         run: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+          set -euo pipefail
+          ./gradlew --no-daemon assembleDebug
 
       - name: Verify native TME library is packaged
         run: |
