@@ -59,6 +59,38 @@ data class OpenTiledDecoderPlan(
             val tileWidth = session.tileWidth ?: return null
             val tileHeight = session.tileHeight ?: return null
 
+            val authoritativePlacement = session.feeds.all {
+                it.tileRow != null && it.tileColumn != null
+            }
+            if (authoritativePlacement) {
+                val columns = session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 }
+                val rows = session.feeds.maxOf { requireNotNull(it.tileRow) + 1 }
+                val bindings = session.feeds.mapIndexed { index, feed ->
+                    val feedId = session.feedIds[index]
+                    val column = requireNotNull(feed.tileColumn)
+                    val row = requireNotNull(feed.tileRow)
+                    OpenTiledFeedBinding(
+                        feedId = feedId,
+                        logicalIndex = index,
+                        physicalDecoderId = "tme-native-decoder",
+                        sourceRect = OpenTiledSourceRect(
+                            left = column.toFloat() / columns,
+                            top = row.toFloat() / rows,
+                            right = (column + 1).toFloat() / columns,
+                            bottom = (row + 1).toFloat() / rows
+                        )
+                    )
+                }
+                return OpenTiledDecoderPlan(
+                    physicalDecoderIds = listOf("tme-native-decoder"),
+                    bindings = bindings,
+                    tileColumns = columns,
+                    tileRows = rows,
+                    tileWidthPx = tileWidth,
+                    tileHeightPx = tileHeight
+                )
+            }
+
             val feedCount = session.feeds.size
             val sourceAspect = if (sourceVideoWidth > 0 && sourceVideoHeight > 0) {
                 sourceVideoWidth.toDouble() / sourceVideoHeight.toDouble()
