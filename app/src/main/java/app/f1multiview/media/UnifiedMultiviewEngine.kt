@@ -385,8 +385,9 @@ class UnifiedMultiviewEngine(context: Context) {
         stream: StreamSource,
         source: String,
         container: android.widget.FrameLayout,
-        screenshotMode: Boolean = false
-    ) = surfaceManager.bind(feedId, player, stream, source, container, screenshotMode)
+        screenshotMode: Boolean = false,
+        onVideoTap: (() -> Unit)? = null
+    ) = surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
 
     fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) =
         surfaceManager.update(feedId, player, source)
