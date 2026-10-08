@@ -17,7 +17,8 @@ ffmpeg -hide_banner -loglevel error \
 kvazaar \
   -i "$WORK/source.yuv" \
   --input-res 640x360 \
-  --input-fps 30 \
+  --input-fps 30
+  --input-file-format yuv \
   --tiles 2x2 \
   --slices tiles \
   --mv-constraint frametilemargin \
