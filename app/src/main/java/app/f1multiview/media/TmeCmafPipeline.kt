@@ -26,14 +26,14 @@ data class TmeCmafSegment(
     val height: Int
 )
 
-private data class HlsSegment(val sequence: Long, val uri: String, val durationUs: Long)
-private data class HlsPlaylist(val initUri: String?, val segments: List<HlsSegment>)
+internal data class HlsSegment(val sequence: Long, val uri: String, val durationUs: Long)
+internal data class HlsPlaylist(val initUri: String?, val segments: List<HlsSegment>)
 
 class TmeCmafFeedReader(
     private val context: Context,
     private val requestHeaders: Map<String, String> = emptyMap()
 ) {
-    fun load(url: String): HlsPlaylist {
+    internal fun load(url: String): HlsPlaylist {
         val text = get(url).toString(Charsets.UTF_8)
         val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
 
@@ -80,7 +80,7 @@ class TmeCmafFeedReader(
         return HlsPlaylist(initUri, segments)
     }
 
-    fun extract(playlist: HlsPlaylist, segment: HlsSegment): TmeCmafSegment {
+    internal fun extract(playlist: HlsPlaylist, segment: HlsSegment): TmeCmafSegment {
         val init = playlist.initUri?.let { get(it) }.orEmpty()
         val media = get(segment.uri)
         val file = File.createTempFile("f1tme-", ".mp4", context.cacheDir)
