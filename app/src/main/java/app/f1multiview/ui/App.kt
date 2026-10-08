@@ -2996,7 +2996,8 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
                     player = player,
                     stream = stream,
                     modifier = Modifier.fillMaxSize(),
-                    source = "fullscreen-" + stream.id
+                    source = "fullscreen-" + stream.id,
+                    onVideoTap = { controlsVisible = !controlsVisible }
                 )
             }
             // Single-feed fullscreen is intentionally just the selected player.
