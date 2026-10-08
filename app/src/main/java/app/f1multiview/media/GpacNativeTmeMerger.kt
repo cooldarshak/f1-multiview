@@ -13,6 +13,7 @@ interface NativeTmeMerger : TmeBitstreamMerger {
  * that the complete compressed-domain merger graph is ready.
  */
 class GpacNativeTmeMerger : NativeTmeMerger {
+    private var pushCount = 0L
     override val implementationName: String = "GPAC_NATIVE_TME"
     override val available: Boolean
         get() = nativeLoaded && runCatching { nativeIsAvailable() }.getOrDefault(false)
@@ -41,7 +42,8 @@ class GpacNativeTmeMerger : NativeTmeMerger {
 
     override fun push(segment: TmeAlignedSegment): List<TmeMergedAccessUnit> {
         check(available) { "GPAC native TME merger graph is not ready" }
-        return nativePush(
+        pushCount++
+        val merged = nativePush(
             segment.key.sequence,
             segment.key.epochStartUs,
             segment.key.durationUs,
@@ -49,6 +51,10 @@ class GpacNativeTmeMerger : NativeTmeMerger {
             segment.tiles.map { it.payload }.toTypedArray(),
             segment.tiles.map { it.keyFrame }.toBooleanArray()
         ).toList()
+        if (pushCount == 1L || pushCount % 30L == 0L) {
+            AppLogger.i("TME", "GPAC_PUSH count=$pushCount sequence=${segment.key.sequence} tiles=${segment.tiles.size} mergedAccessUnits=${merged.size}")
+        }
+        return merged
     }
 
     override fun updateSelection(selectedFeedIds: Set<String>) {
@@ -58,6 +64,7 @@ class GpacNativeTmeMerger : NativeTmeMerger {
 
     override fun release() {
         if (nativeLoaded) runCatching { nativeRelease() }
+        pushCount = 0L
     }
 
     private external fun nativeIsAvailable(): Boolean
