@@ -1,7 +1,6 @@
 package app.f1multiview.media
 
 import app.f1multiview.core.playback.TiledMultiviewSession
-import app.f1multiview.data.f1tv.TmeTopology
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.sqrt
@@ -53,11 +52,47 @@ data class OpenTiledDecoderPlan(
             sourceVideoHeight: Int = 0
         ): OpenTiledDecoderPlan? {
             if (session.feeds.size < 2 || !session.hasTileGeometry) return null
-            val urls = session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct()
-            if (urls.size != 1) return null
-
             val tileWidth = session.tileWidth ?: return null
             val tileHeight = session.tileHeight ?: return null
+
+            val urls = session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct()
+            val authoritativePlacement = session.feeds.all {
+                it.tileRow != null && it.tileColumn != null
+            }
+            if (authoritativePlacement) {
+                val columns = session.tileCountHorizontal
+                    ?: (session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 })
+                val rows = session.tileCountVertical
+                    ?: (session.feeds.maxOf { requireNotNull(it.tileRow) + 1 })
+                val bindings = session.feeds.mapIndexed { index, feed ->
+                    val feedId = session.feedIds[index]
+                    val column = requireNotNull(feed.tileColumn)
+                    val row = requireNotNull(feed.tileRow)
+                    OpenTiledFeedBinding(
+                        feedId = feedId,
+                        logicalIndex = index,
+                        physicalDecoderId = "tme-native-decoder",
+                        sourceRect = OpenTiledSourceRect(
+                            left = column.toFloat() / columns,
+                            top = row.toFloat() / rows,
+                            right = (column + 1).toFloat() / columns,
+                            bottom = (row + 1).toFloat() / rows
+                        )
+                    )
+                }
+                return OpenTiledDecoderPlan(
+                    physicalDecoderIds = listOf(
+                        if (urls.size == 1) "tme-mosaic-decoder" else "tme-native-decoder"
+                    ),
+                    bindings = bindings,
+                    tileColumns = columns,
+                    tileRows = rows,
+                    tileWidthPx = tileWidth,
+                    tileHeightPx = tileHeight
+                )
+            }
+
+            if (urls.size != 1) return null
 
             val feedCount = session.feeds.size
             val sourceAspect = if (sourceVideoWidth > 0 && sourceVideoHeight > 0) {

@@ -12,7 +12,10 @@ data class TiledMultiviewFeed(
     val audioEnglish: String?,
     val audioSpanish: String?,
     val subtitleEnglish: String?,
-    val subtitleSpanish: String?
+    val subtitleSpanish: String?,
+    val tileIndex: Int? = null,
+    val tileRow: Int? = null,
+    val tileColumn: Int? = null
 )
 
 data class TiledMultiviewSession(
@@ -21,6 +24,8 @@ data class TiledMultiviewSession(
     val contentId: Int?,
     val tileWidth: Int?,
     val tileHeight: Int?,
+    val tileCountHorizontal: Int? = null,
+    val tileCountVertical: Int? = null,
     val feeds: List<TiledMultiviewFeed>
 ) {
     val feedIds: List<String>
@@ -57,6 +62,8 @@ fun TmePlayback.toModel(): TiledMultiviewSession {
         contentId = contentId,
         tileWidth = tileWidth,
         tileHeight = tileHeight,
+        tileCountHorizontal = tileCountHorizontal,
+        tileCountVertical = tileCountVertical,
         feeds = feeds.mapIndexed { index, feed ->
             TiledMultiviewFeed(
                 index = index,
@@ -67,7 +74,10 @@ fun TmePlayback.toModel(): TiledMultiviewSession {
                 audioEnglish = feed.audioEnglish,
                 audioSpanish = feed.audioSpanish,
                 subtitleEnglish = feed.subtitleEnglish,
-                subtitleSpanish = feed.subtitleSpanish
+                subtitleSpanish = feed.subtitleSpanish,
+                tileIndex = feed.tileIndex,
+                tileRow = feed.tileRow,
+                tileColumn = feed.tileColumn
             )
         }
     )

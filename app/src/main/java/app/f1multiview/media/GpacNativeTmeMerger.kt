@@ -21,7 +21,16 @@ class GpacNativeTmeMerger : NativeTmeMerger {
         check(available) { "GPAC native TME merger graph is not ready" }
         require(tileSources.size >= 2)
         require(outputWidth > 0 && outputHeight > 0)
-        nativeConfigure(tileSources.map { it.feedId }.toTypedArray(), outputWidth, outputHeight)
+        nativeConfigure(
+            tileSources.map { it.feedId }.toTypedArray(),
+            outputWidth,
+            outputHeight,
+            tileSources.map { it.decoderConfig ?: ByteArray(0) }.toTypedArray(),
+            tileSources.map { (it.column * it.tileWidth) }.toIntArray(),
+            tileSources.map { ((it.row ?: 0) * it.tileHeight) }.toIntArray(),
+            tileSources.map { it.tileWidth }.toIntArray(),
+            tileSources.map { it.tileHeight }.toIntArray()
+        )
     }
 
     override fun push(segment: TmeAlignedSegment): List<TmeMergedAccessUnit> {
@@ -31,7 +40,8 @@ class GpacNativeTmeMerger : NativeTmeMerger {
             segment.key.epochStartUs,
             segment.key.durationUs,
             segment.tiles.map { it.feedId }.toTypedArray(),
-            segment.tiles.map { it.payload }.toTypedArray()
+            segment.tiles.map { it.payload }.toTypedArray(),
+            segment.tiles.map { it.keyFrame }.toBooleanArray()
         ).toList()
     }
 
@@ -45,13 +55,23 @@ class GpacNativeTmeMerger : NativeTmeMerger {
     }
 
     private external fun nativeIsAvailable(): Boolean
-    private external fun nativeConfigure(feedIds: Array<String>, width: Int, height: Int)
+    private external fun nativeConfigure(
+        feedIds: Array<String>,
+        width: Int,
+        height: Int,
+        decoderConfigs: Array<ByteArray>,
+        tileX: IntArray,
+        tileY: IntArray,
+        tileWidths: IntArray,
+        tileHeights: IntArray
+    )
     private external fun nativePush(
         sequence: Long,
         epochStartUs: Long,
         durationUs: Long,
         feedIds: Array<String>,
-        payloads: Array<ByteArray>
+        payloads: Array<ByteArray>,
+        keyFrames: BooleanArray
     ): Array<TmeMergedAccessUnit>
     private external fun nativeUpdateSelection(feedIds: Array<String>)
     private external fun nativeRelease()
