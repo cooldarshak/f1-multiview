@@ -51,6 +51,25 @@ jobs:
           chmod +x ./scripts/tme-gpac-smoke.sh
           ./scripts/tme-gpac-smoke.sh
 
+
+      - name: Build pinned GPAC Android core
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/gpac_public
+          git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac_public
+          cd /tmp/gpac_public
+          sed -i 's/^APP_ABI :=.*/APP_ABI := arm64-v8a/' build/android/jni/Application.mk
+          cd build/android/jni
+          ./gpac_build_android -ndk="$ANDROID_NDK_HOME" -force_rebuild -v
+          cd ../libs
+          test -f arm64-v8a/libgpac.so
+          mkdir -p "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a"
+          cp -a arm64-v8a/*.so "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a/"
+          mkdir -p /tmp/gpac-sdk/include /tmp/gpac-sdk/lib/arm64-v8a
+          cp -a "$GITHUB_WORKSPACE"/app/build/gpac-jni/arm64-v8a/*.so /tmp/gpac-sdk/lib/arm64-v8a/
+          cp -a /tmp/gpac_public/include /tmp/gpac-sdk/
+          echo "GPAC_ROOT=/tmp/gpac-sdk" >> "$GITHUB_ENV"
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
