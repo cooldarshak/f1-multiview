@@ -204,7 +204,7 @@ static bool configure_graph(
     gf_fs_add_filter_register(g.session, sink_register(g.session));
 
     GF_Err err = GF_OK;
-    g.merger = gf_fs_load_filter(g.session, "hevcmerge", &err);
+    g.merger = gf_fs_load_filter(g.session, "hevcmerge:mrows=true:strict=true", &err);
     if (!g.merger || err) return false;
 
     g.sink = gf_fs_load_filter(g.session, "f1tmesink", &err);
