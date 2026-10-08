@@ -28,7 +28,12 @@ data class TmeCmafSegment(
     val height: Int
 )
 
-internal data class HlsSegment(val sequence: Long, val uri: String, val durationUs: Long)
+internal data class HlsSegment(
+    val sequence: Long,
+    val uri: String,
+    val durationUs: Long,
+    val startTimeUs: Long
+)
 internal data class HlsPlaylist(val initUri: String?, val segments: List<HlsSegment>)
 
 class TmeCmafFeedReader(
@@ -62,6 +67,7 @@ class TmeCmafFeedReader(
         var nextSequence = 0L
         var initUri: String? = null
         var durationUs: Long? = null
+        var playlistTimeUs = 0L
         val segments = mutableListOf<HlsSegment>()
 
         for (line in lines) {
@@ -75,7 +81,14 @@ class TmeCmafFeedReader(
                 line.startsWith("#EXTINF:") ->
                     durationUs = (line.substringAfter(':').substringBefore(',').toDouble() * 1_000_000.0).toLong()
                 !line.startsWith("#") && durationUs != null -> {
-                    segments += HlsSegment(mediaSequence + nextSequence, resolve(url, line), durationUs!!)
+                    val duration = durationUs!!
+                    segments += HlsSegment(
+                        mediaSequence + nextSequence,
+                        resolve(url, line),
+                        duration,
+                        playlistTimeUs
+                    )
+                    playlistTimeUs += duration
                     nextSequence++
                     durationUs = null
                 }
@@ -84,7 +97,11 @@ class TmeCmafFeedReader(
         return HlsPlaylist(initUri, segments)
     }
 
-    internal fun extract(playlist: HlsPlaylist, segment: HlsSegment): TmeCmafSegment {
+    internal fun extract(
+        playlist: HlsPlaylist,
+        segment: HlsSegment,
+        timelineOffsetUs: Long = 0L
+    ): TmeCmafSegment {
         val init = playlist.initUri?.let { initCache.getOrPut(it) { get(it) } }.orEmpty()
         val media = get(segment.uri)
         val file = File.createTempFile("f1tme-", ".mp4", context.cacheDir)
@@ -120,7 +137,7 @@ class TmeCmafFeedReader(
                     buffer.flip()
                     buffer.get(payload)
                     samples += TmeCmafSample(
-                        extractor.sampleTime,
+                        timelineOffsetUs + segment.startTimeUs + extractor.sampleTime,
                         0L,
                         extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0,
                         payload
@@ -160,6 +177,35 @@ class TmeCmafFeedReader(
     private fun resolve(base: String, child: String): String = URI(base).resolve(child).toString()
 }
 
+private class TmeTimelineState {
+    private var initialized = false
+    private var lastSequence = Long.MIN_VALUE
+    private var lastStartUs = 0L
+    private var lastDurationUs = 0L
+
+    fun resolveOffset(playlist: HlsPlaylist): Long {
+        val first = playlist.segments.firstOrNull() ?: return 0L
+        if (!initialized) {
+            initialized = true
+            return 0L
+        }
+
+        val overlap = playlist.segments.firstOrNull { it.sequence == lastSequence }
+        return if (overlap != null) {
+            lastStartUs - overlap.startTimeUs
+        } else {
+            val gap = (first.sequence - lastSequence).coerceAtLeast(1L)
+            (lastStartUs + lastDurationUs * gap) - first.startTimeUs
+        }
+    }
+
+    fun commit(sequence: Long, startUs: Long, durationUs: Long) {
+        lastSequence = sequence
+        lastStartUs = startUs
+        lastDurationUs = durationUs
+    }
+}
+
 class TmeCmafCoordinator(
     private val context: Context,
     private val merger: NativeTmeMerger,
@@ -189,6 +235,7 @@ class TmeCmafCoordinator(
                 // duration of a race.
                 var lastProcessedSequence = Long.MIN_VALUE
                 var configured = false
+                val timelineStates = sources.associate { it.feedId to TmeTimelineState() }.toMutableMap()
                 // Network and CMAF extraction for independent tiles are I/O-bound.
                 // Running them serially makes the slowest tile stall the whole mosaic.
                 val ioPool = Executors.newFixedThreadPool(sources.size)
@@ -236,7 +283,16 @@ class TmeCmafCoordinator(
                         val segment = playlist.segments.firstOrNull {
                             it.sequence == commonSequence && it.sequence > lastProcessedSequence
                         } ?: return@associateWith null
-                        ioPool.submit(Callable { source to readers[source]!!.extract(playlist, segment) })
+                        val timelineOffsetUs = timelineStates.getValue(source.feedId).resolveOffset(playlist)
+                        ioPool.submit(
+                            Callable {
+                                source to readers[source]!!.extract(
+                                    playlist,
+                                    segment,
+                                    timelineOffsetUs
+                                )
+                            }
+                        )
                     }
                     val current = extractionJobs.map { (source, job) ->
                         if (job == null) return@map null
@@ -354,6 +410,17 @@ class TmeCmafCoordinator(
                         decoder.drain()
                     }
 
+                        playlists.forEach { (source, playlist) ->
+                            playlist.segments.firstOrNull { it.sequence == commonSequence }?.let { segment ->
+                                val state = timelineStates.getValue(source.feedId)
+                                val offset = state.resolveOffset(playlist)
+                                state.commit(
+                                    segment.sequence,
+                                    segment.startTimeUs + offset,
+                                    segment.durationUs
+                                )
+                            }
+                        }
                         lastProcessedSequence = commonSequence
                         synchronizer.dropExpired()
                         // Do not introduce artificial pacing after a successfully
