@@ -44,6 +44,28 @@ class TmePlaybackParserTest {
     }
 
     @Test
+    fun usesResolvedTileCountForColumnWhenCountLivesOnFeedMetadata() {
+        val json = """
+            {
+              "advanced": {"tileSize":{"width":960,"height":540}},
+              "feeds": [
+                {"uuid":"a","url":"https://example/a","tileIndex":0,
+                 "metadata":{"tileCountHorizontal":2,"tileCountVertical":2}},
+                {"uuid":"b","url":"https://example/b","tileIndex":1,
+                 "metadata":{"tileCountHorizontal":2,"tileCountVertical":2}},
+                {"uuid":"c","url":"https://example/c","tileIndex":2,
+                 "metadata":{"tileCountHorizontal":2,"tileCountVertical":2}}
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = TmePlaybackParser.parse(json)!!
+        assertEquals(2, parsed.tileCountHorizontal)
+        assertEquals(1, parsed.feeds[2].tileRow)
+        assertEquals(0, parsed.feeds[2].tileColumn)
+    }
+
+    @Test
     fun refusesNativePlacementWhenTileCountMetadataIsAbsent() {
         val json = """
             {
