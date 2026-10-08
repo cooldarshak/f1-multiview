@@ -2892,16 +2892,9 @@ private fun FullscreenPlayer(stream: StreamSource, ui: UiState, engine: UnifiedM
                     source = "fullscreen-" + stream.id
                 )
             }
-            if (ui.streams.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) } > 1) {
-                FullscreenFeedRail(
-                    ui = ui,
-                    engine = engine,
-                    vm = vm,
-                    activeId = stream.id,
-                    onSwitchStream = onSwitchStream,
-                    modifier = Modifier.weight(0.27f).fillMaxHeight()
-                )
-            }
+            // Single-feed fullscreen is intentionally just the selected player.
+            // The multiview feed picker lives in FullscreenMultiview's collapsible rail,
+            // where selecting a feed adds it to the resizable wall.
         }
 
         if (!controlsVisible) {
