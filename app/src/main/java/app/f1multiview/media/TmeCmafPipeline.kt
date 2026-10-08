@@ -160,7 +160,9 @@ class TmeCmafCoordinator(
     private val context: Context,
     private val merger: NativeTmeMerger,
     private val decoder: TmeNativeDecoder,
-    private val requestHeaders: Map<String, String> = emptyMap()
+    private val requestHeaders: Map<String, String> = emptyMap(),
+    private val outputWidth: Int? = null,
+    private val outputHeight: Int? = null
 ) {
     @Volatile private var running = false
     private var worker: Thread? = null
@@ -194,8 +196,8 @@ class TmeCmafCoordinator(
                     }
 
                     if (!configured) {
-                        val width = sources.maxOf { (it.column + 1) * it.tileWidth }
-                        val height = sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight }
+                        val width = outputWidth ?: sources.maxOf { (it.column + 1) * it.tileWidth }
+                        val height = outputHeight ?: sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight }
                         val configuredSources = sources.mapIndexed { i, source ->
                             source.copy(decoderConfig = current[i].second.decoderConfig)
                         }
@@ -225,8 +227,8 @@ class TmeCmafCoordinator(
                             val first = merged.first()
                             decoder.configure(
                                 surface,
-                                sources.maxOf { (it.column + 1) * it.tileWidth },
-                                sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight },
+                                outputWidth ?: sources.maxOf { (it.column + 1) * it.tileWidth },
+                                outputHeight ?: sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight },
                                 first.codecConfig
                             )
                             decoder.start()
