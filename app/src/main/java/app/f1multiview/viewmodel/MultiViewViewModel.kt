@@ -48,7 +48,8 @@ data class UiState(
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
     val pendingResume: ContinueWatchingEntry? = null,
     val tiledMultiviewSession: TiledMultiviewSession? = null,
-    val selectedTiledFeedIds: List<String> = emptyList()
+    val selectedTiledFeedIds: List<String> = emptyList(),
+    val tmeDiscoveryPending: Boolean = false
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -260,7 +261,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                     streams=visible,
                     selectedStreamIds=selectedDistinct,
                     mainStreamId=mainSource?.id,
-                    providerError=null
+                    providerError=null,
+                    tmeDiscoveryPending = mainSource != null && mainSource.tmeJson.isNullOrBlank() && mainSource.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
                 )
                 // TME discovery is session-level. A catalogue entry may already have a manifest
                 // URL while omitting the TME payload; resolving only when url == null therefore
@@ -337,7 +339,10 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                 providerError=null
             )
         }.onFailure{
-            _ui.value=_ui.value.copy(providerError=it.message?:"Playback resolution failed")
+            _ui.value=_ui.value.copy(providerError=it.message?:"Playback resolution failed", tmeDiscoveryPending = if (isReference) false else _ui.value.tmeDiscoveryPending)
+        }
+        if (isReference) {
+            _ui.value = _ui.value.copy(tmeDiscoveryPending = false)
         }
     }
     fun applyPreset(name:String){
