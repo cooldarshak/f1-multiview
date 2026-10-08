@@ -206,7 +206,7 @@ object AppLogger {
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("MediaStore insert returned null")
             try {
                 val output = resolver.openOutputStream(uri, "wa") ?: error("MediaStore openOutputStream returned null")
-                logUri = uri; logOutput = output; logBytes = 0L; persistedMemoryEntries = _entries.value.size; output.flush()
+                logUri = uri; logOutput = output; logBytes = 0L; persistedMemoryEntries = 0; output.flush()
                 resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
                 true
             } catch (failure: Throwable) { runCatching { resolver.delete(uri, null, null) }; throw failure }
@@ -224,9 +224,9 @@ object AppLogger {
         synchronized(this) {
             if (logOutput == null || logUri == null) ensurePersistentFileLocked("log-write")
             if (logOutput == null || logUri == null) return
-            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; persistedMemoryEntries = _entries.value.size; ensurePersistentFileLocked("size-rotation", reuseExisting = false) }
+            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; persistedMemoryEntries = 0; ensurePersistentFileLocked("size-rotation", reuseExisting = false) }
             val output = logOutput ?: return
-            runCatching { output.write(bytes); output.flush(); logBytes += bytes.size; persistedMemoryEntries = _entries.value.size }
+            runCatching { output.write(bytes); output.flush(); persistedMemoryEntries = (persistedMemoryEntries + 1).coerceAtMost(_entries.value.size); logBytes += bytes.size }
                 .onFailure { Log.w(TAG, "Unable to write app log", it); closeOutput() }
         }
     }
@@ -253,10 +253,10 @@ object AppLogger {
                 persistedMemoryEntries = entries.size
                 if (!ensurePersistentFileLocked("crash-size-rotation", reuseExisting = false)) return
                 val newOutput = logOutput ?: return
-                runCatching { newOutput.write(bytes); newOutput.flush(); logBytes += bytes.size }
+                runCatching { newOutput.write(bytes); newOutput.flush(); logBytes += bytes.size; persistedMemoryEntries++ }
                     .onFailure { Log.w(TAG, "Unable to persist buffered app log", it); closeOutput() }
             } else {
-                runCatching { output.write(bytes); output.flush(); logBytes += bytes.size }
+                runCatching { output.write(bytes); output.flush(); logBytes += bytes.size; persistedMemoryEntries++ }
                     .onFailure { Log.w(TAG, "Unable to persist buffered app log", it); closeOutput() }
             }
         }
