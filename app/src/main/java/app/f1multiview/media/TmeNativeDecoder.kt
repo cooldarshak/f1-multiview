@@ -64,6 +64,7 @@ class TmeNativeDecoder(
         outputSurface = surface
         everConfigured = true
         configured = true
+        AppLogger.i("TME", "MEDIACODEC_CONFIGURED codec=${created.codecInfo.name} mime=$mimeType size=${width}x${height} surfaceValid=${surface.isValid}")
     }
 
     fun start() {
@@ -71,6 +72,7 @@ class TmeNativeDecoder(
         check(!started) { "TME decoder already started" }
         codec!!.start()
         started = true
+        AppLogger.i("TME", "MEDIACODEC_STARTED codec=${codec!!.codecInfo.name}")
     }
 
     fun queue(accessUnit: TmeMergedAccessUnit, timeoutUs: Long = 10_000L): Boolean {
@@ -84,6 +86,9 @@ class TmeNativeDecoder(
         val flags = if (accessUnit.keyFrame) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
         c.queueInputBuffer(index, 0, accessUnit.payload.size, accessUnit.ptsUs, flags)
         queued++
+        if (queued == 1L || queued % 30L == 0L) {
+            AppLogger.i("TME", "MEDIACODEC_QUEUE count=$queued ptsUs=${accessUnit.ptsUs} keyFrame=${accessUnit.keyFrame}")
+        }
         return true
     }
 
@@ -100,6 +105,9 @@ class TmeNativeDecoder(
                     if (index >= 0) {
                         c.releaseOutputBuffer(index, true)
                         rendered++
+                        if (rendered == 1L || rendered % 30L == 0L) {
+                            AppLogger.i("TME", "MEDIACODEC_RENDERED count=$rendered ptsUs=${info.presentationTimeUs}")
+                        }
                         count++
                     }
                 }
