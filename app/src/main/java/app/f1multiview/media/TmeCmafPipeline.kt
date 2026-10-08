@@ -33,6 +33,8 @@ class TmeCmafFeedReader(
     private val context: Context,
     private val requestHeaders: Map<String, String> = emptyMap()
 ) {
+    private val initCache = mutableMapOf<String, ByteArray>()
+
     internal fun load(url: String): HlsPlaylist {
         val text = get(url).toString(Charsets.UTF_8)
         val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
@@ -81,7 +83,7 @@ class TmeCmafFeedReader(
     }
 
     internal fun extract(playlist: HlsPlaylist, segment: HlsSegment): TmeCmafSegment {
-        val init = playlist.initUri?.let { get(it) }.orEmpty()
+        val init = playlist.initUri?.let { initCache.getOrPut(it) { get(it) } }.orEmpty()
         val media = get(segment.uri)
         val file = File.createTempFile("f1tme-", ".mp4", context.cacheDir)
         try {
@@ -185,10 +187,33 @@ class TmeCmafCoordinator(
 
                 while (running) {
                     val playlists = sources.associateWith { readers[it]!!.load(it.url) }
+
+                    // Process the earliest segment present in every tile feed. Never
+                    // jump to the live edge of one feed while another feed is behind.
+                    val availableSequences = sources.map { source ->
+                        playlists[source]?.segments
+                            ?.asSequence()
+                            ?.map { it.sequence }
+                            ?.filterNot(processed::contains)
+                            ?.toSet()
+                            .orEmpty()
+                    }
+                    val commonSequence = availableSequences
+                        .takeIf { it.isNotEmpty() && it.all { it.isNotEmpty() } }
+                        ?.reduce { common, next -> common intersect next }
+                        ?.minOrNull()
+                    if (commonSequence == null) {
+                        synchronizer.dropExpired()
+                        Thread.sleep(250L)
+                        continue
+                    }
+
                     val current = sources.mapNotNull { source ->
                         val playlist = playlists[source] ?: return@mapNotNull null
-                        playlist.segments.lastOrNull { it.sequence !in processed }
-                            ?.let { source to readers[source]!!.extract(playlist, it) }
+                        val segment = playlist.segments.firstOrNull {
+                            it.sequence == commonSequence && it.sequence !in processed
+                        } ?: return@mapNotNull null
+                        source to readers[source]!!.extract(playlist, segment)
                     }
                     if (current.size != sources.size) {
                         Thread.sleep(250L)
@@ -208,14 +233,16 @@ class TmeCmafCoordinator(
                     val sampleMaps = current.associate { (source, segment) ->
                         source.feedId to segment.samples.associateBy { it.timeUs / 1000L }
                     }
-                    val timestamps = sampleMaps.values.first().keys.sorted()
+                    val timestamps = sampleMaps.values
+                        .reduce { common, next -> common intersect next.keys }
+                        .sorted()
                     for (timestamp in timestamps) {
                         if (!running) break
                         val tiles = sources.mapNotNull { source ->
                             sampleMaps[source.feedId]?.get(timestamp)?.let { sample ->
                                 TmeTileSegment(
                                     source.feedId,
-                                    TmeCmafSegmentKey(timestamp, sample.timeUs, sample.durationUs),
+                                    TmeCmafSegmentKey(commonSequence, sample.timeUs, sample.durationUs),
                                     sample.payload,
                                     sample.keyFrame
                                 )
@@ -263,7 +290,7 @@ class TmeCmafCoordinator(
                         decoder.drain()
                     }
 
-                    current.forEach { processed += it.second.sequence }
+                    processed += commonSequence
                     synchronizer.dropExpired()
                     Thread.sleep(150L)
                 }
