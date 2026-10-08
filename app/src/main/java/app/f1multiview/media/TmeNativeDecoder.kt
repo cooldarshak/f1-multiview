@@ -100,5 +100,6 @@ class TmeNativeDecoder(
         outputSurface = null
         configured = false
         started = false
+        everConfigured = false
     }
 }
