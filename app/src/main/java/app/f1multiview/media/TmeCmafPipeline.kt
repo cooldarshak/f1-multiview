@@ -169,7 +169,8 @@ class TmeCmafCoordinator(
     fun start(
         sources: List<TmeTileSource>,
         surface: Surface,
-        onError: (Throwable) -> Unit = {}
+        onError: (Throwable) -> Unit = {},
+        onDecoderReady: () -> Unit = {}
     ) {
         require(sources.size >= 2)
         stop()
@@ -229,6 +230,7 @@ class TmeCmafCoordinator(
                                 first.codecConfig
                             )
                             decoder.start()
+                            onDecoderReady()
                         }
                         merged.forEach { accessUnit ->
                             var queued = false
