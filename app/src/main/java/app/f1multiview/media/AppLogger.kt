@@ -177,8 +177,24 @@ object AppLogger {
         if (logOutput != null && logUri != null) return true
         val context = appContext ?: return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Log.w(TAG, "Persistent Downloads logging requires Android 10+; API=${Build.VERSION.SDK_INT}; reason=$reason")
+            Log.w(TAG, "Persistent Downloads logging requires Android 10+; API=\${Build.VERSION.SDK_INT}; reason=\${reason}")
             return false
+        }
+
+        // One file is the invariant for one app process. If the existing MediaStore
+        // output stream was interrupted, reopen the same URI instead of inserting a
+        // second Downloads item.
+        if (logUri != null && logOutput == null) {
+            return runCatching {
+                logOutput = context.contentResolver.openOutputStream(logUri!!, "wa")
+                    ?: error("MediaStore reopen returned null")
+                flushBufferedEntriesLocked()
+                logOutput?.flush()
+                true
+            }.onFailure {
+                closeOutput()
+                Log.w(TAG, "Unable to reopen existing Downloads log; reason=\${reason}", it)
+            }.getOrDefault(false)
         }
 
         return runCatching {
@@ -248,7 +264,7 @@ object AppLogger {
         }.onFailure {
             Log.w(TAG, "Unable to persist buffered app logs", it)
             closeOutput()
-            logUri = null
+            // Keep logUri so this session never silently creates a second file.
         }
     }
 
@@ -267,7 +283,7 @@ object AppLogger {
         }.onFailure {
             Log.w(TAG, "Unable to write app log", it)
             closeOutput()
-            logUri = null
+            // Keep logUri so the next write reopens the same session file.
         }
     }
 
