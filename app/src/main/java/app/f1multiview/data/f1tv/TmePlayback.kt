@@ -8,7 +8,8 @@ import org.json.JSONObject
  *
  * This deliberately models only fields that were confirmed in the APK:
  * Tme.version, Tme.channel, Tme.metadata.contentId,
- * Tme.advanced.tileSize.width/height, and Tme.feeds[*].
+ * Tme.advanced.tileSize.width/height, tileCountHorizontal/tileCountVertical,
+ * tileIndex, and Tme.feeds[*].
  */
 enum class TmeTopology {
     /**
