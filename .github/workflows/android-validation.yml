@@ -100,7 +100,7 @@ jobs:
             --disable-vout \
             --disable-aout \
             --disable-fonts
-          sed -i '/filters\/in_dvb4linux.c/d' src/Makefile
+          find src -type f -name 'Makefile' -o -name '*.mak' | xargs grep -l 'in_dvb4linux.c' | while read f; do sed -i '/in_dvb4linux.c/d' "$f"; done
           make -j2
           make install
           test -f /tmp/gpac-sdk/lib/libgpac.so
