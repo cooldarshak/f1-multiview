@@ -35,7 +35,6 @@ object AppLogger {
     private const val BASE_FILE_NAME = "F1MultiView.log"
 
     private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
-    private val dateFolderFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val fileNameFormatter = SimpleDateFormat("yyyy-MM-dd-HHmmss-SSS", Locale.US)
     private val _entries = MutableStateFlow<List<String>>(emptyList())
     val entries: StateFlow<List<String>> = _entries.asStateFlow()
@@ -130,7 +129,7 @@ object AppLogger {
     }
 
     fun currentLogLocation(): String {
-        val uri = logUri ?: return "Download/F1 MultiView Logs/<date>/<launch>.log"
+        val uri = logUri ?: return "Download/F1 MultiView Logs/<current-or-next-5MiB-rotation>.log"
         return uri.toString()
     }
 
