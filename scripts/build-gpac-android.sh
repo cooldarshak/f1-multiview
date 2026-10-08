@@ -21,14 +21,19 @@ ZLIB_CC="$TOOLCHAIN/aarch64-linux-android${API}-clang"
 ZLIB_CXX="$TOOLCHAIN/aarch64-linux-android${API}-clang++"
 CC="clang"
 CXX="clang++"
-AR="$TOOLCHAIN/llvm-ar"
-RANLIB="$TOOLCHAIN/llvm-ranlib"
-STRIP="$TOOLCHAIN/llvm-strip"
+AR="llvm-ar"
+RANLIB="llvm-ranlib"
+STRIP="llvm-strip"
 CROSS_PREFIX="$TOOLCHAIN/aarch64-linux-android${API}-"
 
-for tool in "$ZLIB_CC" "$ZLIB_CXX" "$AR" "$RANLIB" "$STRIP"; do
+for tool in "$ZLIB_CC" "$ZLIB_CXX" "$TOOLCHAIN/llvm-ar" "$TOOLCHAIN/llvm-ranlib" "$TOOLCHAIN/llvm-strip"; do
   test -x "$tool" || { echo "Missing NDK tool $tool" >&2; exit 2; }
 done
+
+# GPAC prepends cross-prefix to binutils names during cross builds.
+ln -sf "$TOOLCHAIN/llvm-ar" "$TOOLCHAIN/aarch64-linux-android${API}-llvm-ar"
+ln -sf "$TOOLCHAIN/llvm-ranlib" "$TOOLCHAIN/aarch64-linux-android${API}-llvm-ranlib"
+ln -sf "$TOOLCHAIN/llvm-strip" "$TOOLCHAIN/aarch64-linux-android${API}-llvm-strip"
 
 SRC="/tmp/gpac-v26.07.0-tme"
 ZLIB_SRC="/tmp/zlib-v1.3.1"
