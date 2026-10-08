@@ -68,6 +68,7 @@ export AR RANLIB STRIP
   --enable-tileagg \
   --enable-fin \
   --enable-mp4dmx \
+  --use-zlib=local \
   --disable-crypto \
   --disable-compositor \
   --disable-vout \
