@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.f1multiview.core.playback.Quality
+import app.f1multiview.core.playback.TiledMultiviewSession
 import app.f1multiview.data.f1tv.TmePlaybackParser
 import app.f1multiview.core.playback.toModel
 import app.f1multiview.model.StreamSource
@@ -35,7 +36,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private var selectedMultiviewBackend: MultiviewPlaybackBackend = media3FallbackBackend
     private val _backendStatus = MutableStateFlow(media3FallbackBackend.status)
     private var openTiledMuted = false
-    private var activeTmeSession: app.f1multiview.core.playback.TiledMultiviewSession? = null
+    private var activeTmeSession: TiledMultiviewSession? = null
     val backendStatus: StateFlow<MultiviewBackendStatus> = _backendStatus
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
@@ -218,7 +219,8 @@ class UnifiedMultiviewEngine(context: Context) {
         streams: List<StreamSource>,
         visibleIds: Set<String>,
         referenceId: String?,
-        autoplay: Boolean = false
+        autoplay: Boolean = false,
+        tmeSession: TiledMultiviewSession? = null
     ): Set<String> {
         streams.forEach(feedRegistry::put)
 
@@ -230,13 +232,13 @@ class UnifiedMultiviewEngine(context: Context) {
         // contract, so it is resolved before the logical-feed decoder scheduler. This
         // keeps the UI free to resize/select logical tiles without allocating one player
         // per tile.
-        val tme = streams.asSequence()
+        val tme = tmeSession ?: streams.asSequence()
             .mapNotNull { it.tmeJson?.let(TmePlaybackParser::parse) }
             .firstOrNull { it.feeds.size >= 2 }
             ?: streams.asSequence()
                 .mapNotNull { it.tmeJson?.let(TmePlaybackParser::parse) }
                 .firstOrNull()
-        AppLogger.i("Engine", "TME_SESSION_RESOLVE streams=${streams.size} reference=$referenceId tme=${tme != null} topology=${tme?.topology ?: "NONE"} feeds=${tme?.feeds?.size ?: 0}")
+        AppLogger.i("Engine", "TME_SESSION_RESOLVE source=${if (tmeSession != null) "typed-session" else "stream-json"} streams=${streams.size} reference=$referenceId tme=${tme != null} topology=${tme?.topology ?: "NONE"} feeds=${tme?.feeds?.size ?: 0}")
         if (tme != null && tme.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
             if (isNativeTmeActive()) nativeTmeBackend.release()
             openTiledPrepared = tmeSource?.let { openTiledBackend.prepare(tme, it, referenceId) } == true
