@@ -296,8 +296,12 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         )
     }
     private suspend fun resolveSource(source:StreamSource){
-        val contentId=source.contentId?:return
         val isReference = source.id == _ui.value.mainStreamId
+        val contentId=source.contentId
+        if (contentId == null) {
+            if (isReference) _ui.value = _ui.value.copy(tmeDiscoveryPending = false)
+            return
+        }
         provider.resolve(PlaybackRequest(contentId,source.channelId,_ui.value.quality)).onSuccess{playback->
             // TME describes the multiview playback session, not an arbitrary
             // secondary feed. Only the current reference/main feed may establish or
