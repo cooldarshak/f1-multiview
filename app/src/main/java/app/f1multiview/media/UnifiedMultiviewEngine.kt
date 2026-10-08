@@ -374,13 +374,21 @@ class UnifiedMultiviewEngine(context: Context) {
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
 
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
-        if (!isOpenTiledActive()) decoderManager.syncToMain(mainId, channelOffsetsMs)
+        if (!isOpenTiledActive() && !isNativeTmeActive()) decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
 
-    fun prepare(id: String) = decoderManager.prepare(id)
-    fun seekTo(id: String, positionMs: Long) = decoderManager.seekTo(id, positionMs)
-    fun seekToDefaultPosition(id: String) = decoderManager.seekToDefaultPosition(id)
-    fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) = decoderManager.setPlaybackParameters(id, parameters)
+    fun prepare(id: String) {
+        if (!isNativeTmeActive()) decoderManager.prepare(id)
+    }
+    fun seekTo(id: String, positionMs: Long) {
+        if (!isNativeTmeActive()) decoderManager.seekTo(id, positionMs)
+    }
+    fun seekToDefaultPosition(id: String) {
+        if (!isNativeTmeActive()) decoderManager.seekToDefaultPosition(id)
+    }
+    fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) {
+        if (!isNativeTmeActive()) decoderManager.setPlaybackParameters(id, parameters)
+    }
     fun setPlaybackSpeed(id: String, speed: Float) {
         if (isOpenTiledActive()) openTiledEngine.setPlaybackSpeed(speed)
         else if (!isNativeTmeActive()) decoderManager.setPlaybackSpeed(id, speed)
