@@ -326,6 +326,32 @@ class TmeCmafCoordinator(
                         continue
                     }
 
+                    // The native merger needs the physical tile geometry and HEVC
+                    // decoder configuration to remain stable across all participating
+                    // feeds. Fail the epoch early instead of constructing a malformed
+                    // compressed-domain graph.
+                    val geometryValid = current.zip(sources).all { (entry, source) ->
+                        entry.second.width == source.tileWidth &&
+                            entry.second.height == source.tileHeight &&
+                            entry.second.samples.isNotEmpty()
+                    }
+                    if (!geometryValid) {
+                        val detail = current.map { (source, segment) ->
+                            source.feedId + "=" + segment.width + "x" + segment.height +
+                                " samples=" + segment.samples.size
+                        }.joinToString(";")
+                        throw IllegalStateException("TME tile geometry/sample validation failed: $detail")
+                    }
+
+                    AppLogger.i(
+                        "TME",
+                        "CMAF_EPOCH sequence=$commonSequence " +
+                            current.joinToString(" ") { (source, segment) ->
+                                source.feedId + ":samples=" + segment.samples.size +
+                                    ",size=" + segment.width + "x" + segment.height
+                            }
+                    )
+
                     if (!configured) {
                         val width = outputWidth ?: sources.maxOf { (it.column + 1) * it.tileWidth }
                         val height = outputHeight ?: sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight }
@@ -356,8 +382,18 @@ class TmeCmafCoordinator(
                                 if (index in consumedByFeed[source.feedId].orEmpty()) {
                                     null
                                 } else {
+                                    val referenceDurationUs = reference.durationUs.takeIf { it > 0L } ?: 40_000L
+                                    // F1's Premium pipeline is epoch-locked and uses a common
+                                    // encoding cadence across feeds. Do not allow a loose
+                                    // multi-frame match: a neighbouring frame from another
+                                    // feed would create a visually wrong but superficially
+                                    // "synchronized" mosaic.
+                                    val maxTimestampDeltaUs = minOf(
+                                        50_000L,
+                                        maxOf(5_000L, (referenceDurationUs * 45L) / 100L)
+                                    )
                                     val delta = kotlin.math.abs(sample.timeUs - reference.timeUs)
-                                    if (delta <= 50_000L) index to sample else null
+                                    if (delta <= maxTimestampDeltaUs) index to sample else null
                                 }
                             }
                             candidates.minByOrNull { kotlin.math.abs(it.second.timeUs - reference.timeUs) }
