@@ -250,7 +250,7 @@ class UnifiedMultiviewEngine(context: Context) {
                 .firstOrNull()
         val resolvedTmeSession = tmeSession ?: parsedTme?.toModel()
         val resolvedTmePlayback = tmeSession?.toPlayback() ?: parsedTme
-        AppLogger.i("Engine", "TME_SESSION_RESOLVE source=${if (tmeSession != null) "typed-session" else "stream-json"} streams=${streams.size} reference=$referenceId tme=${resolvedTmeSession != null} topology=${resolvedTmeSession?.topology ?: "NONE"} feeds=${resolvedTmeSession?.feeds?.size ?: 0}")
+        AppLogger.i("Engine", "TME_SESSION_RESOLVE source=${if (tmeSession != null) "typed-session" else "stream-json"} streams=${streams.size} reference=$referenceId tme=${resolvedTmeSession != null} topology=${resolvedTmeSession?.topology ?: "NONE"} feeds=${resolvedTmeSession?.feeds?.size ?: 0} grid=${resolvedTmeSession?.tileCountHorizontal ?: 0}x${resolvedTmeSession?.tileCountVertical ?: 0} tile=${resolvedTmeSession?.tileWidth ?: 0}x${resolvedTmeSession?.tileHeight ?: 0}")
         // A multiview viewport must never silently become N Media3 players.
         // More than one video feed requires the TME backend; otherwise fail closed.
         val visibleVideoCount = visibleIds.count { id ->
