@@ -200,7 +200,6 @@ internal class TmeTimelineState {
     fun resolveOffset(playlist: HlsPlaylist): Long {
         val first = playlist.segments.firstOrNull() ?: return 0L
         if (!initialized) {
-            initialized = true
             return 0L
         }
 
@@ -214,6 +213,7 @@ internal class TmeTimelineState {
     }
 
     fun commit(sequence: Long, startUs: Long, durationUs: Long) {
+        initialized = true
         lastSequence = sequence
         lastStartUs = startUs
         lastDurationUs = durationUs
