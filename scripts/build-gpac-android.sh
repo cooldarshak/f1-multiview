@@ -80,7 +80,7 @@ if ! ./configure \
   --enable-tileagg \
   --enable-fin \
   --enable-mp4dmx \
-  --use-zlib=local \
+  --use-zlib="$ZLIB_ROOT" \
   --disable-crypto \
   --disable-compositor \
   --disable-vout \
