@@ -2489,13 +2489,12 @@ private fun FullscreenMultiview(
     onClose: () -> Unit,
     onReplayPosition: (Long) -> Unit
 ) {
-    // Director multiview is intentionally driven by selectedStreamIds.
-    // TME remains available as a backend, but this wall uses independent feed
-    // surfaces because it must mix video, tracker and F1 data feeds and support
-    // real per-feed resizing.
+    val backendStatus by engine.backendStatus.collectAsState()
+    val isTme = backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME
     val selected = ui.selectedStreamIds
         .mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
-        .take(4)
+        .take(if (isTme) 24 else 4)
+    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }
 
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
@@ -2548,7 +2547,7 @@ private fun FullscreenMultiview(
         }
     }
 
-    val active = selected.firstOrNull { it.id == activeFeedId }
+    val active = ui.streams.firstOrNull { it.id == activeFeedId }
         ?: selected.firstOrNull { it.id == ui.mainStreamId }
         ?: selected.firstOrNull()
 
@@ -2654,21 +2653,48 @@ private fun FullscreenMultiview(
                         bottom = 4.dp
                     )
             ) {
-                CanonicalMultiviewLayout(
-                    ui = ui,
-                    selected = selected,
-                    engine = engine,
-                    errors = errors,
-                    editSize = editSize,
-                    onFocus = { id ->
-                        activeFeedId = id
-                        menu = null
-                    },
-                    activeId = activeFeedId,
-                    modifier = Modifier.fillMaxSize(),
-                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-                    onVideoTap = { controlsVisible = !controlsVisible }
-                )
+                if (isTme) {
+                    val protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null
+                    val protectedCompositorSupported = remember(protectedSource) {
+                        !protectedSource || engine.protectedTiledCompositorSupported()
+                    }
+                    if (protectedSource && !protectedCompositorSupported) {
+                        OpenTiledSecureWall(
+                            engine = engine,
+                            session = ui.tiledMultiviewSession,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        OpenTiledMultiviewWall(
+                            engine = engine,
+                            feedIds = tiledSelected,
+                            protectedSource = protectedSource,
+                            layout = ui.layout,
+                            modifier = Modifier.fillMaxSize(),
+                            onFeedFocus = { tileId ->
+                                activeFeedId = vm.streamIdForTiledFeed(tileId) ?: activeFeedId
+                                controlsVisible = true
+                                menu = null
+                            }
+                        )
+                    }
+                } else {
+                    CanonicalMultiviewLayout(
+                        ui = ui,
+                        selected = selected,
+                        engine = engine,
+                        errors = errors,
+                        editSize = editSize,
+                        onFocus = { id ->
+                            activeFeedId = id
+                            menu = null
+                        },
+                        activeId = activeFeedId,
+                        modifier = Modifier.fillMaxSize(),
+                        surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                        onVideoTap = { controlsVisible = !controlsVisible }
+                    )
+                }
             }
 
             Box(
