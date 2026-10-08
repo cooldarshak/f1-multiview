@@ -26,6 +26,25 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --install "platforms;android-36" "build-tools;35.0.0"
 
+      - name: Install GPAC and FFmpeg for TME smoke test
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl gnupg ffmpeg
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://dist.gpac.io/gpac/linux/gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gpac.gpg
+          sudo chmod a+r /etc/apt/keyrings/gpac.gpg
+          . /etc/os-release
+          CODENAME="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+          printf 'Types: deb\nURIs: https://dist.gpac.io/gpac/linux/ubuntu\nSuites: %s\nComponents: nightly\nSigned-By: /etc/apt/keyrings/gpac.gpg\n' "$CODENAME" | sudo tee /etc/apt/sources.list.d/gpac.sources >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y gpac
+
+      - name: Run TME compressed-domain smoke test
+        run: |
+          chmod +x ./scripts/tme-gpac-smoke.sh
+          ./scripts/tme-gpac-smoke.sh
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
