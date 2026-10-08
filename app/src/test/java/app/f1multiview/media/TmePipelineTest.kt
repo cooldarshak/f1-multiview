@@ -43,6 +43,31 @@ class TmePipelineTest {
     }
 
     @Test
+    fun timelineStateKeepsPresentationTimeContinuousWhenLiveWindowSlides() {
+        val state = TmeTimelineState()
+        val firstPlaylist = HlsPlaylist(
+            null,
+            listOf(
+                HlsSegment(100, "a", 2_000_000, 0),
+                HlsSegment(101, "b", 2_000_000, 2_000_000)
+            )
+        )
+        val firstOffset = state.resolveOffset(firstPlaylist)
+        assertEquals(0L, firstOffset)
+        state.commit(100, 0L, 2_000_000L)
+
+        val slidPlaylist = HlsPlaylist(
+            null,
+            listOf(
+                HlsSegment(101, "b", 2_000_000, 0),
+                HlsSegment(102, "c", 2_000_000, 2_000_000)
+            )
+        )
+        val slidOffset = state.resolveOffset(slidPlaylist)
+        assertEquals(2_000_000L, slidOffset)
+    }
+
+    @Test
     fun synchronizerTreatsDurationAsMetadataNotEpochIdentity() {
         val sync = TmeSegmentSynchronizer()
         val first = TmeCmafSegmentKey(13, 3_000_000, 33_333)
