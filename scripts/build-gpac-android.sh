@@ -19,12 +19,12 @@ esac
 TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/$PREBUILT/bin"
 ZLIB_CC="$TOOLCHAIN/aarch64-linux-android${API}-clang"
 ZLIB_CXX="$TOOLCHAIN/aarch64-linux-android${API}-clang++"
-CC="clang${API}"
-CXX="clang++${API}"
+CC="clang"
+CXX="clang++"
 AR="$TOOLCHAIN/llvm-ar"
 RANLIB="$TOOLCHAIN/llvm-ranlib"
 STRIP="$TOOLCHAIN/llvm-strip"
-CROSS_PREFIX="$TOOLCHAIN/aarch64-linux-android-"
+CROSS_PREFIX="$TOOLCHAIN/aarch64-linux-android${API}-"
 
 for tool in "$ZLIB_CC" "$ZLIB_CXX" "$AR" "$RANLIB" "$STRIP"; do
   test -x "$tool" || { echo "Missing NDK tool $tool" >&2; exit 2; }
