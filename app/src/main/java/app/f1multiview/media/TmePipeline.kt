@@ -49,7 +49,10 @@ data class TmeAlignedSegment(
 }
 
 class TmeSegmentSynchronizer(
-    private val segmentTimeoutUs: Long = 1_500_000L
+    private val segmentTimeoutUs: Long = 1_500_000L,
+    private val clockUs: () -> Long = {
+        android.os.SystemClock.elapsedRealtimeNanos() / 1_000L
+    }
 ) {
     private data class Bucket(
         val firstSeenElapsedUs: Long,
@@ -65,7 +68,7 @@ class TmeSegmentSynchronizer(
     fun offer(
         segment: TmeTileSegment,
         expectedFeedIds: Set<String>? = null,
-        nowElapsedUs: Long = android.os.SystemClock.elapsedRealtimeNanos() / 1_000L
+        nowElapsedUs: Long = clockUs()
     ): TmeAlignedSegment? {
         val bucket = pending.getOrPut(segment.key) {
             Bucket(nowElapsedUs, linkedMapOf())
@@ -89,7 +92,7 @@ class TmeSegmentSynchronizer(
         return TmeAlignedSegment(entry.key, entry.value.tiles.values.toList())
     }
 
-    fun dropExpired(nowElapsedUs: Long = android.os.SystemClock.elapsedRealtimeNanos() / 1_000L): List<TmeCmafSegmentKey> {
+    fun dropExpired(nowElapsedUs: Long = clockUs()): List<TmeCmafSegmentKey> {
         val expired = pending.entries
             .filter { (_, bucket) -> nowElapsedUs - bucket.firstSeenElapsedUs > segmentTimeoutUs }
             .map { it.key }
