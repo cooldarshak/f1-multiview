@@ -21,6 +21,11 @@ class GpacNativeTmeMerger : NativeTmeMerger {
         check(available) { "GPAC native TME merger graph is not ready" }
         require(tileSources.size >= 2)
         require(outputWidth > 0 && outputHeight > 0)
+        AppLogger.i(
+            "TME",
+            "GPAC_CONFIG inputs=${tileSources.size} output=${outputWidth}x${outputHeight} " +
+                tileSources.joinToString(" ") { it.feedId + "@r" + (it.row ?: 0) + "c" + it.column + "=" + it.tileWidth + "x" + it.tileHeight }
+        )
         nativeConfigure(
             tileSources.map { it.feedId }.toTypedArray(),
             outputWidth,
@@ -31,6 +36,7 @@ class GpacNativeTmeMerger : NativeTmeMerger {
             tileSources.map { it.tileWidth }.toIntArray(),
             tileSources.map { it.tileHeight }.toIntArray()
         )
+        AppLogger.i("TME", "GPAC_CONFIG_COMPLETE inputs=${tileSources.size} output=${outputWidth}x${outputHeight} mergedStreams=1")
     }
 
     override fun push(segment: TmeAlignedSegment): List<TmeMergedAccessUnit> {
