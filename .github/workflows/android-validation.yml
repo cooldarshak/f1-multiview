@@ -58,11 +58,12 @@ jobs:
           git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac-src
           NDK="$ANDROID_HOME/ndk/27.2.12479018"
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CROSS_PREFIX="$TOOLCHAIN/aarch64-linux-android28-"
           cd /tmp/gpac-src
           ./configure \
             --target-os=android \
             --cpu=aarch64 \
-            --cross-prefix="$TOOLCHAIN/llvm-" \
+            --cross-prefix="$CROSS_PREFIX" \
             --cc="$TOOLCHAIN/clang" \
             --cxx="$TOOLCHAIN/clang++" \
             --ar="$TOOLCHAIN/llvm-ar" \
@@ -88,7 +89,7 @@ jobs:
             --static-modules \
             --use-zlib=no \
             --use-ffmpeg=no \
-            --use-openssl=no \
+            --use-ssl=no \
             --use-nghttp2=no \
             --use-ngtcp2=no \
             --use-nghttp3=no \
