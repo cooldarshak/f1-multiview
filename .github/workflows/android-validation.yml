@@ -44,6 +44,7 @@ jobs:
           cmake -S /tmp/kvazaar -B /tmp/kvazaar/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
           cmake --build /tmp/kvazaar/build --parallel 2
           sudo cmake --install /tmp/kvazaar/build
+          sudo ldconfig
 
       - name: Run TME compressed-domain smoke test
         run: |
