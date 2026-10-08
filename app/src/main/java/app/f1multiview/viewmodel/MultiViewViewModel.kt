@@ -449,22 +449,32 @@ fun toggleStream(id:String)=viewModelScope.launch{
         val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
         if (feedId in current) return
 
-        val needed = current.size + 1
-        val targetLayout = when {
-            needed <= 1 -> LayoutPreset.SINGLE
-            needed <= 2 -> LayoutPreset.SPLIT_2
-            needed <= 4 -> LayoutPreset.GRID_4
-            else -> LayoutPreset.GRID_6
-        }
-        val capacity = when (targetLayout) {
+        // Feed selection is intentionally independent from layout selection.
+        // If the user chose 4-up, adding a feed must fill the next logical slot;
+        // it must never silently downgrade the user's layout to 2-up.
+        val capacity = when (_ui.value.layout) {
             LayoutPreset.SINGLE -> 1
             LayoutPreset.SPLIT_2 -> 2
             LayoutPreset.GRID_4 -> 4
             LayoutPreset.GRID_6 -> 6
         }
+        val next = (current + feedId).distinct()
+        val selected = if (next.size <= capacity) {
+            next
+        } else {
+            // Keep the main/reference feed stable. When the selected layout is full,
+            // replace the last non-main tile rather than changing layout or creating
+            // another decoder/player.
+            val main = _ui.value.mainStreamId?.let(::tiledFeedIdForStream)
+            val replacementIndex = next.indexOfLast { it != main }
+                .takeIf { it >= 0 } ?: (capacity - 1)
+            current.toMutableList().apply {
+                if (replacementIndex in indices) this[replacementIndex] = feedId
+                else add(feedId)
+            }.distinct().take(capacity)
+        }
         _ui.value = _ui.value.copy(
-            layout = targetLayout,
-            selectedTiledFeedIds = (current + feedId).distinct().take(capacity),
+            selectedTiledFeedIds = selected,
             providerError = null
         )
         persist()
