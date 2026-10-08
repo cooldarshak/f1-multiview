@@ -21,7 +21,7 @@ bool gpac_available() {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_f1multiview_media_GpacNativeTmeMerger_nativeIsAvailable(JNIEnv*, jclass) {
+Java_app_f1multiview_media_GpacNativeTmeMerger_nativeIsAvailable(JNIEnv*, jobject) {
 #ifdef F1TME_WITH_GPAC
     if (!gpac_available()) return JNI_FALSE;
     GF_FilterSession *session = gf_fs_new(0, GF_FS_SCHEDULER_DIRECT, GF_FS_FLAG_NON_BLOCKING, nullptr);
