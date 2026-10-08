@@ -25,7 +25,9 @@ data class TmeTileSource(
     val row: Int?,
     val column: Int,
     val tileWidth: Int,
-    val tileHeight: Int
+    val tileHeight: Int,
+    val decoderConfig: ByteArray? = null,
+    val requestHeaders: Map<String, String> = emptyMap()
 )
 
 data class TmeCmafSegmentKey(
@@ -244,10 +246,28 @@ object F1TmeTileAdapter {
         val width = session.tileWidth!!
         val height = session.tileHeight!!
 
-        // TiledMultiviewSession currently exposes tile dimensions but not tile
-        // placement. Never invent a square grid from feed count: the native merger
-        // must receive authoritative F1 placement metadata.
-        error("F1 TME tile placement metadata is not available; refusing synthetic grid mapping")
+        return session.feeds.mapIndexed { index, feed ->
+            val tileIndex = feed.tileIndex
+                ?: error("F1 TME feed $index has no authoritative tileIndex")
+            val row = feed.tileRow
+                ?: error("F1 TME feed $index has no authoritative tileRow")
+            val column = feed.tileColumn
+                ?: error("F1 TME feed $index has no authoritative tileColumn")
+            require(tileIndex >= 0 && row >= 0 && column >= 0) {
+                "F1 TME feed $index has invalid tile placement"
+            }
+            val url = feed.url?.takeIf(String::isNotBlank)
+                ?: error("F1 TME feed $index has no media URL")
+            TmeTileSource(
+                feedId = session.feedIds[index],
+                url = url,
+                tileIndex = tileIndex,
+                row = row,
+                column = column,
+                tileWidth = width,
+                tileHeight = height
+            )
+        }
     }
 }
 
