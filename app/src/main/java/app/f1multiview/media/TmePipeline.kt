@@ -259,11 +259,11 @@ object F1TmeTileAdapter {
 
         return session.feeds.mapIndexed { index, feed ->
             val tileIndex = feed.tileIndex
-                ?: error("F1 TME feed $index has no authoritative tileIndex")
+                ?: error("F1 TME feed $index is missing placement metadata: tileIndex")
             val row = feed.tileRow
-                ?: error("F1 TME feed $index has no authoritative tileRow")
+                ?: error("F1 TME feed $index is missing placement metadata: tileRow")
             val column = feed.tileColumn
-                ?: error("F1 TME feed $index has no authoritative tileColumn")
+                ?: error("F1 TME feed $index is missing placement metadata: tileColumn")
             require(tileIndex >= 0 && row >= 0 && column >= 0) {
                 "F1 TME feed $index has invalid tile placement"
             }
