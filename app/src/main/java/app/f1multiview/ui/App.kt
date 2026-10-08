@@ -1005,7 +1005,7 @@ private fun PitWall(
                 val session = ui.tiledMultiviewSession
                 val channel = stream.channelId?.trim().takeIf { !it.isNullOrBlank() }
                 val index = channel?.let { ch -> session?.feeds?.indexOfFirst { it.channelId?.toString() == ch } } ?: -1
-                val tileId = if (index != null && index >= 0) session?.feedIds?.getOrNull(index) else stream.id
+                val tileId = if (index >= 0) session?.feedIds?.getOrNull(index) else stream.id
                 tileId != null && tileId in ui.selectedTiledFeedIds
             } else {
                 stream.id in ui.selectedStreamIds

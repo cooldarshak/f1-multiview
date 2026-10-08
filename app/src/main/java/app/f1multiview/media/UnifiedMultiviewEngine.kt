@@ -210,7 +210,7 @@ class UnifiedMultiviewEngine(context: Context) {
         // keeps the UI free to resize/select logical tiles without allocating one player
         // per tile.
         val tme = reference?.tmeJson?.let(TmePlaybackParser::parse)
-        if (tme != null && reference != null && openTiledBackend.canHandle(tme, reference)) {
+        if (tme != null && openTiledBackend.canHandle(tme, reference)) {
             openTiledPrepared = openTiledBackend.prepare(tme, reference, referenceId)
             if (openTiledPrepared) {
                 selectedMultiviewBackend = openTiledBackend
