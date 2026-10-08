@@ -265,7 +265,6 @@ class UnifiedMultiviewEngine(context: Context) {
         if (visibleVideoCount > 1 && resolvedTmeSession == null) {
             decoderManager.release()
             activeTmeSession = null
-            media3MultiviewBlocked = false
             selectedMultiviewBackend = media3FallbackBackend
             _backendStatus.value = selectedMultiviewBackend.status
             AppLogger.e("TME", "MULTIVIEW_GATE no TME session; refusing Media3 multi-player allocation visibleVideoFeeds=$visibleVideoCount")
@@ -329,6 +328,7 @@ class UnifiedMultiviewEngine(context: Context) {
                 return emptySet()
             }
             activeTmeSession = null
+            media3MultiviewBlocked = false
             selectedMultiviewBackend = media3FallbackBackend
             _backendStatus.value = selectedMultiviewBackend.status
         }
