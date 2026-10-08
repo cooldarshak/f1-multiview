@@ -1,7 +1,6 @@
 package app.f1multiview.media
 
 import android.media.MediaCodec
-import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.view.Surface
 import java.nio.ByteBuffer
@@ -22,8 +21,10 @@ class TmeNativeDecoder(
     private var queued = 0L
     private var rendered = 0L
     private var recreations = 0L
+    private var everConfigured = false
 
     fun configure(surface: Surface, width: Int, height: Int, codecConfig: ByteArray? = null) {
+        if (everConfigured) recreations++
         check(codec == null) { "TME decoder is already configured; selection changes must not recreate it" }
         require(width > 0 && height > 0)
         val format = MediaFormat.createVideoFormat(mimeType, width, height)
@@ -35,6 +36,7 @@ class TmeNativeDecoder(
         created.configure(format, surface, null, 0)
         codec = created
         outputSurface = surface
+        everConfigured = true
         configured = true
     }
 
