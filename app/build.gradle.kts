@@ -30,11 +30,7 @@ android {
     }
     buildFeatures { compose=true; buildConfig=true }
     externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            val gpacRoot = System.getenv("GPAC_ROOT")
-            if (!gpacRoot.isNullOrBlank()) arguments("-DGPAC_ROOT=$gpacRoot")
-        }
+        cmake { path = file("src/main/cpp/CMakeLists.txt") }
     }
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs", "build/gpac-jni")
     ndkVersion = "27.2.12479018"
