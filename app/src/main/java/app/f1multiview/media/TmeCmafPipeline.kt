@@ -231,13 +231,13 @@ class TmeCmafCoordinator(
                         }
                         merged.forEach { accessUnit ->
                             var queued = false
-                            repeat(200) {
-                                if (decoder.queue(accessUnit)) {
-                                    queued = true
-                                    return@repeat
+                            var attempts = 0
+                            while (!queued && attempts++ < 200) {
+                                queued = decoder.queue(accessUnit)
+                                if (!queued) {
+                                    decoder.drain()
+                                    Thread.sleep(1L)
                                 }
-                                decoder.drain()
-                                Thread.sleep(1L)
                             }
                             check(queued) { "MediaCodec input queue stalled for native TME" }
                         }
