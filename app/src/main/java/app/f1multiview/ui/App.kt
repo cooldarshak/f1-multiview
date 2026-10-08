@@ -2028,7 +2028,7 @@ private fun F1HdrPlayerSurface(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW, showOverlay: Boolean = true) {
+private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, error: String?, modifier: Modifier, onFullscreen: (String) -> Unit, onFocus: ((String) -> Unit)? = null, active: Boolean = false, surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW, showOverlay: Boolean = true, onVideoTap: (() -> Unit)? = null) {
     val player = remember(stream.id) { engine.player(stream.id) }
     val context = LocalContext.current
     val activity = context as? Activity
@@ -2060,7 +2060,7 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
         colors = CardDefaults.cardColors(containerColor = Color.Black)
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id)
+            F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id, onVideoTap = onVideoTap)
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
