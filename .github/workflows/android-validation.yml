@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y ca-certificates curl gnupg ffmpeg kvazaar
+          sudo apt-get install -y ca-certificates curl gnupg ffmpeg build-essential cmake
           sudo install -m 0755 -d /etc/apt/keyrings
           curl -fsSL https://dist.gpac.io/gpac/linux/gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gpac.gpg
           sudo chmod a+r /etc/apt/keyrings/gpac.gpg
@@ -39,6 +39,11 @@ jobs:
           printf 'Types: deb\nURIs: https://dist.gpac.io/gpac/linux/ubuntu\nSuites: %s\nComponents: nightly\nSigned-By: /etc/apt/keyrings/gpac.gpg\n' "$CODENAME" | sudo tee /etc/apt/sources.list.d/gpac.sources >/dev/null
           sudo apt-get update
           sudo apt-get install -y gpac
+          rm -rf /tmp/kvazaar
+          git clone --depth 1 --branch v2.3.2 https://github.com/ultravideo/kvazaar.git /tmp/kvazaar
+          cmake -S /tmp/kvazaar -B /tmp/kvazaar/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
+          cmake --build /tmp/kvazaar/build --parallel 2
+          sudo cmake --install /tmp/kvazaar/build
 
       - name: Run TME compressed-domain smoke test
         run: |
