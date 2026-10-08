@@ -198,8 +198,6 @@ class TmeCmafCoordinator(
                             source.copy(decoderConfig = current[i].second.decoderConfig)
                         }
                         merger.configure(configuredSources, width, height)
-                        decoder.configure(surface, width, height, current.first().second.decoderConfig)
-                        decoder.start()
                         configured = true
                     }
 
@@ -221,6 +219,16 @@ class TmeCmafCoordinator(
                         if (tiles.size != sources.size) continue
                         val key = tiles.first().key
                         val merged = merger.merge(TmeAlignedSegment(key, tiles))
+                        if (merged.isNotEmpty() && !decoder.telemetry().configured) {
+                            val first = merged.first()
+                            decoder.configure(
+                                surface,
+                                sources.maxOf { (it.column + 1) * it.tileWidth },
+                                sources.maxOf { ((it.row ?: 0) + 1) * it.tileHeight },
+                                first.codecConfig
+                            )
+                            decoder.start()
+                        }
                         merged.forEach(decoder::queue)
                         decoder.drain()
                     }
