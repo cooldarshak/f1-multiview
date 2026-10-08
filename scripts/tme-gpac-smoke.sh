@@ -13,21 +13,22 @@ ffmpeg -hide_banner -loglevel error   -f lavfi -i testsrc2=size=640x360:rate=30 
 test -s "$WORK/source.hvc"
 
 # Split the tiled HEVC into independent tile tracks, then merge them back.
-gpac -i "$WORK/source.hvc" hevcsplit -o "$WORK/tiled.mp4"
+MP4Box -add "$WORK/source.hvc:split_tiles" -new "$WORK/tiled.mp4"
 test -s "$WORK/tiled.mp4"
 
-TILED_INSPECT="$WORK/tiled.inspect"
-MERGED_INSPECT="$WORK/merged.inspect"
-gpac -i "$WORK/tiled.mp4" inspect:full >"$TILED_INSPECT"
-TILED_PIDS=$(grep -c 'PID ' "$TILED_INSPECT" || true)
-# The generated fixture is a 2x2 HEVC tile set. Verify the toolchain actually
-# exposes four input PIDs before merge.
+TILED_PROBE="$WORK/tiled.probe"
+MERGED_PROBE="$WORK/merged.probe"
+gpac -i "$WORK/tiled.mp4" probe:log="$TILED_PROBE"
+test -s "$TILED_PROBE"
+TILED_PIDS=$(grep -Eo '[0-9]+' "$TILED_PROBE" | tail -1)
+# The generated fixture is a 2x2 HEVC tile set. Verify four input PIDs.
 test "$TILED_PIDS" -eq 4
 
 gpac -i "$WORK/tiled.mp4" hevcmerge -o "$WORK/merged.hvc"
 test -s "$WORK/merged.hvc"
-gpac -i "$WORK/merged.hvc" inspect:full >"$MERGED_INSPECT"
-MERGED_PIDS=$(grep -c 'PID ' "$MERGED_INSPECT" || true)
+gpac -i "$WORK/merged.hvc" probe:log="$MERGED_PROBE"
+test -s "$MERGED_PROBE"
+MERGED_PIDS=$(grep -Eo '[0-9]+' "$MERGED_PROBE" | tail -1)
 # The merged elementary stream must expose exactly one video PID.
 test "$MERGED_PIDS" -eq 1
 
