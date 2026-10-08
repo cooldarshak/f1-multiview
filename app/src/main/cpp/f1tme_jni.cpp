@@ -108,7 +108,7 @@ static const GF_FilterCapability SinkCaps[] = {
 static const GF_FilterRegister *source_register(GF_FilterSession *) {
     SourceRegister.name = "f1tmesrc";
     SourceRegister.private_size = sizeof(SourceCtx);
-    SourceRegister.flags = GF_FS_REG_ACT_AS_SOURCE | GF_FS_REG_EXPLICIT_ONLY;
+    SourceRegister.flags = static_cast<GF_FSRegisterFlags>(GF_FS_REG_ACT_AS_SOURCE | GF_FS_REG_EXPLICIT_ONLY);
     SourceRegister.initialize = source_initialize;
     SourceRegister.caps = SourceCaps;
     SourceRegister.nb_caps = sizeof(SourceCaps) / sizeof(SourceCaps[0]) - 1;
