@@ -245,6 +245,24 @@ class UnifiedMultiviewEngine(context: Context) {
         val resolvedTmeSession = tmeSession ?: parsedTme?.toModel()
         val resolvedTmePlayback = tmeSession?.toPlayback() ?: parsedTme
         AppLogger.i("Engine", "TME_SESSION_RESOLVE source=${if (tmeSession != null) "typed-session" else "stream-json"} streams=${streams.size} reference=$referenceId tme=${resolvedTmeSession != null} topology=${resolvedTmeSession?.topology ?: "NONE"} feeds=${resolvedTmeSession?.feeds?.size ?: 0}")
+        // A multiview viewport must never silently become N Media3 players.
+        // More than one video feed requires the TME backend; otherwise fail closed.
+        val visibleVideoCount = visibleIds.count { id ->
+            streams.firstOrNull { it.id == id }?.kind !in setOf(
+                app.f1multiview.model.StreamKind.TRACK_MAP,
+                app.f1multiview.model.StreamKind.F1_DASH_DATA,
+                app.f1multiview.model.StreamKind.TIMING,
+                app.f1multiview.model.StreamKind.TRACK
+            )
+        }
+        if (visibleVideoCount > 1 && resolvedTmeSession == null) {
+            decoderManager.release()
+            activeTmeSession = null
+            selectedMultiviewBackend = media3FallbackBackend
+            _backendStatus.value = selectedMultiviewBackend.status
+            AppLogger.e("TME", "MULTIVIEW_GATE no TME session; refusing Media3 multi-player allocation visibleVideoFeeds=$visibleVideoCount")
+            return emptySet()
+        }
         if (resolvedTmeSession != null && resolvedTmeSession.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
             if (isNativeTmeActive()) nativeTmeBackend.release()
             openTiledPrepared = if (resolvedTmePlayback != null && tmeSource != null) openTiledBackend.prepare(resolvedTmePlayback, tmeSource, referenceId) else false
