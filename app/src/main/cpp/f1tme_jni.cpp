@@ -378,6 +378,9 @@ Java_app_f1multiview_media_GpacNativeTmeMerger_nativePush(
         }
         if (n) env->GetByteArrayRegion(bytes, 0, n, reinterpret_cast<jbyte *>(dst));
         if (bytes) env->DeleteLocalRef(bytes);
+        // nativePush is called once per aligned media sample. Preserve that
+        // sample timestamp so hevcmerge sees synchronized access units rather
+        // than assigning every sample the segment's first timestamp.
         gf_filter_pck_set_cts(pck, static_cast<u64>(epochStartUs));
         gf_filter_pck_set_dts(pck, static_cast<u64>(epochStartUs));
         gf_filter_pck_set_duration(pck, static_cast<u32>(durationUs));
@@ -388,7 +391,19 @@ Java_app_f1multiview_media_GpacNativeTmeMerger_nativePush(
         gf_filter_pck_send(pck);
     }
 
-    gf_fs_run(g_graph.session);
+    // Direct/non-blocking GPAC sessions may need more than one scheduler pass:
+    // input packets must reach hevcmerge before its output reaches the sink.
+    // Keep this bounded so malformed input can never hang the playback thread.
+    for (int pass = 0; pass < 16; ++pass) {
+        GF_Err runErr = gf_fs_run(g_graph.session);
+        if (runErr < 0) break;
+        bool hasOutput = false;
+        {
+            std::lock_guard<std::mutex> lock(g_graph.sinkCtx->mutex);
+            hasOutput = !g_graph.sinkCtx->samples.empty();
+        }
+        if (hasOutput) break;
+    }
     return drain_samples(env, g_graph);
 #else
     jclass cls = env->FindClass("java/lang/IllegalStateException");
