@@ -184,7 +184,10 @@ class TmeCmafCoordinator(
         worker = Thread({
             try {
                 val readers = sources.associateWith { TmeCmafFeedReader(context, requestHeaders) }
-                val processed = mutableSetOf<Long>()
+                // Media sequence numbers are monotonic for the live playlist. Retain only
+                // the last committed sequence instead of an ever-growing set for the
+                // duration of a race.
+                var lastProcessedSequence = Long.MIN_VALUE
                 var configured = false
                 // Network and CMAF extraction for independent tiles are I/O-bound.
                 // Running them serially makes the slowest tile stall the whole mosaic.
@@ -203,7 +206,7 @@ class TmeCmafCoordinator(
                         playlists[source]?.segments
                             ?.asSequence()
                             ?.map { it.sequence }
-                            ?.filterNot(processed::contains)
+                            ?.filter { it > lastProcessedSequence }
                             ?.toSet()
                             .orEmpty()
                     }
@@ -220,7 +223,7 @@ class TmeCmafCoordinator(
                     val extractionJobs = sources.associateWith { source ->
                         val playlist = playlists[source] ?: return@associateWith null
                         val segment = playlist.segments.firstOrNull {
-                            it.sequence == commonSequence && it.sequence !in processed
+                            it.sequence == commonSequence && it.sequence > lastProcessedSequence
                         } ?: return@associateWith null
                         ioPool.submit(Callable { source to readers[source]!!.extract(playlist, segment) })
                     }
@@ -302,7 +305,7 @@ class TmeCmafCoordinator(
                         decoder.drain()
                     }
 
-                        processed += commonSequence
+                        lastProcessedSequence = commonSequence
                         synchronizer.dropExpired()
                         // Do not introduce artificial pacing after a successfully
                         // merged sample. Continue immediately so MediaCodec receives
