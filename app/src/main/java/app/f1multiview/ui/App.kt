@@ -3146,7 +3146,7 @@ private fun CompactLayoutPicker(selected: LayoutPreset, onSelect: (LayoutPreset)
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            listOf(LayoutPreset.SINGLE, LayoutPreset.SPLIT_2, LayoutPreset.GRID_4, LayoutPreset.GRID_6).forEach { preset ->
+            listOf(LayoutPreset.SINGLE, LayoutPreset.SPLIT_2, LayoutPreset.GRID_4).forEach { preset ->
                 Surface(
                     Modifier
                         .size(30.dp, 24.dp)
