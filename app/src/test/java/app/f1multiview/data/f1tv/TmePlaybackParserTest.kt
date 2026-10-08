@@ -5,6 +5,44 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class TmePlaybackParserTest {
+
+    @Test
+    fun parsesProductionStyleSnakeCaseTmeMetadata() {
+        val json = """
+            {
+              "version": 1,
+              "channel": "TME",
+              "metadata": {"content_id": 1000009157},
+              "advanced": {
+                "tile_size": {"width": 960, "height": 544},
+                "tile_count_horizontal": 2,
+                "tile_count_vertical": 2
+              },
+              "feeds": [
+                {"uuid":"a","url":"https://example/a","tile_index":0,
+                 "metadata":{"channel_id":1033}},
+                {"uuid":"b","url":"https://example/b","tile_index":1,
+                 "metadata":{"channel_id":1025}},
+                {"uuid":"c","url":"https://example/c","tile_index":2,
+                 "metadata":{"channel_id":1009}},
+                {"uuid":"d","url":"https://example/d","tile_index":3,
+                 "metadata":{"channel_id":1016}}
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = TmePlaybackParser.parse(json)!!
+
+        assertEquals(1000009157, parsed.contentId)
+        assertEquals(960, parsed.tileWidth)
+        assertEquals(544, parsed.tileHeight)
+        assertEquals(2, parsed.tileCountHorizontal)
+        assertEquals(2, parsed.tileCountVertical)
+        assertEquals(1033, parsed.feeds[0].channelId)
+        assertEquals(1, parsed.feeds[3].tileRow)
+        assertEquals(1, parsed.feeds[3].tileColumn)
+    }
+
     @Test
     fun mapsOfficialTileIndexUsingAuthoritativeHorizontalCount() {
         val json = """
