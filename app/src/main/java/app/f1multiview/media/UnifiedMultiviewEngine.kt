@@ -24,7 +24,7 @@ import app.f1multiview.model.StreamSource
  */
 class UnifiedMultiviewEngine(context: Context) {
     private val tiledMultiviewController = TiledMultiviewController()
-    private val nativeTmeBackend = NativeTmePlaybackBackend()
+    private val nativeTmeBackend = NativeTmePlaybackBackend(context)
     private val media3FallbackBackend = Media3MultiPlayerFallbackBackend()
     private val openTiledEngine = OpenTiledMultiviewEngine { source ->
         val dataSourceFactory = DefaultHttpDataSource.Factory()
@@ -76,6 +76,9 @@ class UnifiedMultiviewEngine(context: Context) {
     fun isOpenTiledActive(): Boolean =
         selectedMultiviewBackend === openTiledBackend
 
+    fun isNativeTmeActive(): Boolean =
+        selectedMultiviewBackend === nativeTmeBackend
+
     fun openTiledView(context: Context, protectedOutput: Boolean = false): OpenTiledCompositorView =
         OpenTiledCompositorView(context, protectedOutput)
 
@@ -83,11 +86,13 @@ class UnifiedMultiviewEngine(context: Context) {
         OpenTiledCompositorView.supportsProtectedOutput()
 
     fun selectOpenTiledFeeds(feedIds: List<String>) {
-        openTiledEngine.selectVisibleFeeds(feedIds)
+        if (isNativeTmeActive()) nativeTmeBackend.selectFeeds(feedIds)
+        else openTiledEngine.selectVisibleFeeds(feedIds)
     }
 
     fun setOpenTiledOutputSlots(slots: List<OpenTiledMultiviewEngine.OutputSlot>) {
-        openTiledEngine.setOutputSlots(slots)
+        if (isNativeTmeActive()) nativeTmeBackend.setSlots(slots)
+        else openTiledEngine.setOutputSlots(slots)
     }
 
     fun openTiledFrameOutput(): OpenTiledFrameOutput? =
@@ -102,7 +107,10 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun attachOpenTiledView(view: OpenTiledCompositorView) {
-        if (isOpenTiledActive()) openTiledEngine.attachTo(view)
+        when {
+            isNativeTmeActive() -> nativeTmeBackend.attach(view)
+            isOpenTiledActive() -> openTiledEngine.attachTo(view)
+        }
     }
 
     fun attachOpenTiledSecureView(view: OpenTiledSecureSurfaceView) {
@@ -115,7 +123,8 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun detachOpenTiledView(view: OpenTiledCompositorView) {
-        openTiledEngine.detachFrom(view)
+        if (isNativeTmeActive()) nativeTmeBackend.pause()
+        else openTiledEngine.detachFrom(view)
         view.releaseOutput()
         view.setListener(null)
     }
@@ -224,13 +233,17 @@ class UnifiedMultiviewEngine(context: Context) {
             // Never silently downgrade an F1 TME session into one ExoPlayer per feed.
             // Independent F1 tile URLs require the compressed-domain OpenTME merger.
             // Until that backend proves the one-stream/one-decoder invariant, fail closed.
+            val model = tme.toModel()
+            if (nativeTmeBackend.prepare(model, reference)) {
+                selectedMultiviewBackend = nativeTmeBackend
+                _backendStatus.value = selectedMultiviewBackend.status
+                tiledMultiviewController.configure(model)
+                return streams.map { it.id }.toSet()
+            }
             selectedMultiviewBackend = nativeTmeBackend
             _backendStatus.value = selectedMultiviewBackend.status
-            AppLogger.e(
-                "TME",
-                "Rejected independent-feed TME fallback: native compressed-domain merger is not available"
-            )
-            tiledMultiviewController.configure(tme.toModel())
+            AppLogger.e("TME", "Independent-feed TME session cannot be prepared by native GPAC backend")
+            tiledMultiviewController.configure(model)
             return emptySet()
         } else {
             // A backend switch away from TME must release the single physical player before
@@ -309,11 +322,11 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun setQuality(id: String, quality: Quality) {
         if (isOpenTiledActive()) openTiledEngine.setQuality(quality)
-        else decoderManager.setQuality(id, quality)
+        else if (!isNativeTmeActive()) decoderManager.setQuality(id, quality)
     }
     fun setQuality(quality: Quality) {
         if (isOpenTiledActive()) openTiledEngine.setQuality(quality)
-        else decoderManager.setQuality(quality)
+        else if (!isNativeTmeActive()) decoderManager.setQuality(quality)
     }
     fun setTiledAudioLanguage(language: String?) {
         if (isOpenTiledActive()) openTiledEngine.selectAudioLanguage(language)
@@ -329,6 +342,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun qualityAvailable(id: String, quality: Quality): Boolean = decoderManager.qualityAvailable(id, quality)
 
     fun setAudioPlayer(id: String?) {
+        if (isNativeTmeActive()) return
         if (isOpenTiledActive()) {
             if (id == null) {
                 openTiledEngine.player()?.volume = 0f
@@ -341,6 +355,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun setMuted(id: String, muted: Boolean) {
+        if (isNativeTmeActive()) return
         if (isOpenTiledActive()) {
             openTiledMuted = muted
             openTiledEngine.player()?.volume = if (muted) 0f else 1f
@@ -350,7 +365,8 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun isMuted(id: String): Boolean =
-        if (isOpenTiledActive()) openTiledMuted else decoderManager.isMuted(id)
+        if (isNativeTmeActive()) true
+        else if (isOpenTiledActive()) openTiledMuted else decoderManager.isMuted(id)
 
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
 
