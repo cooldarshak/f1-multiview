@@ -175,7 +175,7 @@ interface TmeBitstreamMerger {
     val implementationName: String
     val available: Boolean
 
-    fun merge(segment: TmeAlignedSegment): ByteArray
+    fun merge(segment: TmeAlignedSegment): List<TmeMergedAccessUnit>
 
     fun release()
 }
