@@ -232,16 +232,18 @@ class UnifiedMultiviewEngine(context: Context) {
         // contract, so it is resolved before the logical-feed decoder scheduler. This
         // keeps the UI free to resize/select logical tiles without allocating one player
         // per tile.
-        val tme = tmeSession ?: streams.asSequence()
+        val parsedTme = streams.asSequence()
             .mapNotNull { it.tmeJson?.let(TmePlaybackParser::parse) }
             .firstOrNull { it.feeds.size >= 2 }
             ?: streams.asSequence()
                 .mapNotNull { it.tmeJson?.let(TmePlaybackParser::parse) }
                 .firstOrNull()
-        AppLogger.i("Engine", "TME_SESSION_RESOLVE source=${if (tmeSession != null) "typed-session" else "stream-json"} streams=${streams.size} reference=$referenceId tme=${tme != null} topology=${tme?.topology ?: "NONE"} feeds=${tme?.feeds?.size ?: 0}")
-        if (tme != null && tme.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
+        val resolvedTmeSession = tmeSession ?: parsedTme?.toModel()
+        val resolvedTmePlayback = tmeSession?.toPlayback() ?: parsedTme
+        AppLogger.i("Engine", "TME_SESSION_RESOLVE source=${if (tmeSession != null) "typed-session" else "stream-json"} streams=${streams.size} reference=$referenceId tme=${resolvedTmeSession != null} topology=${resolvedTmeSession?.topology ?: "NONE"} feeds=${resolvedTmeSession?.feeds?.size ?: 0}")
+        if (resolvedTmeSession != null && resolvedTmeSession.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
             if (isNativeTmeActive()) nativeTmeBackend.release()
-            openTiledPrepared = tmeSource?.let { openTiledBackend.prepare(tme, it, referenceId) } == true
+            openTiledPrepared = if (resolvedTmePlayback != null && tmeSource != null) openTiledBackend.prepare(resolvedTmePlayback, tmeSource, referenceId) else false
             if (openTiledPrepared) {
                 decoderManager.release()
                 activeTmeSession = tme.toModel()
@@ -257,11 +259,11 @@ class UnifiedMultiviewEngine(context: Context) {
                 AppLogger.e("TME", "Single-source tiled backend could not be prepared; refusing Media3 multi-player fallback")
                 return emptySet()
             }
-        } else if (tme?.topology == app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES) {
+        } else if (resolvedTmeSession?.topology == app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES) {
             // Never silently downgrade an F1 TME session into one ExoPlayer per feed.
             // Independent F1 tile URLs require the compressed-domain OpenTME merger.
             // Until that backend proves the one-stream/one-decoder invariant, fail closed.
-            val model = tme.toModel()
+            val model = resolvedTmeSession
             decoderManager.release()
             if (isOpenTiledActive()) {
                 openTiledEngine.stopClockCorrection()
@@ -292,8 +294,8 @@ class UnifiedMultiviewEngine(context: Context) {
                 nativeTmeBackend.release()
                 tiledMultiviewController.clear()
             }
-            if (tme != null) {
-                AppLogger.e("TME", "TME metadata is present but topology is ${tme.topology}; refusing Media3 multi-player fallback")
+            if (resolvedTmeSession != null) {
+                AppLogger.e("TME", "TME metadata is present but topology is ${resolvedTmeSession.topology}; refusing Media3 multi-player fallback")
                 return emptySet()
             }
             activeTmeSession = null
