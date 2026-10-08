@@ -11,6 +11,7 @@ import android.webkit.WebViewClient
 import app.f1multiview.core.auth.SessionStore
 import app.f1multiview.core.playback.*
 import app.f1multiview.model.*
+import app.f1multiview.media.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
