@@ -80,8 +80,7 @@ class NativeTmeMultiviewEngine(
     fun play() {
         val surface = outputSurface ?: return
         if (coordinator == null && currentSources.isNotEmpty()) {
-            currentSources = sources
-        outputSurface = surface
+            outputSurface = surface
         coordinator = TmeCmafCoordinator(
                 coordinatorContext,
                 merger,
