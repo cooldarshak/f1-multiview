@@ -8,6 +8,11 @@
 namespace {
 bool gpac_available() {
 #ifdef F1TME_WITH_GPAC
+    static bool initialized = false;
+    if (!initialized) {
+        if (gf_sys_init(GF_MemTrackerNone, nullptr) < 0) return false;
+        initialized = true;
+    }
     return true;
 #else
     return false;
@@ -17,7 +22,16 @@ bool gpac_available() {
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_app_f1multiview_media_GpacNativeTmeMerger_nativeIsAvailable(JNIEnv*, jclass) {
-    return gpac_available() ? JNI_TRUE : JNI_FALSE;
+#ifdef F1TME_WITH_GPAC
+    if (!gpac_available()) return JNI_FALSE;
+    GF_FilterSession *session = gf_fs_new(0, GF_FS_SCHEDULER_DIRECT, GF_FS_FLAG_NON_BLOCKING, nullptr);
+    if (!session) return JNI_FALSE;
+    const Bool hasTileAgg = gf_fs_filter_exists(session, "tileagg");
+    gf_fs_del(session);
+    return hasTileAgg ? JNI_TRUE : JNI_FALSE;
+#else
+    return JNI_FALSE;
+#endif
 }
 
 extern "C" JNIEXPORT void JNICALL
