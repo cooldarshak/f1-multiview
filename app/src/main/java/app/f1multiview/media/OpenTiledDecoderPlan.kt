@@ -53,12 +53,10 @@ data class OpenTiledDecoderPlan(
             sourceVideoHeight: Int = 0
         ): OpenTiledDecoderPlan? {
             if (session.feeds.size < 2 || !session.hasTileGeometry) return null
-            val urls = session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct()
-            if (urls.size != 1) return null
-
             val tileWidth = session.tileWidth ?: return null
             val tileHeight = session.tileHeight ?: return null
 
+            val urls = session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct()
             val authoritativePlacement = session.feeds.all {
                 it.tileRow != null && it.tileColumn != null
             }
@@ -82,7 +80,9 @@ data class OpenTiledDecoderPlan(
                     )
                 }
                 return OpenTiledDecoderPlan(
-                    physicalDecoderIds = listOf("tme-native-decoder"),
+                    physicalDecoderIds = listOf(
+                        if (urls.size == 1) "tme-mosaic-decoder" else "tme-native-decoder"
+                    ),
                     bindings = bindings,
                     tileColumns = columns,
                     tileRows = rows,
@@ -90,6 +90,8 @@ data class OpenTiledDecoderPlan(
                     tileHeightPx = tileHeight
                 )
             }
+
+            if (urls.size != 1) return null
 
             val feedCount = session.feeds.size
             val sourceAspect = if (sourceVideoWidth > 0 && sourceVideoHeight > 0) {
