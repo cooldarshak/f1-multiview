@@ -16,6 +16,18 @@ test -s "$WORK/source.hvc"
 gpac -i "$WORK/source.hvc" hevcsplit -o "$WORK/tiled.mp4"
 test -s "$WORK/tiled.mp4"
 
+TILED_INSPECT="$WORK/tiled.inspect"
+MERGED_INSPECT="$WORK/merged.inspect"
+gpac -i "$WORK/tiled.mp4" inspect:full >"$TILED_INSPECT"
+gpac -i "$WORK/merged.hvc" inspect:full >"$MERGED_INSPECT"
+
+TILED_PIDS=$(grep -c 'PID ' "$TILED_INSPECT" || true)
+MERGED_PIDS=$(grep -c 'PID ' "$MERGED_INSPECT" || true)
+# The generated fixture is a 2x2 HEVC tile set. Verify the toolchain actually
+# exposes four input PIDs before merge and one output PID after merge.
+test "$TILED_PIDS" -eq 4
+test "$MERGED_PIDS" -eq 1
+
 gpac -i "$WORK/tiled.mp4" hevcmerge -o "$WORK/merged.hvc"
 test -s "$WORK/merged.hvc"
 
