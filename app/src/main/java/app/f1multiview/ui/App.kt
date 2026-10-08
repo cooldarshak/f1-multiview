@@ -2640,9 +2640,12 @@ private fun FullscreenMultiview(
                     true
                 } else false
             }
-            .pointerInput(controlsVisible, menu, editSize) {
+            .pointerInput(Unit) {
                 detectTapGestures {
-                    if (menu == null && !editSize) controlsVisible = !controlsVisible
+                    // One tap always toggles the fullscreen chrome. There is no
+                    // auto-hide timer and no menu/resize exception: every tap
+                    // is an explicit show/hide action.
+                    controlsVisible = !controlsVisible
                 }
             }
     ) {
