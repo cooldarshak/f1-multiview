@@ -297,11 +297,11 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     }
     private suspend fun resolveSource(source:StreamSource){
         val contentId=source.contentId?:return
+        val isReference = source.id == _ui.value.mainStreamId
         provider.resolve(PlaybackRequest(contentId,source.channelId,_ui.value.quality)).onSuccess{playback->
             // TME describes the multiview playback session, not an arbitrary
             // secondary feed. Only the current reference/main feed may establish or
             // replace the session-level TME contract.
-            val isReference = source.id == _ui.value.mainStreamId
             _ui.value=_ui.value.copy(
                 tiledMultiviewSession = if (isReference) playback.tiledMultiview
                     else _ui.value.tiledMultiviewSession,
@@ -341,9 +341,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         }.onFailure{
             _ui.value=_ui.value.copy(providerError=it.message?:"Playback resolution failed", tmeDiscoveryPending = if (isReference) false else _ui.value.tmeDiscoveryPending)
         }
-        if (isReference) {
-            _ui.value = _ui.value.copy(tmeDiscoveryPending = false)
-        }
+        if (isReference) _ui.value = _ui.value.copy(tmeDiscoveryPending = false)
     }
     fun applyPreset(name:String){
         val streams=_ui.value.streams
