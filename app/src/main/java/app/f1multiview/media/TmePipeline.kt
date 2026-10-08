@@ -34,7 +34,17 @@ data class TmeCmafSegmentKey(
     val sequence: Long,
     val epochStartUs: Long,
     val durationUs: Long
-)
+) {
+    // Duration is metadata, not segment identity. Independent tile tracks can
+    // legitimately report slightly different sample durations for the same epoch.
+    override fun equals(other: Any?): Boolean =
+        other is TmeCmafSegmentKey &&
+            sequence == other.sequence &&
+            epochStartUs == other.epochStartUs
+
+    override fun hashCode(): Int =
+        31 * sequence.hashCode() + epochStartUs.hashCode()
+}
 
 data class TmeTileSegment(
     val feedId: String,
