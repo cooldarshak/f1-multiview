@@ -96,6 +96,7 @@ jobs:
             --disable-qjs \
             --disable-qjs-libc \
             --disable-network \
+            --disable-dvb \
             --disable-compositor \
             --disable-vout \
             --disable-aout \
