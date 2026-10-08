@@ -58,7 +58,6 @@ pushd "$SRC" >/dev/null
   --enable-tileagg \
   --enable-fin \
   --enable-mp4dmx \
-  --disable-network \
   --disable-crypto \
   --disable-compositor \
   --disable-vout \
