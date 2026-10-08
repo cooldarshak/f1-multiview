@@ -12,7 +12,10 @@ data class TiledMultiviewFeed(
     val audioEnglish: String?,
     val audioSpanish: String?,
     val subtitleEnglish: String?,
-    val subtitleSpanish: String?
+    val subtitleSpanish: String?,
+    val tileIndex: Int?,
+    val tileRow: Int?,
+    val tileColumn: Int?
 )
 
 data class TiledMultiviewSession(
@@ -67,7 +70,10 @@ fun TmePlayback.toModel(): TiledMultiviewSession {
                 audioEnglish = feed.audioEnglish,
                 audioSpanish = feed.audioSpanish,
                 subtitleEnglish = feed.subtitleEnglish,
-                subtitleSpanish = feed.subtitleSpanish
+                subtitleSpanish = feed.subtitleSpanish,
+                tileIndex = feed.tileIndex,
+                tileRow = feed.tileRow,
+                tileColumn = feed.tileColumn
             )
         }
     )
