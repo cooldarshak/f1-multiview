@@ -115,8 +115,8 @@ object TmePlaybackParser {
                 val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile", "index")
                 val row = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
                     tileIndex / resolvedTileCountHorizontal!! else null
-                val column = if (tileIndex != null && tileCountHorizontal != null && tileCountHorizontal > 0)
-                    tileIndex % resolvedTileCountHorizontal!! else null
+                val column = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
+                    tileIndex % resolvedTileCountHorizontal else null
                 add(
                     TmeFeed(
                         audioEnglish = audio?.optString("eng").takeUnless { it.isNullOrBlank() },
