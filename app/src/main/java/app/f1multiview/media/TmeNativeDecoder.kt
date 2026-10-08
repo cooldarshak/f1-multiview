@@ -11,6 +11,32 @@ import java.nio.ByteBuffer
  * This class is deliberately independent of the logical-feed model: adding/removing
  * tiles changes merger selection only. It must never create another MediaCodec.
  */
+private object HevcCodecConfig {
+    fun toAnnexB(data: ByteArray): ByteArray {
+        if (data.size < 23 || data[0].toInt() != 1) return data
+        val arrayCount = data[22].toInt() and 0x7f
+        var offset = 23
+        val out = java.io.ByteArrayOutputStream()
+        repeat(arrayCount) {
+            if (offset + 3 > data.size) return data
+            offset += 1 // array completeness + NAL unit type
+            if (offset + 2 > data.size) return data
+            val count = ((data[offset].toInt() and 0xff) shl 8) or (data[offset + 1].toInt() and 0xff)
+            offset += 2
+            repeat(count) {
+                if (offset + 2 > data.size) return data
+                val size = ((data[offset].toInt() and 0xff) shl 8) or (data[offset + 1].toInt() and 0xff)
+                offset += 2
+                if (offset + size > data.size) return data
+                out.write(byteArrayOf(0, 0, 0, 1))
+                out.write(data, offset, size)
+                offset += size
+            }
+        }
+        return out.toByteArray().takeIf { it.isNotEmpty() } ?: data
+    }
+}
+
 class TmeNativeDecoder(
     private val mimeType: String = MediaFormat.MIMETYPE_VIDEO_HEVC
 ) : AutoCloseable {
@@ -30,7 +56,7 @@ class TmeNativeDecoder(
         val format = MediaFormat.createVideoFormat(mimeType, width, height)
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 4 * 1024 * 1024)
         codecConfig?.let {
-            format.setByteBuffer("csd-0", ByteBuffer.wrap(it))
+            format.setByteBuffer("csd-0", ByteBuffer.wrap(HevcCodecConfig.toAnnexB(it)))
         }
         val created = MediaCodec.createDecoderByType(mimeType)
         created.configure(format, surface, null, 0)
