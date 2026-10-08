@@ -57,6 +57,7 @@ class NativeTmeMultiviewEngine(
         this.session = session
         this.source = source
         this.selectedFeedIds = session.feedIds
+        AppLogger.i("TME", "PREPARE backend=NATIVE_TME inputFeeds=${session.feeds.size} tiles=${session.tileCountHorizontal}x${session.tileCountVertical}")
         this.configured = false
         return true
     }
@@ -184,6 +185,7 @@ class NativeTmeMultiviewEngine(
 
         currentSources = sources
         outputSurface = surface
+        AppLogger.i("TME", "GRAPH_CREATE backend=NATIVE_TME inputFeeds=${sources.size} merger=1 mediacodec=1 outputSurfaces=1")
         coordinator = TmeCmafCoordinator(
             coordinatorContext,
             merger,
@@ -200,6 +202,8 @@ class NativeTmeMultiviewEngine(
                 },
                 onDecoderReady = {
                     configured = true
+                    val telemetry = decoder.telemetry()
+                    AppLogger.i("TME", "RUNTIME_INVARIANT backend=NATIVE_TME inputFeeds=${sources.size} gpacMerger=1 mergedVideoStreams=1 mediaCodecInstances=${if (telemetry.configured) 1 else 0} outputSurfaces=${if (telemetry.outputSurfaceAttached) 1 else 0} decoderRecreations=${telemetry.decoderRecreationCount}")
                 }
             )
         }
