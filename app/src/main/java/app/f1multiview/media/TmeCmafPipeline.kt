@@ -9,6 +9,8 @@ import java.net.URI
 import java.net.URL
 import java.net.HttpURLConnection
 import java.nio.ByteBuffer
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 
 data class TmeCmafSample(
     val timeUs: Long,
@@ -184,9 +186,16 @@ class TmeCmafCoordinator(
                 val readers = sources.associateWith { TmeCmafFeedReader(context, requestHeaders) }
                 val processed = mutableSetOf<Long>()
                 var configured = false
+                // Network and CMAF extraction for independent tiles are I/O-bound.
+                // Running them serially makes the slowest tile stall the whole mosaic.
+                val ioPool = Executors.newFixedThreadPool(sources.size)
 
-                while (running) {
-                    val playlists = sources.associateWith { readers[it]!!.load(it.url) }
+                try {
+                    while (running) {
+                        val playlistJobs = sources.associateWith { source ->
+                            ioPool.submit(Callable { readers[source]!!.load(source.url) })
+                        }
+                        val playlists = playlistJobs.mapValues { (_, job) -> job.get() }
 
                     // Process the earliest segment present in every tile feed. Never
                     // jump to the live edge of one feed while another feed is behind.
@@ -208,12 +217,15 @@ class TmeCmafCoordinator(
                         continue
                     }
 
-                    val current = sources.mapNotNull { source ->
-                        val playlist = playlists[source] ?: return@mapNotNull null
+                    val extractionJobs = sources.associateWith { source ->
+                        val playlist = playlists[source] ?: return@associateWith null
                         val segment = playlist.segments.firstOrNull {
                             it.sequence == commonSequence && it.sequence !in processed
-                        } ?: return@mapNotNull null
-                        source to readers[source]!!.extract(playlist, segment)
+                        } ?: return@associateWith null
+                        ioPool.submit(Callable { source to readers[source]!!.extract(playlist, segment) })
+                    }
+                    val current = extractionJobs.values.mapNotNull { job ->
+                        job?.get()
                     }
                     if (current.size != sources.size) {
                         Thread.sleep(250L)
@@ -290,9 +302,14 @@ class TmeCmafCoordinator(
                         decoder.drain()
                     }
 
-                    processed += commonSequence
-                    synchronizer.dropExpired()
-                    Thread.sleep(150L)
+                        processed += commonSequence
+                        synchronizer.dropExpired()
+                        // Do not introduce artificial pacing after a successfully
+                        // merged sample. Continue immediately so MediaCodec receives
+                        // the next access unit as soon as it is available.
+                    }
+                } finally {
+                    ioPool.shutdownNow()
                 }
             } catch (t: Throwable) {
                 if (running) onError(t)
