@@ -102,7 +102,7 @@ class TmeCmafFeedReader(
         segment: HlsSegment,
         timelineOffsetUs: Long = 0L
     ): TmeCmafSegment {
-        val init = playlist.initUri?.let { initCache.getOrPut(it) { get(it) } }.orEmpty()
+        val init = playlist.initUri?.let { initCache.getOrPut(it) { get(it) } } ?: ByteArray(0)
         val media = get(segment.uri)
         val file = File.createTempFile("f1tme-", ".mp4", context.cacheDir)
         try {
@@ -425,7 +425,7 @@ class TmeCmafCoordinator(
                     }
 
                         playlists.forEach { (source, playlist) ->
-                            playlist.segments.firstOrNull { it.sequence == commonSequence }?.let { segment ->
+                            playlist?.segments?.firstOrNull { it.sequence == commonSequence }?.let { segment ->
                                 val state = timelineStates.getValue(source.feedId)
                                 val offset = state.resolveOffset(playlist)
                                 state.commit(
