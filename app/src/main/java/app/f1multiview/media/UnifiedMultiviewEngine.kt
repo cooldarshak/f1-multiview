@@ -246,10 +246,10 @@ class UnifiedMultiviewEngine(context: Context) {
             openTiledPrepared = if (resolvedTmePlayback != null && tmeSource != null) openTiledBackend.prepare(resolvedTmePlayback, tmeSource, referenceId) else false
             if (openTiledPrepared) {
                 decoderManager.release()
-                activeTmeSession = tme.toModel()
+                activeTmeSession = resolvedTmeSession
                 selectedMultiviewBackend = openTiledBackend
                 _backendStatus.value = selectedMultiviewBackend.status
-                tiledMultiviewController.configure(tme.toModel())
+                tiledMultiviewController.configure(resolvedTmeSession)
             } else {
                 decoderManager.release()
                 activeTmeSession = tme.toModel()
