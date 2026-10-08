@@ -177,7 +177,7 @@ class TmeCmafFeedReader(
     private fun resolve(base: String, child: String): String = URI(base).resolve(child).toString()
 }
 
-private class TmeTimelineState {
+internal class TmeTimelineState {
     private var initialized = false
     private var lastSequence = Long.MIN_VALUE
     private var lastStartUs = 0L
