@@ -170,12 +170,12 @@ object AppLogger {
      *
      * This must be called while synchronized(this).
      */
-    private fun ensurePersistentFileLocked(reason: String): Boolean {
+    private fun ensurePersistentFileLocked(reason: String, reuseExisting: Boolean = true): Boolean {
         if (logOutput != null && logUri != null) return true
         val context = appContext ?: return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         val resolver = context.contentResolver
-        runCatching {
+        if (reuseExisting) runCatching {
             resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                 arrayOf(BaseColumns._ID, MediaStore.Downloads.SIZE),
                 "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.IS_PENDING}=0",
@@ -222,7 +222,7 @@ object AppLogger {
         synchronized(this) {
             if (logOutput == null || logUri == null) ensurePersistentFileLocked("log-write")
             if (logOutput == null || logUri == null) return
-            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; ensurePersistentFileLocked("size-rotation") }
+            if (logBytes + bytes.size > MAX_FILE_BYTES) { closeOutput(); logUri = null; logBytes = 0L; ensurePersistentFileLocked("size-rotation", reuseExisting = false) }
             val output = logOutput ?: return
             runCatching { output.write(bytes); output.flush(); logBytes += bytes.size }
                 .onFailure { Log.w(TAG, "Unable to write app log", it); closeOutput() }
