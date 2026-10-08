@@ -42,6 +42,10 @@ cmake -S "$ZLIB_SRC" -B "$ZLIB_SRC/build"   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/c
 cmake --build "$ZLIB_SRC/build" --parallel "$(nproc)"
 cmake --install "$ZLIB_SRC/build"
 
+mkdir -p "$SRC/extra_lib/include" "$SRC/extra_lib/lib/gcc"
+cp "$ZLIB_ROOT/include/zlib.h" "$ZLIB_ROOT/include/zconf.h" "$SRC/extra_lib/include/"
+cp "$ZLIB_ROOT/lib/libz.a" "$SRC/extra_lib/lib/gcc/"
+
 pushd "$SRC" >/dev/null
 export AR RANLIB STRIP
 ./configure \
