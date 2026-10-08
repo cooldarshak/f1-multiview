@@ -198,48 +198,40 @@ class UnifiedMultiviewEngine(context: Context) {
         streams: List<StreamSource>,
         visibleIds: Set<String>,
         referenceId: String?,
-        autoplay: Boolean = false,
-        allowTiledBackend: Boolean = true
+        autoplay: Boolean = false
     ): Set<String> {
         streams.forEach(feedRegistry::put)
 
         val reference = streams.firstOrNull { it.id == referenceId }
         var openTiledPrepared = false
 
-        if (allowTiledBackend) {
-            // TME is an optional session-level backend. Standard Director multiview
-            // deliberately does not enter this path because it must support mixed
-            // video + tracker/data feeds and independently resizable surfaces.
-            reference
-                ?.tmeJson
-                ?.let(TmePlaybackParser::parse)
-                ?.let { tme ->
-                    val source = reference ?: return@let
-                    if (openTiledBackend.canHandle(tme, source)) {
-                        openTiledPrepared = openTiledBackend.prepare(tme, source, referenceId)
-                        if (openTiledPrepared) {
-                            selectedMultiviewBackend = openTiledBackend
-                            _backendStatus.value = selectedMultiviewBackend.status
-                            tiledMultiviewController.configure(tme.toModel())
-                        } else {
-                            selectedMultiviewBackend = media3FallbackBackend
-                            _backendStatus.value = selectedMultiviewBackend.status
-                        }
-                    } else {
-                        selectedMultiviewBackend = media3FallbackBackend
-                        _backendStatus.value = selectedMultiviewBackend.status
-                        configureTiledMultiview(tme.toModel())
-                    }
-                }
-        } else if (isOpenTiledActive()) {
-            // Returning to the standard independent-feed wall must release the single
-            // TME player before decoder allocation starts. This is a real backend switch,
-            // not a guard hiding the tiled player behind the UI.
-            openTiledEngine.stopClockCorrection()
-            openTiledEngine.release()
-            tiledMultiviewController.clear()
+        // Director multiview is TME-first. A TME session is a session-level playback
+        // contract, so it is resolved before the logical-feed decoder scheduler. This
+        // keeps the UI free to resize/select logical tiles without allocating one player
+        // per tile.
+        val tme = reference?.tmeJson?.let(TmePlaybackParser::parse)
+        if (tme != null && reference != null && openTiledBackend.canHandle(tme, reference)) {
+            openTiledPrepared = openTiledBackend.prepare(tme, reference, referenceId)
+            if (openTiledPrepared) {
+                selectedMultiviewBackend = openTiledBackend
+                _backendStatus.value = selectedMultiviewBackend.status
+                tiledMultiviewController.configure(tme.toModel())
+            } else {
+                selectedMultiviewBackend = media3FallbackBackend
+                _backendStatus.value = selectedMultiviewBackend.status
+            }
+        } else {
+            // A backend switch away from TME must release the single physical player before
+            // Media3 fallback allocation begins. Never leave the old tiled player alive while
+            // the fallback scheduler creates logical-feed players.
+            if (isOpenTiledActive()) {
+                openTiledEngine.stopClockCorrection()
+                openTiledEngine.release()
+                tiledMultiviewController.clear()
+            }
             selectedMultiviewBackend = media3FallbackBackend
             _backendStatus.value = selectedMultiviewBackend.status
+            tme?.let { configureTiledMultiview(it.toModel()) }
         }
 
         if (openTiledPrepared) {
