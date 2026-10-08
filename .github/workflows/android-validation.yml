@@ -54,8 +54,11 @@ jobs:
           ./scripts/tme-gpac-smoke.sh
 
       - name: Build GPAC ARM64 native TME dependency
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.2.12479018
         run: |
           set -euo pipefail
+          test -x "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
           chmod +x ./scripts/build-gpac-android.sh
           ./scripts/build-gpac-android.sh "$GPAC_ROOT"
 
