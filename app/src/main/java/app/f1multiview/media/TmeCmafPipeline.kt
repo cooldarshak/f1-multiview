@@ -164,6 +164,7 @@ class TmeCmafCoordinator(
 ) {
     @Volatile private var running = false
     private var worker: Thread? = null
+    private val synchronizer = TmeSegmentSynchronizer()
 
     fun start(
         sources: List<TmeTileSource>,
@@ -245,6 +246,7 @@ class TmeCmafCoordinator(
                     }
 
                     current.forEach { processed += it.second.sequence }
+                    synchronizer.dropExpired()
                     Thread.sleep(150L)
                 }
             } catch (t: Throwable) {
