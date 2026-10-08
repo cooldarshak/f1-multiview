@@ -58,17 +58,15 @@ jobs:
           git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac-src
           NDK="$ANDROID_HOME/ndk/27.2.12479018"
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          CROSS_PREFIX="$TOOLCHAIN/aarch64-linux-android28-"
+          export AR="$TOOLCHAIN/llvm-ar"
+          export RANLIB="$TOOLCHAIN/llvm-ranlib"
+          export STRIP="$TOOLCHAIN/llvm-strip"
           cd /tmp/gpac-src
           ./configure \
             --target-os=android \
             --cpu=aarch64 \
-            --cross-prefix="$CROSS_PREFIX" \
-            --cc="$TOOLCHAIN/clang" \
-            --cxx="$TOOLCHAIN/clang++" \
-            --ar="$TOOLCHAIN/llvm-ar" \
-            --ranlib="$TOOLCHAIN/llvm-ranlib" \
-            --strip="$TOOLCHAIN/llvm-strip" \
+            --cc="$TOOLCHAIN/clang --target=aarch64-linux-android28" \
+            --cxx="$TOOLCHAIN/clang++ --target=aarch64-linux-android28" \
             --prefix=/tmp/gpac-sdk \
             --disable-all \
             --enable-threads \
