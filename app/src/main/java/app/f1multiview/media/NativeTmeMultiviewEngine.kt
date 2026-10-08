@@ -83,16 +83,20 @@ class NativeTmeMultiviewEngine(
     fun play() {
         val surface = outputSurface ?: return
         if (coordinator == null && currentSources.isNotEmpty()) {
-            outputSurface = surface
-        coordinator = TmeCmafCoordinator(
+            coordinator = TmeCmafCoordinator(
                 coordinatorContext,
                 merger,
                 decoder,
                 source?.requestHeaders.orEmpty()
             ).also { c ->
-                c.start(currentSources, surface) { error ->
-                    AppLogger.e("TME", "Native CMAF pipeline failed: " + error.message)
-                }
+                c.start(
+                    currentSources,
+                    surface,
+                    onError = { error ->
+                        AppLogger.e("TME", "Native CMAF pipeline failed: " + error.message)
+                    },
+                    onDecoderReady = { configured = true }
+                )
             }
         }
         attachedView?.requestRender()
@@ -160,17 +164,25 @@ class NativeTmeMultiviewEngine(
             )
         }
 
+        currentSources = sources
+        outputSurface = surface
         coordinator = TmeCmafCoordinator(
             coordinatorContext,
             merger,
             decoder,
             currentSource.requestHeaders
         ).also { c ->
-            c.start(sources, surface) { error ->
-                AppLogger.e("TME", "Native CMAF pipeline failed: " + error.message)
-            }
+            c.start(
+                sources,
+                surface,
+                onError = { error ->
+                    AppLogger.e("TME", "Native CMAF pipeline failed: " + error.message)
+                },
+                onDecoderReady = {
+                    configured = true
+                }
+            )
         }
-        configured = true
     }
 
     private fun stop() {
