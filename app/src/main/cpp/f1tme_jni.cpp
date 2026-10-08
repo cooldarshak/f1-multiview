@@ -157,6 +157,10 @@ static void set_source_props(
 ) {
     gf_filter_pid_set_property(pid, GF_PROP_PID_STREAM_TYPE, &PROP_UINT(GF_STREAM_VISUAL));
     gf_filter_pid_set_property(pid, GF_PROP_PID_CODECID, &PROP_UINT(GF_CODECID_HEVC));
+    // hevcmerge groups independent HEVC PIDs by the mergeable-set property.
+    // Without a shared non-zero value, the graph has four HEVC inputs but no
+    // explicit instruction that they form one compressed-domain tile set.
+    gf_filter_pid_set_property(pid, GF_PROP_PID_CODEC_MERGEABLE, &PROP_UINT(1));
     gf_filter_pid_set_property(pid, GF_PROP_PID_TIMESCALE, &PROP_UINT(1000000));
     gf_filter_pid_set_property(pid, GF_PROP_PID_ID, &PROP_UINT(id));
     gf_filter_pid_set_property(pid, GF_PROP_PID_WIDTH, &PROP_UINT(width));
