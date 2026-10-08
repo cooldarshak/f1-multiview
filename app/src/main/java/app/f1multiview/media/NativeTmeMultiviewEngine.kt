@@ -111,17 +111,34 @@ class NativeTmeMultiviewEngine(
         outputSurface = null
     }
 
-    fun diagnostics(): Map<String, String> = mapOf(
-        "backend" to "NATIVE_TME",
-        "available" to merger.available.toString(),
-        "prepared" to (session != null).toString(),
-        "configured" to configured.toString(),
-        "logicalFeedCount" to (session?.feeds?.size ?: 0).toString(),
-        "physicalMerger" to if (merger.available) "GPAC_HEVCMERGE" else "UNAVAILABLE",
-        "mediaCodecInstances" to if (decoder.telemetry().configured) "1" else "0",
-        "outputSurfaceAttached" to decoder.telemetry().outputSurfaceAttached.toString(),
-        "decoderRecreationCount" to decoder.telemetry().decoderRecreationCount.toString()
-    )
+    fun diagnostics(): Map<String, String> {
+        val telemetry = TmeRuntimeTelemetry(
+            backend = "OPEN_TME_NATIVE_PIPELINE",
+            logicalFeedCount = session?.feeds?.size ?: 0,
+            selectedFeedCount = session?.feeds?.size ?: 0,
+            inputTileStreams = session?.feeds?.size ?: 0,
+            mergedVideoStreams = if (configured) 1 else 0,
+            mediaCodecInstances = if (decoder.telemetry().configured) 1 else 0,
+            outputSurfaces = if (decoder.telemetry().outputSurfaceAttached) 1 else 0,
+            droppedSegments = 0,
+            mergeLatencyMs = 0,
+            decoderRecreationCount = decoder.telemetry().decoderRecreationCount
+        )
+        return mapOf(
+            "backend" to "NATIVE_TME",
+            "available" to merger.available.toString(),
+            "prepared" to (session != null).toString(),
+            "configured" to configured.toString(),
+            "logicalFeedCount" to (session?.feeds?.size ?: 0).toString(),
+            "physicalMerger" to if (merger.available) "GPAC_HEVCMERGE" else "UNAVAILABLE",
+            "inputTileStreams" to telemetry.inputTileStreams.toString(),
+            "mergedVideoStreams" to telemetry.mergedVideoStreams.toString(),
+            "mediaCodecInstances" to telemetry.mediaCodecInstances.toString(),
+            "outputSurfaces" to telemetry.outputSurfaces.toString(),
+            "singleDecoderInvariant" to telemetry.singleDecoderInvariant.toString(),
+            "decoderRecreationCount" to telemetry.decoderRecreationCount.toString()
+        )
+    }
 
     private fun start(surface: Surface) {
         val currentSession = session ?: return
