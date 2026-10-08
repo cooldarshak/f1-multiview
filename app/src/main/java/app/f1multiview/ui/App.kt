@@ -1600,7 +1600,8 @@ private fun CanonicalMultiviewLayout(
                         Modifier.weight(mainX).fillMaxHeight(),
                         onFocus,
                         active = activeId == selected[0].id,
-                        surfaceType = surfaceType
+                        surfaceType = surfaceType,
+                        onVideoTap = onVideoTap
                     )
                     ResizeHandle(
                         Orientation.Horizontal,
@@ -1621,7 +1622,8 @@ private fun CanonicalMultiviewLayout(
                             Modifier.weight(fourSideH1).fillMaxWidth(),
                             onFocus,
                             active = activeId == selected[1].id,
-                            surfaceType = surfaceType
+                            surfaceType = surfaceType,
+                            onVideoTap = onVideoTap
                         )
                         ResizeHandle(Orientation.Vertical, editSize) {
                             val delta = it / 900f
@@ -1636,7 +1638,8 @@ private fun CanonicalMultiviewLayout(
                             Modifier.weight(fourSideH2).fillMaxWidth(),
                             onFocus,
                             active = activeId == selected[2].id,
-                            surfaceType = surfaceType
+                            surfaceType = surfaceType,
+                            onVideoTap = onVideoTap
                         )
                         ResizeHandle(Orientation.Vertical, editSize) {
                             val delta = it / 900f
@@ -1650,7 +1653,8 @@ private fun CanonicalMultiviewLayout(
                             Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
                             onFocus,
                             active = activeId == selected[3].id,
-                            surfaceType = surfaceType
+                            surfaceType = surfaceType,
+                            onVideoTap = onVideoTap
                         )
                     }
                 }
@@ -1659,17 +1663,17 @@ private fun CanonicalMultiviewLayout(
                     Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
                         ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                         ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                     }
                     ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
                     Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                         ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[5], ui, engine, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType)
+                        MultiviewFeedTile(selected[5], ui, engine, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
                     }
                 }
         }
