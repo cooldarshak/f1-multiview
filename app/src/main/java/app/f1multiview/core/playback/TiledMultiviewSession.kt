@@ -24,6 +24,8 @@ data class TiledMultiviewSession(
     val contentId: Int?,
     val tileWidth: Int?,
     val tileHeight: Int?,
+    val tileCountHorizontal: Int? = null,
+    val tileCountVertical: Int? = null,
     val feeds: List<TiledMultiviewFeed>
 ) {
     val feedIds: List<String>
@@ -60,6 +62,8 @@ fun TmePlayback.toModel(): TiledMultiviewSession {
         contentId = contentId,
         tileWidth = tileWidth,
         tileHeight = tileHeight,
+        tileCountHorizontal = tileCountHorizontal,
+        tileCountVertical = tileCountVertical,
         feeds = feeds.mapIndexed { index, feed ->
             TiledMultiviewFeed(
                 index = index,
