@@ -266,33 +266,61 @@ class TmeCmafCoordinator(
                         configured = true
                     }
 
-                    val sampleMaps = current.associate { (source, segment) ->
-                        source.feedId to segment.samples.associateBy { it.timeUs / 1000L }
+                    // Match every tile against a common reference timestamp instead of
+                    // requiring identical millisecond timestamps. Independent CMAF tracks can
+                    // differ by small muxing/rounding errors even when they represent the same
+                    // video frame.
+                    val referenceSamples = current.first().second.samples
+                    val samplesByFeed = current.associate { (source, segment) ->
+                        source.feedId to segment.samples
                     }
-                    val timestamps = sampleMaps.values
-                        .reduce { common, next -> common intersect next.keys }
-                        .sorted()
-                    for (timestamp in timestamps) {
-                        if (!running) break
-                        val tiles = sources.mapNotNull { source ->
-                            sampleMaps[source.feedId]?.get(timestamp)?.let { sample ->
-                                TmeTileSegment(
-                                    source.feedId,
-                                    TmeCmafSegmentKey(commonSequence, sample.timeUs, sample.durationUs),
-                                    sample.payload,
-                                    sample.keyFrame
-                                )
-                            }
-                        }
-                        if (tiles.size != sources.size) continue
+                    val expectedFeedIds = sources.map { it.feedId }.toSet()
+                    val consumedByFeed = sources.associate { it.feedId to mutableSetOf<Int>() }
 
-                        val expectedFeedIds = sources.map { it.feedId }.toSet()
+                    for (reference in referenceSamples) {
+                        if (!running) break
+
+                        val matches = sources.mapNotNull { source ->
+                            val samples = samplesByFeed[source.feedId].orEmpty()
+                            val candidates = samples.mapIndexedNotNull { index, sample ->
+                                if (index in consumedByFeed[source.feedId].orEmpty()) {
+                                    null
+                                } else {
+                                    val delta = kotlin.math.abs(sample.timeUs - reference.timeUs)
+                                    if (delta <= 50_000L) index to sample else null
+                                }
+                            }
+                            candidates.minByOrNull { kotlin.math.abs(it.second.timeUs - reference.timeUs) }
+                                ?.also { consumedByFeed[source.feedId]?.add(it.first) }
+                        }
+                        if (matches.size != sources.size) continue
+
+                        // The synchronizer identity is sequence + media timestamp. Duration is
+                        // normalized across the tile set so tiny duration differences cannot
+                        // create separate buckets for the same frame.
+                        val canonicalTimeUs = matches.map { it.second.timeUs }.average().toLong()
+                        val canonicalDurationUs = matches.map { it.second.durationUs }
+                            .filter { it > 0L }
+                            .minOrNull()
+                            ?: reference.durationUs
+                        val key = TmeCmafSegmentKey(
+                            commonSequence,
+                            canonicalTimeUs,
+                            canonicalDurationUs
+                        )
+                        val tiles = matches.mapIndexed { index, match ->
+                            TmeTileSegment(
+                                sources[index].feedId,
+                                key,
+                                match.second.payload,
+                                match.second.keyFrame
+                            )
+                        }
+
                         var aligned: TmeAlignedSegment? = null
                         tiles.forEach { tile ->
-                            if (aligned == null) {
-                                aligned = synchronizer.offer(tile, expectedFeedIds)
-                            } else {
-                                synchronizer.offer(tile, expectedFeedIds)
+                            synchronizer.offer(tile, expectedFeedIds).let { result ->
+                                if (result != null) aligned = result
                             }
                         }
                         aligned = aligned ?: synchronizer.pollComplete(expectedFeedIds)
