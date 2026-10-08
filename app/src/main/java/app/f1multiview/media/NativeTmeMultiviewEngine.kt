@@ -60,6 +60,8 @@ class NativeTmeMultiviewEngine(
 
             override fun onOutputSurfaceReleased() {
                 coordinator?.stop()
+                coordinator = null
+                outputSurface = null
             }
         })
     }
