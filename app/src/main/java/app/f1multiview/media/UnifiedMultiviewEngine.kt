@@ -38,6 +38,8 @@ class UnifiedMultiviewEngine(context: Context) {
     private val _backendStatus = MutableStateFlow(media3FallbackBackend.status)
     private var openTiledMuted = false
     private var activeTmeSession: TiledMultiviewSession? = null
+    // Direct load/retry calls are also subject to the multiview physical-architecture gate.
+    private var media3MultiviewBlocked = false
     val backendStatus: StateFlow<MultiviewBackendStatus> = _backendStatus
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
@@ -182,6 +184,10 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         feedRegistry.put(stream)
+        if (media3MultiviewBlocked) {
+            AppLogger.e("TME", "MULTIVIEW_LOAD_GATE refusing direct Media3 load feed=${stream.id}; TME session is required for multi-feed playback")
+            return false
+        }
         if (isNativeTmeActive() || isOpenTiledActive()) {
             AppLogger.d("Engine", "load bypassed: tiled backend owns physical playback feed=${stream.id}")
             return true
@@ -255,9 +261,11 @@ class UnifiedMultiviewEngine(context: Context) {
                 app.f1multiview.model.StreamKind.TRACK
             )
         }
+        media3MultiviewBlocked = visibleVideoCount > 1 && resolvedTmeSession == null
         if (visibleVideoCount > 1 && resolvedTmeSession == null) {
             decoderManager.release()
             activeTmeSession = null
+            media3MultiviewBlocked = false
             selectedMultiviewBackend = media3FallbackBackend
             _backendStatus.value = selectedMultiviewBackend.status
             AppLogger.e("TME", "MULTIVIEW_GATE no TME session; refusing Media3 multi-player allocation visibleVideoFeeds=$visibleVideoCount")
