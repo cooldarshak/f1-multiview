@@ -22,6 +22,8 @@ class NativeTmeMultiviewEngine(
     private var source: StreamSource? = null
     private var attachedView: OpenTiledCompositorView? = null
     private var configured = false
+    private var currentSources: List<TmeTileSource> = emptyList()
+    private var outputSurface: android.view.Surface? = null
 
     fun canHandle(session: TiledMultiviewSession): Boolean =
         merger.available &&
@@ -74,6 +76,21 @@ class NativeTmeMultiviewEngine(
     }
 
     fun play() {
+        val surface = outputSurface ?: return
+        if (coordinator == null && currentSources.isNotEmpty()) {
+            currentSources = sources
+        outputSurface = surface
+        coordinator = TmeCmafCoordinator(
+                coordinatorContext,
+                merger,
+                decoder,
+                source?.requestHeaders.orEmpty()
+            ).also { c ->
+                c.start(currentSources, surface) { error ->
+                    AppLogger.e("TME", "Native CMAF pipeline failed: " + error.message)
+                }
+            }
+        }
         attachedView?.requestRender()
     }
 
@@ -88,6 +105,8 @@ class NativeTmeMultiviewEngine(
         attachedView = null
         session = null
         source = null
+        currentSources = emptyList()
+        outputSurface = null
     }
 
     fun diagnostics(): Map<String, String> = mapOf(
