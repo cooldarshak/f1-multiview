@@ -2626,13 +2626,6 @@ private fun FullscreenMultiview(
         else fullscreenShowControlsFocusRequester.requestFocus()
     }
 
-    LaunchedEffect(controlsVisible, menu, editSize) {
-        if (controlsVisible && menu == null && !editSize) {
-            delay(5_000L)
-            controlsVisible = false
-        }
-    }
-
     Box(
         Modifier
             .fillMaxSize()
