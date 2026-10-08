@@ -139,7 +139,8 @@ class F1TvApiClient {
             .mapNotNull { it.opt("tmeJson") ?: it.opt("tme") ?: it.opt("TME") }
             .firstOrNull { value ->
                 when(value){
-                    is org.json.JSONObject, is org.json.JSONArray -> value.length()>0
+                    is org.json.JSONObject -> value.length()>0
+                    is org.json.JSONArray -> value.length()>0
                     else -> value.toString().isNotBlank()
                 }
             }
