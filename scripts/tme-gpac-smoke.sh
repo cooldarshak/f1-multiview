@@ -8,12 +8,27 @@ mkdir -p "$WORK"
 echo "TME_GPAC_SMOKE=START"
 
 # Generate a tiny motion-constrained HEVC 2x2 tiled elementary stream.
-ffmpeg -hide_banner -loglevel error   -f lavfi -i testsrc2=size=640x360:rate=30   -t 2   -an   -c:v libx265   -x265-params 'tiles=2x2:slices=4:frame-threads=1'   -f hevc "$WORK/source.hvc"
+# Kvazaar is used because GPAC's tiled merger requires independent tile slices
+# with motion vectors constrained to their own tile regions.
+ffmpeg -hide_banner -loglevel error \
+  -f lavfi -i testsrc2=size=640x360:rate=30 \
+  -t 2 -an -pix_fmt yuv420p -f rawvideo "$WORK/source.yuv"
+
+kvazaar \
+  -i "$WORK/source.yuv" \
+  --input-res 640x360 \
+  --input-fps 30 \
+  --tiles 2x2 \
+  --slices tiles \
+  --mv-constraint frametilemargin \
+  --period 30 \
+  --qp 32 \
+  -o "$WORK/source.hvc"
 
 test -s "$WORK/source.hvc"
 
 # Split the tiled HEVC into independent tile tracks, then merge them back.
-MP4Box -add "$WORK/source.hvc:split_tiles" -new "$WORK/tiled.mp4"
+gpac -i "$WORK/source.hvc" hevcsplit -o "$WORK/tiled.mp4"
 test -s "$WORK/tiled.mp4"
 
 TILED_PROBE="$WORK/tiled.probe"
