@@ -22,6 +22,7 @@ class NativeTmeMultiviewEngine(
     private var source: StreamSource? = null
     private var attachedView: OpenTiledCompositorView? = null
     private var configured = false
+    private var selectedFeedIds: List<String> = emptyList()
     private var currentSources: List<TmeTileSource> = emptyList()
     private var outputSurface: android.view.Surface? = null
 
@@ -55,6 +56,7 @@ class NativeTmeMultiviewEngine(
         merger.release()
         this.session = session
         this.source = source
+        this.selectedFeedIds = session.feedIds
         this.configured = false
         return true
     }
@@ -81,9 +83,10 @@ class NativeTmeMultiviewEngine(
     }
 
     fun selectFeeds(feedIds: List<String>) {
-        attachedView?.setSelectedFeedIds(feedIds.distinct())
+        selectedFeedIds = feedIds.distinct().ifEmpty { session?.feedIds.orEmpty() }
+        attachedView?.setSelectedFeedIds(selectedFeedIds)
         if (merger.available && configured) {
-            merger.updateSelection(feedIds.toSet())
+            merger.updateSelection(selectedFeedIds.toSet())
         }
     }
 
@@ -127,6 +130,7 @@ class NativeTmeMultiviewEngine(
         attachedView = null
         session = null
         source = null
+        selectedFeedIds = emptyList()
         currentSources = emptyList()
         outputSurface = null
     }
@@ -135,7 +139,7 @@ class NativeTmeMultiviewEngine(
         val telemetry = TmeRuntimeTelemetry(
             backend = "OPEN_TME_NATIVE_PIPELINE",
             logicalFeedCount = session?.feeds?.size ?: 0,
-            selectedFeedCount = session?.feeds?.size ?: 0,
+            selectedFeedCount = selectedFeedIds.size,
             inputTileStreams = session?.feeds?.size ?: 0,
             mergedVideoStreams = if (configured) 1 else 0,
             mediaCodecInstances = if (decoder.telemetry().configured) 1 else 0,
