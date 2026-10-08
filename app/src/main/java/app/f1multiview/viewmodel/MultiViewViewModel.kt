@@ -341,7 +341,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         LayoutPreset.SINGLE -> 1
         LayoutPreset.SPLIT_2 -> 2
         LayoutPreset.GRID_4 -> 4
-        LayoutPreset.GRID_6 -> if (openTiledCapable()) 24 else 4
+        LayoutPreset.GRID_6 -> 4
     }
 
     private fun openTiledCapable(): Boolean {
@@ -351,68 +351,59 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     }
 
     fun setLayout(layout:LayoutPreset){
-    val current = _ui.value
-    if (openTiledCapable()) {
-        val tiledIds = current.tiledMultiviewSession?.feedIds.orEmpty().take(24)
-        val capacity = when (layout) {
-            LayoutPreset.SINGLE -> 1
-            LayoutPreset.SPLIT_2 -> 2
-            LayoutPreset.GRID_4 -> 4
-            LayoutPreset.GRID_6 -> 6
-        }
-        val selectedTiled = (current.selectedTiledFeedIds.filter { it in tiledIds } + tiledIds)
-            .distinct()
-            .take(capacity)
-        _ui.value = current.copy(
-            layout = layout,
-            selectedTiledFeedIds = selectedTiled,
-            providerError = null
-        )
-    } else {
-        val maxFeeds=maxLogicalFeeds(layout)
-        _ui.value=current.copy(
-            layout=layout,
-            selectedStreamIds=current.selectedStreamIds.take(maxFeeds)
-        )
-    }
+    val maxFeeds = maxLogicalFeeds(layout)
+    _ui.value = _ui.value.copy(
+        layout = layout,
+        selectedStreamIds = _ui.value.selectedStreamIds.take(maxFeeds),
+        providerError = null
+    )
     persist()
 }
 fun toggleStream(id:String)=viewModelScope.launch{
-    if (openTiledCapable()) {
-        toggleTiledStream(id)
+    val current = _ui.value.selectedStreamIds
+    val maxFeeds = maxLogicalFeeds()
+    if (id in current) {
+        if (id == _ui.value.mainStreamId) return@launch
+        _ui.value = _ui.value.copy(
+            selectedStreamIds = current.filterNot { it == id },
+            providerError = null
+        )
         persist()
         return@launch
     }
-    val current=_ui.value.selectedStreamIds
-    val maxFeeds=maxLogicalFeeds()
-    if(id in current){
-        if(id == _ui.value.mainStreamId) return@launch
-        _ui.value=_ui.value.copy(selectedStreamIds=current.filterNot{it==id})
-        persist()
-        return@launch
-    }
-    // The four-feed ceiling applies only to the independent Media3 decoder
-    // fallback. A genuine single-source tiled session has one physical decoder,
-    // so logical tile count is bounded by the source and UI capacity instead.
-    if(current.size>=maxFeeds){
-        _ui.value=_ui.value.copy(
-            providerError=if (openTiledCapable()) "The tiled source has reached its 24-feed logical limit." else "4 simultaneous video feeds is the current safe limit. The 5th feed was blocked to prevent a decoder crash."
+
+    if (current.size >= maxFeeds) {
+        _ui.value = _ui.value.copy(
+            providerError = "4 simultaneous feeds is the current Director limit."
         )
         return@launch
     }
-    val needed=current.size+1
-    val requiredLayout=when{
-        needed<=1->LayoutPreset.SINGLE
-        needed<=2->LayoutPreset.SPLIT_2
-        needed<=4->LayoutPreset.GRID_4
-        else->LayoutPreset.GRID_6
+
+    val needed = current.size + 1
+    val requiredLayout = when {
+        needed <= 1 -> LayoutPreset.SINGLE
+        needed <= 2 -> LayoutPreset.SPLIT_2
+        else -> LayoutPreset.GRID_4
     }
-    val currentMax=maxLogicalFeeds()
-    val targetLayout=if(currentMax<needed)requiredLayout else _ui.value.layout
-    _ui.value=_ui.value.copy(layout=targetLayout,selectedStreamIds=current+id,providerError=null)
+    val targetLayout = if (current.size <= 1 || current.size + 1 > maxFeeds) {
+        requiredLayout
+    } else {
+        _ui.value.layout
+    }
+
+    _ui.value = _ui.value.copy(
+        layout = targetLayout,
+        selectedStreamIds = (current + id).distinct(),
+        providerError = null
+    )
     persist()
-    val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-    if(source.url==null && source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) resolveSource(source)
+
+    val source = _ui.value.streams.firstOrNull { it.id == id } ?: return@launch
+    if (source.url == null &&
+        source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+    ) {
+        resolveSource(source)
+    }
 }
     fun streamIdForTiledFeed(feedId: String): String? {
         val session = _ui.value.tiledMultiviewSession ?: return null
