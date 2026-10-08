@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <mutex>
 
 #ifdef F1TME_WITH_GPAC
 #include <gpac/filters.h>
@@ -137,12 +138,12 @@ struct Graph {
 };
 
 static bool ensure_gpac() {
+    static std::once_flag initOnce;
     static bool initialized = false;
-    if (!initialized) {
-        if (gf_sys_init(GF_MemTrackerNone, nullptr) < 0) return false;
-        initialized = true;
-    }
-    return true;
+    std::call_once(initOnce, [] {
+        initialized = (gf_sys_init(GF_MemTrackerNone, nullptr) >= 0);
+    });
+    return initialized;
 }
 
 static void set_source_props(
