@@ -35,6 +35,8 @@ data class TmePlayback(
     val contentId: Int?,
     val tileWidth: Int?,
     val tileHeight: Int?,
+    val tileCountHorizontal: Int?,
+    val tileCountVertical: Int?,
     val feeds: List<TmeFeed>
 ) {
     val topology: TmeTopology
@@ -86,6 +88,14 @@ object TmePlaybackParser {
         val metadata = root.optJSONObject("metadata")
         val advanced = root.optJSONObject("advanced")
         val tileSize = advanced?.optJSONObject("tileSize")
+        val tileCountHorizontal = firstInt(
+            root, metadata, advanced, tileSize,
+            "tileCountHorizontal", "tile_count_horizontal"
+        )
+        val tileCountVertical = firstInt(
+            root, metadata, advanced, tileSize,
+            "tileCountVertical", "tile_count_vertical"
+        )
 
         val feeds = buildList {
             val array: JSONArray = root.optJSONArray("feeds") ?: JSONArray()
@@ -94,6 +104,11 @@ object TmePlaybackParser {
                 val audio = feed.optJSONObject("audioTrackNames")
                 val feedMetadata = feed.optJSONObject("metadata")
                 val subtitles = feed.optJSONObject("subtitleTrackNames")
+                val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile", "index")
+                val row = if (tileIndex != null && tileCountHorizontal != null && tileCountHorizontal > 0)
+                    tileIndex / tileCountHorizontal else null
+                val column = if (tileIndex != null && tileCountHorizontal != null && tileCountHorizontal > 0)
+                    tileIndex % tileCountHorizontal else null
                 add(
                     TmeFeed(
                         audioEnglish = audio?.optString("eng").takeUnless { it.isNullOrBlank() },
@@ -104,9 +119,9 @@ object TmePlaybackParser {
                         subtitleSpanish = subtitles?.optString("spaSubtitle").takeUnless(String?::isNullOrBlank),
                         url = feed.optString("url").takeUnless(String::isNullOrBlank),
                         uuid = feed.optString("uuid").takeUnless(String::isNullOrBlank),
-                        tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile", "index"),
-                        tileRow = firstInt(feed, feedMetadata, "tileRow", "row", "rowIndex"),
-                        tileColumn = firstInt(feed, feedMetadata, "tileColumn", "column", "columnIndex", "col")
+                        tileIndex = tileIndex,
+                        tileRow = row,
+                        tileColumn = column
                     )
                 )
             }
@@ -118,6 +133,8 @@ object TmePlaybackParser {
             contentId = metadata?.optInt("contentId", -1)?.takeIf { it >= 0 },
             tileWidth = tileSize?.optInt("width", -1)?.takeIf { it > 0 },
             tileHeight = tileSize?.optInt("height", -1)?.takeIf { it > 0 },
+            tileCountHorizontal = tileCountHorizontal,
+            tileCountVertical = tileCountVertical,
             feeds = feeds
         )
     }.getOrNull()
