@@ -52,22 +52,24 @@ jobs:
           ./scripts/tme-gpac-smoke.sh
 
 
-      - name: Build pinned GPAC Android core
+      - name: Prepare official GPAC Android native runtime
         run: |
           set -euo pipefail
-          rm -rf /tmp/gpac_public
-          git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac_public
-          cd /tmp/gpac_public
-          sed -i 's/^APP_ABI :=.*/APP_ABI := arm64-v8a/' build/android/jni/Application.mk
-          cd build/android/jni
-          ./gpac_build_android -ndk="$ANDROID_NDK_HOME" -force_rebuild -v
-          cd ../libs
-          test -f arm64-v8a/libgpac.so
+          GPAC_VERSION="26.07"
+          GPAC_REV="a07cbfff"
+          GPAC_APK="/tmp/gpac-android.apk"
+          curl --fail --silent --show-error --location --retry 6 --retry-delay 5 --retry-all-errors \
+            -o "$GPAC_APK" \
+            "https://download.tsi.telecom-paristech.fr/gpac/release/$GPAC_VERSION/gpac-26.07-rev0-ga07cbfff-master.apk"
+          rm -rf /tmp/gpac-sdk
+          mkdir -p /tmp/gpac-sdk/lib/arm64-v8a /tmp/gpac-sdk/include
+          unzip -q "$GPAC_APK" 'lib/arm64-v8a/*' -d /tmp/gpac-unpacked
+          find /tmp/gpac-unpacked/lib/arm64-v8a -name '*.so' -exec cp -a {} /tmp/gpac-sdk/lib/arm64-v8a/ \;
+          test -f /tmp/gpac-sdk/lib/arm64-v8a/libgpac.so
+          git clone --depth 1 --branch v26.07.0 https://github.com/gpac/gpac.git /tmp/gpac_headers
+          cp -a /tmp/gpac_headers/include /tmp/gpac-sdk/
           mkdir -p "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a"
-          cp -a arm64-v8a/*.so "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a/"
-          mkdir -p /tmp/gpac-sdk/include /tmp/gpac-sdk/lib/arm64-v8a
-          cp -a "$GITHUB_WORKSPACE"/app/build/gpac-jni/arm64-v8a/*.so /tmp/gpac-sdk/lib/arm64-v8a/
-          cp -a /tmp/gpac_public/include /tmp/gpac-sdk/
+          cp -a /tmp/gpac-sdk/lib/arm64-v8a/*.so "$GITHUB_WORKSPACE/app/build/gpac-jni/arm64-v8a/"
           echo "GPAC_ROOT=/tmp/gpac-sdk" >> "$GITHUB_ENV"
 
       - name: Build debug APK
