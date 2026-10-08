@@ -86,6 +86,7 @@ jobs:
             --enable-mp4dmx \
             --enable-mp4mx \
             --static-modules \
+            --no-dvb \
             --use-zlib=no \
             --use-ffmpeg=no \
             --use-ssl=no \
