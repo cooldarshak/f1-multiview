@@ -198,7 +198,18 @@ class TmeCmafCoordinator(
                         val playlistJobs = sources.associateWith { source ->
                             ioPool.submit(Callable { readers[source]!!.load(source.url) })
                         }
-                        val playlists = playlistJobs.mapValues { (_, job) -> job.get() }
+                        val playlists = playlistJobs.mapValues { (source, job) ->
+                            runCatching { job.get() }
+                                .onFailure {
+                                    if (running) {
+                                        AppLogger.e(
+                                            "TME",
+                                            "Playlist refresh failed for ${source.feedId}: ${it.message}"
+                                        )
+                                    }
+                                }
+                                .getOrNull()
+                        }
 
                     // Process the earliest segment present in every tile feed. Never
                     // jump to the live edge of one feed while another feed is behind.
@@ -227,9 +238,19 @@ class TmeCmafCoordinator(
                         } ?: return@associateWith null
                         ioPool.submit(Callable { source to readers[source]!!.extract(playlist, segment) })
                     }
-                    val current = extractionJobs.values.mapNotNull { job ->
-                        job?.get()
-                    }
+                    val current = extractionJobs.map { (source, job) ->
+                        if (job == null) return@map null
+                        runCatching { job.get() }
+                            .onFailure {
+                                if (running) {
+                                    AppLogger.e(
+                                        "TME",
+                                        "CMAF extraction failed for ${source.feedId}: ${it.message}"
+                                    )
+                                }
+                            }
+                            .getOrNull()
+                    }.filterNotNull()
                     if (current.size != sources.size) {
                         Thread.sleep(250L)
                         continue
