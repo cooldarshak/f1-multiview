@@ -47,10 +47,6 @@ static GF_Err source_initialize(GF_Filter *filter) {
     return GF_OK;
 }
 
-static GF_Err source_process(GF_Filter *) {
-    return GF_OK;
-}
-
 static const GF_FilterCapability SourceCaps[] = {
     CAP_UINT(GF_CAPS_OUTPUT, GF_PROP_PID_STREAM_TYPE, GF_STREAM_VISUAL),
     CAP_UINT(GF_CAPS_OUTPUT, GF_PROP_PID_CODECID, GF_CODECID_HEVC),
@@ -114,7 +110,6 @@ static const GF_FilterRegister *source_register(GF_FilterSession *) {
     SourceRegister.private_size = sizeof(SourceCtx);
     SourceRegister.flags = GF_FS_REG_ACT_AS_SOURCE | GF_FS_REG_EXPLICIT_ONLY;
     SourceRegister.initialize = source_initialize;
-    SourceRegister.process = source_process;
     SourceRegister.caps = SourceCaps;
     SourceRegister.nb_caps = sizeof(SourceCaps) / sizeof(SourceCaps[0]) - 1;
     return &SourceRegister;
