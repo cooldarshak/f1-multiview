@@ -198,43 +198,50 @@ class UnifiedMultiviewEngine(context: Context) {
         streams: List<StreamSource>,
         visibleIds: Set<String>,
         referenceId: String?,
-        autoplay: Boolean = false
+        autoplay: Boolean = false,
+        allowTiledBackend: Boolean = true
     ): Set<String> {
         streams.forEach(feedRegistry::put)
 
-        // If F1 supplied TME metadata with the resolved reference feed, configure the
-        // logical single-player multiview state before the physical fallback scheduler runs.
-        // TME is a session-level playback contract. Prefer the reference feed's
-        // payload rather than whichever secondary feed happened to resolve first.
-        // This prevents a later feed resolution from silently replacing the
-        // multiview session definition.
         val reference = streams.firstOrNull { it.id == referenceId }
         var openTiledPrepared = false
-        reference
-            ?.tmeJson
-            ?.let(TmePlaybackParser::parse)
-            ?.let { tme ->
-                val source = reference ?: return@let
-                if (openTiledBackend.canHandle(tme, source)) {
-                    openTiledPrepared = openTiledBackend.prepare(tme, source, referenceId)
-                    if (openTiledPrepared) {
-                        selectedMultiviewBackend = openTiledBackend
-                        _backendStatus.value = selectedMultiviewBackend.status
-                        tiledMultiviewController.configure(tme.toModel())
+
+        if (allowTiledBackend) {
+            // TME is an optional session-level backend. Standard Director multiview
+            // deliberately does not enter this path because it must support mixed
+            // video + tracker/data feeds and independently resizable surfaces.
+            reference
+                ?.tmeJson
+                ?.let(TmePlaybackParser::parse)
+                ?.let { tme ->
+                    val source = reference ?: return@let
+                    if (openTiledBackend.canHandle(tme, source)) {
+                        openTiledPrepared = openTiledBackend.prepare(tme, source, referenceId)
+                        if (openTiledPrepared) {
+                            selectedMultiviewBackend = openTiledBackend
+                            _backendStatus.value = selectedMultiviewBackend.status
+                            tiledMultiviewController.configure(tme.toModel())
+                        } else {
+                            selectedMultiviewBackend = media3FallbackBackend
+                            _backendStatus.value = selectedMultiviewBackend.status
+                        }
                     } else {
                         selectedMultiviewBackend = media3FallbackBackend
                         _backendStatus.value = selectedMultiviewBackend.status
+                        configureTiledMultiview(tme.toModel())
                     }
-                } else {
-                    selectedMultiviewBackend = media3FallbackBackend
-                    _backendStatus.value = selectedMultiviewBackend.status
-                    configureTiledMultiview(tme.toModel())
                 }
-            }
+        } else if (isOpenTiledActive()) {
+            // Returning to the standard independent-feed wall must release the single
+            // TME player before decoder allocation starts. This is a real backend switch,
+            // not a guard hiding the tiled player behind the UI.
+            openTiledEngine.stopClockCorrection()
+            openTiledEngine.release()
+            tiledMultiviewController.clear()
+            selectedMultiviewBackend = media3FallbackBackend
+            _backendStatus.value = selectedMultiviewBackend.status
+        }
 
-        // A genuine single-source tiled session owns the only physical video player.
-        // Do not preload, allocate, suspend, or reactivate the independent-feed
-        // decoder manager after the open tiled backend has been selected.
         if (openTiledPrepared) {
             val referenceIsVideo = reference?.kind !in setOf(
                 app.f1multiview.model.StreamKind.TRACK_MAP,
