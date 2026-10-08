@@ -51,13 +51,16 @@ class UnifiedMultiviewEngine(context: Context) {
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
     fun configureTiledMultiview(session: app.f1multiview.core.playback.TiledMultiviewSession) {
-        selectedMultiviewBackend = if (nativeTmeBackend.canHandle(session)) {
-            nativeTmeBackend
-        } else {
-            media3FallbackBackend
+        // TME metadata must never select the generic multi-ExoPlayer backend.
+        // Physical backend selection is topology-driven and fail-closed.
+        selectedMultiviewBackend = when (session.topology) {
+            app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE -> openTiledBackend
+            app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES -> nativeTmeBackend
+            app.f1multiview.data.f1tv.TmeTopology.UNKNOWN -> nativeTmeBackend
         }
         tiledMultiviewController.configure(session)
         _backendStatus.value = selectedMultiviewBackend.status
+        AppLogger.i("Engine", "TME_BACKEND_SELECT topology=" + session.topology + " backend=" + selectedMultiviewBackend.status.kind + " singlePlayer=" + selectedMultiviewBackend.status.singlePlayer)
     }
 
     fun tiledMultiviewState(): TiledMultiviewController.State = tiledMultiviewController.state()
