@@ -29,7 +29,10 @@ internal class SyntheticFeedDecoder(
     @Volatile private var codecName: String = "pending"
     @Volatile private var codecDroppedFrames: Long? = null
 
-    fun metricsLine(): String = "$feedLabel codec=$codecName outputFramesQueued=${outputFramesQueued.get()} lateByOneFrameOrMore=${lateFrameDeadlines.get()} codecDroppedFrames=${codecDroppedFrames?.toString() ?: "not-exposed-by-codec"}"
+    fun metricsLine(): String {
+        val dropped = codecDroppedFrames?.toString() ?: "not-exposed-by-codec"
+        return "$feedLabel codec=$codecName outputFramesQueued=${outputFramesQueued.get()} lateByOneFrameOrMore=${lateFrameDeadlines.get()} codecDroppedFrames=$dropped"
+    }
     @Volatile private var worker: Thread? = null
 
     fun start() {
