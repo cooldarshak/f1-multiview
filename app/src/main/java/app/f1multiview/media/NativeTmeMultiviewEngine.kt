@@ -28,29 +28,20 @@ class NativeTmeMultiviewEngine(
     private var outputSurface: android.view.Surface? = null
 
     fun canHandle(session: TiledMultiviewSession): Boolean {
-        // GPAC hevcmerge combines compatible spatial HEVC tiles from one picture.
-        // It is not a general-purpose compositor for independent camera videos.
-        // Current F1 metadata labels distinct URLs as independent feeds, but does
-        // not prove that their compressed pictures share tile-slice dependencies.
-        // Until CMAF/bitstream preflight establishes that invariant, never route
-        // these feeds into hevcmerge and report a successful one-decoder graph.
-        if (session.topology != TmeTopology.SINGLE_MOSAIC_SOURCE) return false
-        return merger.available &&
-            session.isUsable &&
-            session.feeds.size >= 2 &&
-            session.tileCountHorizontal != null &&
-            session.tileCountHorizontal > 0 &&
-            session.tileCountVertical != null &&
-            session.tileCountVertical > 0 &&
-            session.feeds.all {
-                !it.url.isNullOrBlank() &&
-                    it.tileIndex != null &&
-                    it.tileRow != null &&
-                    it.tileColumn != null &&
-                    it.tileIndex < session.tileCountHorizontal * session.tileCountVertical &&
-                    it.tileColumn < session.tileCountHorizontal &&
-                    it.tileRow < session.tileCountVertical
-            }
+        // No current session metadata proves that distinct F1 feeds are spatial HEVC
+        // tiles from the same encoded picture. GPAC hevcmerge cannot combine arbitrary
+        // camera videos. A genuine single-mosaic URL is handled by OpenTiledMultiviewBackend,
+        // which uses one normal Media3 player; it must not be sent through this merger.
+        val reason = when (session.topology) {
+            TmeTopology.SINGLE_MOSAIC_SOURCE ->
+                "single-mosaic input belongs to OpenTiledMultiviewBackend"
+            TmeTopology.INDEPENDENT_FEED_SOURCES ->
+                "independent F1 feeds are not proven compatible spatial HEVC tiles"
+            TmeTopology.UNKNOWN ->
+                "TME input topology is unknown"
+        }
+        AppLogger.w("TME", "NATIVE_TME_CAPABILITY_REJECT topology=${session.topology} reason=$reason")
+        return false
     }
 
     fun prepare(
