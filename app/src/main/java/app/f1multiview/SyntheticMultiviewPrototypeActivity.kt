@@ -79,7 +79,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
 
         worker.execute {
             try {
-                val generated = SyntheticMultiviewClipFactory.createPair(this)
+                val generated = SyntheticMultiviewClipFactory.createSet(this)
                 mainHandler.post {
                     if (destroyed) return@post
                     clips = generated
