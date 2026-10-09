@@ -9,18 +9,13 @@
 
 Do not inspect, reuse, reverse-engineer, or design around the Tiledmedia/ClearVR assets in the official APK. Do not search for its private metadata, attempt to reproduce its internal SDK contracts, or make TME discovery a project milestone. The official APK is not an input to our architecture work. Use public Android APIs, open standards, and independently maintained open-source projects instead.
 
-### Existing branch implementation
+### Current source state
 
-The branch already has a GPAC-backed native experiment:
-- `app/src/main/cpp/f1tme_jni.cpp` creates a GPAC `hevcmerge` filter graph.
-- Its inputs are declared as HEVC, marked as mergeable, and assigned crop/tile positions.
-- The Kotlin boundary accepts `TmeTileSource` and `TmeAlignedSegment` values.
-- The current source contract therefore expects already-aligned HEVC access units and tile metadata. It is not yet a general-purpose engine that can take arbitrary independent F1 camera manifests and turn them into a tiled stream.
-- The current API-discovery gate means the native experiment does not start when F1's ordinary playback response lacks TME metadata.
+The previous metadata-dependent session/parser path, tiled backend, native compressed-domain merger, and GPAC/CMake packaging have been removed from the active app source and build workflows. The app no longer selects production multiview topology from private provider metadata.
 
-**Do not simply remove the gate and feed arbitrary camera streams into `hevcmerge`.** GPAC documents `hevcmerge` as a merger for spatial tiles of one motion-constrained HEVC video: inputs must be synchronised and their codec parameter sets/tile geometry must be compatible. Separate onboard camera angles are different pictures, not spatial tiles of one picture.
+The production coordinator currently supports ordinary authorized single-feed playback. When multiple video feeds are selected, it shows a clear “not yet enabled” state and refuses independent-player fallback. This is an intentional interim gate: the custom renderer must first pass the three-feed synthetic runtime proof on the target phone and Android TV. It is not a claim that production multiview is already working.
 
-A second important finding: `scripts/build-gpac-android.sh` currently enables the HEVC tile filters but explicitly disables GPAC's `compositor`, `vout`, and `aout`. Therefore the current native GPAC build cannot yet serve as a general decoded-video mosaic engine. That is a build/configuration decision we must address deliberately, not assume away.
+The synthetic proof uses public Android APIs only: local clear H.264 fixtures, one MediaCodec decoder per feed, SurfaceTexture inputs, and one EGL/OpenGL ES compositor. No F1 endpoint, account credential, or protected stream is used by that test harness.
 
 ## 2. GitHub research: what we can reuse
 
@@ -74,15 +69,11 @@ Reference: https://github.com/PhilLab/Android-MediaCodec-Examples
 
 Useful for understanding the native decode-to-texture-to-compositor path. We must test actual decoder capacity and thermal behavior on target hardware.
 
-### D. GPAC — already used in this branch
-Repository: https://github.com/gpac/gpac
+### D. Optional open-source media frameworks
 
-Relevant documentation:
-- HEVC tile merger: https://github.com/gpac/gpac/wiki/hevcmerge
-- Compositor, including `mosaic://` multi-source input: https://github.com/gpac/gpac/wiki/compositor
-- DASH/HLS input filter: https://github.com/gpac/gpac/wiki/dashin
+GPAC and GStreamer remain public open-source projects that could be evaluated later if there is a concrete, independently validated benefit. Neither is part of the current app build, and neither should be assumed to provide a working Android output-surface, hardware-decoder, timing, or protected-playback path merely because it builds on Linux.
 
-GPAC gives us two distinct candidates: `hevcmerge` for genuinely compatible spatial HEVC tiles, and a single GPAC filter session using multiple media inputs plus the compositor for independent camera feeds. The latter is promising but is **not enabled in our current Android build**; we must build it and prove its Android output-surface, timing, and performance behavior before relying on it.
+The immediate baseline is the app-owned Android MediaCodec → SurfaceTexture → EGL/OpenGL ES prototype. Any future framework comparison must use clear synthetic inputs first, meet the repository's licensing requirements, and be compared using measured first-frame latency, drift, dropped-frame evidence, CPU/GPU/memory use, thermal behavior, lifecycle stability, and build size.
 
 ### Research conclusion
 
@@ -90,14 +81,13 @@ We are not looking for a drop-in equivalent to Tiledmedia or attempting to clone
 
 ## 2A. Implementation progress (2026-10-09)
 
-The first provider-neutral foundation has been committed to the active branch:
-- `app/src/main/java/app/f1multiview/media/OwnMultiviewEngineContract.kt` defines feed descriptors, normalized viewports/layouts, explicit engine phases, per-feed status, and a shared session timeline without TME types.
-- `app/src/main/java/app/f1multiview/media/SessionTimelineSynchronizer.kt` defines a deterministic master/follower correction policy: hold followers when the master buffers, resume engine-paused followers, use rate correction for small drift, and seek for large drift with separate VOD/live thresholds.
-- `app/src/test/java/app/f1multiview/media/SessionTimelineSynchronizerTest.kt` contains eight JVM unit tests for these decisions.
+The provider-neutral contract in `OwnMultiviewEngineContract.kt` defines feed descriptors, normalized viewports/layouts, engine phases, feed status, and a shared session timeline. `SessionTimelineSynchronizer.kt` contains a deterministic master/follower correction policy and JVM tests.
 
-These files are an initial contract/policy layer, **not yet the production playback path**. An isolated debug-only synthetic prototype generates three distinct clear H.264 fixtures, describes them with provider-neutral `FeedDescriptor` values, decodes them with three Android MediaCodec instances, and composites their SurfaceTextures through one GLES output view using normalized `FeedViewport`/`ViewportLayout` values. Diagnostics include first-texture-frame latency, texture update rate/gaps, surface timestamp skew, coalesced frame notifications, codec-reported dropped-frame metrics when available, late presentation deadlines, GLES draw cadence, process PSS/heap/CPU, and decoder thread count. Coalesced callbacks and late deadlines are not authoritative decoder-drop counts.
+The debug-only synthetic harness now generates **three distinct clear H.264 clips**, describes them with `FeedDescriptor`, decodes them with three Android `MediaCodec` instances against one shared playback anchor, and draws their `SurfaceTexture` inputs through one GLES compositor using normalized `FeedViewport`/`ViewportLayout` values.
 
-The source-level dependency map and staged validation gates are recorded in [OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md](OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md). The old metadata-dependent production path and native GPAC merger build wiring have been removed from the edited source paths. The production app deliberately refuses multi-video playback until the three-feed prototype passes device validation; it does not silently fall back to independent ExoPlayers. Cloud build/test validation and real-device runtime measurements remain outstanding. **Do not integrate authorized F1 feeds into the custom decoder/compositor path until the three-feed synthetic proof has passed on the target phone and Android TV.**
+The diagnostics report per-feed first-texture-frame latency, texture update rate and gaps, surface timestamp skew, coalesced frame notifications, codec-reported dropped-frame metrics when exposed, late presentation deadlines, GLES draw cadence, process PSS/heap/CPU, and decoder-thread count. Coalesced callbacks and late presentation deadlines are explicitly not treated as authoritative decoder-drop counts.
+
+The source migration and validation status is tracked in [OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md](OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md). Cloud build/test validation is in progress; target-device runtime measurements are still required.
 
 ## 2B. Broader web research (Firecrawl + public technical documentation)
 
@@ -167,90 +157,78 @@ This research extends beyond GitHub repository discovery. Findings below are bas
 
 ## 3. Target architecture
 
-The app exposes **one logical multiview player/session**. It must not create independent ExoPlayer instances as a workaround. Internally, the engine may need multiple decoder instances when the input consists of independent camera feeds; a single coordinator does not magically turn separate encoded streams into one decoder input.
+Build an app-owned, provider-neutral engine with these responsibilities:
 
-Proposed components:
+- **FeedCatalog / FeedSourceResolver:** resolve selected feed IDs into typed sources. Provider metadata may enrich a feed but is not a prerequisite for multiview.
+- **FeedPipeline:** demux, buffer, decode, and expose frames through Android public media APIs. Preserve the authorized manifest, entitlement, authentication headers, and Widevine path when protected inputs are later integrated.
+- **TimelineClock:** maintain one logical session timebase and per-feed media timestamps.
+- **FrameSynchronizer:** measure master/follower PTS drift, correct small drift with bounded playback-rate changes, and seek only when the drift policy requires it.
+- **DecoderCoordinator:** allocate/release physical decoders based on measured device capability, codec profile, secure-decoder constraints, resolution, and thermal/resource behavior. A logical session does not imply a single decoder.
+- **MultiviewCompositor:** consume independent decoded surfaces/textures and draw the requested normalized viewports into one app-owned output surface.
+- **AudioRouter:** maintain one selected audio source and handle mute/language selection where the source supports it.
+- **AdaptiveLoadController:** adjust selected feed quality/resolution and avoid resource overcommit without silently dropping feeds or hiding failures.
+- **Diagnostics:** expose first-frame latency, per-feed PTS drift, frame-drop evidence, buffering, decoder identity/capacity, CPU/GPU/memory, and thermal state where available.
 
-1. **FeedCatalog / FeedSourceResolver** — resolve each selected feed through the existing authorized F1 flow; produce a typed feed descriptor. Do not require TME metadata to represent a feed.
-2. **FeedPipeline** — own manifest/demux/sample acquisition and bounded queues for one input. Keep this behind an interface so the implementation can be tested with clear synthetic samples before protected playback is integrated.
-3. **TimelineClock** — use the main/world feed as the master clock; map each feed's presentation timestamps to the same session timeline.
-4. **FrameSynchronizer** — continuously measure drift; apply small rate corrections where supported and seek/re-align on larger drift; re-align followers after stalls or seeks.
-5. **DecoderCoordinator** — allocate/release decoder resources as a unit, inspect codec support, and fail with a visible, diagnosable reason if the device cannot sustain the selected layout. No fake-success guards.
-6. **MultiviewCompositor** — render decoded feed textures into one OpenGL ES output surface, with per-feed crop, aspect ratio, z-order, and resizeable viewports.
-7. **AudioRouter** — select one audio source by default and prevent accidental simultaneous audio from every feed.
-8. **AdaptiveLoadController** — observe decoder load, dropped frames, buffer depth, and thermal/performance signals; reduce per-feed resolution/frame rate where supported rather than letting every feed stutter.
-9. **Diagnostics** — log per-feed codec, dimensions, input queue depth, first-frame latency, decoder errors, PTS drift, dropped frames, and compositor frame time. Never log tokens or secrets.
+### Three implementation principles
 
-### Three implementation paths to evaluate
-
-**Path 1 — compressed-domain tile merge:** use GPAC `hevcmerge` only if the actual inputs are spatial HEVC tiles with matching access-unit timestamps, decoder configuration, and valid tile geometry. It produces one merged HEVC bitstream but is not a merger for independent camera angles.
-
-**Path 2 — one GPAC media graph with a compositor (first prototype candidate):** enable and build GPAC's `dashin`/media input and `compositor` filters, feed the independent camera streams into one GPAC session, and render a mosaic to an Android-owned output surface. This keeps one graph/session owner and reuses an established open-source media framework. It is not yet proven in our Android build; compositor/vout are currently disabled, so we must validate native dependencies, surface ownership, live timing, and hardware decoding before adopting it.
-
-**Path 3 — custom coordinated decode/composite:** use one app-owned engine to coordinate per-feed demux/decode pipelines, SurfaceTexture outputs, a shared timeline, and one OpenGL ES compositor. This can emulate the multiview behavior and layout, but may use multiple hardware decoder contexts and has device-dependent limits. It is not the same compression/decoder optimization as a server-prepared tiled stream.
-
-An important engineering constraint remains independent of any vendor: arbitrary independent camera feeds cannot be assumed to combine into one encoded stream or one decoder input. We must establish the source formats and then choose a technically valid open implementation. Run a format/capability probe and a three-feed prototype before choosing the primary path. Do not silently fall back from one path to another.
+1. **Prove the compositor on synthetic clear media first.** The current harness uses three independent 320×180 H.264 feeds at 15 fps. That is a starting point, not proof of the resolution/frame rate F1 will require.
+2. **Measure physical decoder limits.** Each independent encoded camera feed may need its own decoder. Record the actual codec selected, frame cadence, failures, resource use, and sustainable feed count on each target device.
+3. **Keep production UI independent of backend selection.** Preserve existing feed selection, main-feed selection, layouts, resize handles, playback controls, audio/subtitle/quality menus where supported, logging/screenshot settings, and TV D-pad/focus behavior. Unsupported multi-feed playback must be visible; it must not silently create one ExoPlayer per feed.
 
 ## 4. Phased execution plan
 
-### Phase 0 — freeze the correct direction
-- Remove TME discovery and all Tiledmedia/ClearVR inspection from the acceptance criteria and implementation plan.
-- Keep current work on `feature/tiledmedia-multiview-rearchitecture`.
-- Preserve resizing, TV remote controls, logging, and existing UI.
-- Do not trigger a build without explicit approval.
+### Phase 0 — enforce the boundary
 
-### Phase 1 — audit the current implementation (static code audit baseline complete; source-format probe remains)
-- Trace the complete path from selected F1 feed -> playback response -> feed descriptor -> aligned sample queue -> native merger -> decoder/output surface.
-- Identify every TME-specific type, gate, and assumption; classify each as reusable generic behavior, GPAC-specific behavior, or proprietary/TME-only plumbing.
-- Establish the exact input codec/container and whether real feeds are compatible with the current HEVC merger. Do not infer this from HTTP 200 or a manifest URL alone.
-- Add focused tests for missing TME metadata, incompatible codecs, timestamp mismatch, merger output, and visible failure states.
+- Keep work on `feature/tiledmedia-multiview-rearchitecture`; do not use `main` for active development.
+- Keep the app free of proprietary multiview metadata parsers, vendor-specific session contracts, and native merger code derived from that path.
+- Preserve authentication, entitlement, and Widevine restrictions. No DRM bypass.
+- Do not trigger builds unless the user has explicitly requested validation.
+- Keep resizing and existing UI/control behavior intact.
 
-#### Confirmed code-audit findings
-1. `UnifiedMultiviewEngine.updateViewport()` sets `media3MultiviewBlocked` when more than one visible video exists and no parsed/typed TME session is available; it releases the decoder manager and returns an empty set. This is the immediate reason ordinary independent feeds cannot enter a multiview playback path when F1 responses have no TME metadata.
-2. `OpenTiledMultiviewEngine` is already vendor-independent in its implementation, but its entry contract still requires a `TmePlayback` whose topology is `SINGLE_MOSAIC_SOURCE`, a single source URL, and tile geometry. It handles a pre-packaged mosaic; it does not combine independent onboard URLs.
-3. The current JNI GPAC graph explicitly loads `hevcmerge:mrows=true:strict=true`, declares each input as HEVC, and collects compressed output samples. It does not decode independent camera pictures or render a general mosaic.
-4. `scripts/build-gpac-android.sh` explicitly disables GPAC `compositor`, `vout`, and `aout`; therefore the currently built GPAC configuration cannot provide the proposed independent-stream compositor without a separate build/configuration and Android output-surface proof.
-5. The current default backend is `Media3MultiPlayerFallbackBackend`, while the code intentionally blocks that backend for more than one visible video. Simply removing the gate would therefore violate the one-logical-engine requirement and risk returning to the multi-ExoPlayer behavior the project is meant to replace.
-6. Research of F1AppleTV and Race Control confirms that existing F1 clients provide valuable layout, feed lifecycle, and synchronization patterns, but both use separate per-feed players in their current implementations. They are references for product behavior and test cases, not evidence of single-decoder composition.
-7. The first implementation milestone must be a vendor-neutral engine contract and clear synthetic three-feed rendering proof. Only after that should the F1 feed resolver be wired into it; the actual F1 codec/container/timestamp characteristics still need to be measured rather than assumed.
+### Phase 1 — source migration audit
 
+- Verify that app source, Gradle, native packaging, scripts, and CI no longer depend on the removed metadata-driven path.
+- Keep provider-neutral feed/timeline/viewport contracts and focused tests.
+- Document any remaining unsupported production behavior instead of disguising it with fallback routing.
 
-- Trace the complete path from selected F1 feed -> playback response -> feed descriptor -> aligned sample queue -> native merger -> decoder/output surface.
-- Identify every TME-specific type, gate, and assumption; classify each as reusable generic behavior, GPAC-specific behavior, or proprietary/TME-only plumbing.
-- Establish the exact input codec/container and whether real feeds are compatible with the current HEVC merger. Do not infer this from HTTP 200 or a manifest URL alone.
-- Add focused tests for missing TME metadata, incompatible codecs, timestamp mismatch, merger output, and visible failure states.
+### Phase 2 — three-feed synthetic proof
 
-### Phase 2 — build an engine contract and synthetic test harness
-- Define a TME-independent `FeedDescriptor`, `FeedSample`, `SessionTimeline`, `ViewportLayout`, and `EngineState`.
-- Use synthetic, clear, known-good media samples to test engine behavior independently of F1 authentication and DRM.
-- Prove timestamp alignment, feed add/remove, seek, buffering, surface recreation, resize, and release/restart lifecycle.
-- Keep the test path separate from real F1 entitlement and protected playback.
+- Generate three visibly distinct clear H.264 fixtures locally.
+- Decode three feeds through separate MediaCodec instances and present them through three SurfaceTexture inputs to one GLES compositor.
+- Measure first-frame latency, PTS drift, frame-drop evidence, decoder identities, CPU/GPU/memory, and lifecycle behavior.
+- Repeat layout changes, pause/resume, surface recreation, and teardown to find races and resource leaks.
+- Validate on the target Android phone and Android TV; an emulator or cloud build is not a substitute for device decoder-capacity evidence.
 
-### Phase 3 — prove the native media path
-- Prototype GPAC HEVC merging with compatible spatial-tile test bitstreams and verify the merged output using a decoder, not just a successful native return.
-- Build a separate GPAC configuration with `dashin` and `compositor` enabled; prove that two local clear test streams render into one Android surface in one graph, then add a third stream.
-- If GPAC's Android compositor/output integration is unsuitable, prototype the custom MediaCodec -> SurfaceTexture -> OpenGL path with two then three synthetic feeds.
-- Measure CPU/GPU, memory, decoder allocation, frame drops, and thermal behavior on the target phone/TV. Choose based on evidence, not naming or architecture diagrams.
+### Phase 3 — fix and establish the baseline
 
-### Phase 4 — integrate the chosen engine with F1 feeds
-- Connect the engine to the existing authorized feed resolver without requiring TME metadata.
-- Preserve a single engine/session owner; no independent ExoPlayer fallback.
-- Keep protected playback and DRM integration as a later milestone, but do not bypass or weaken DRM when that milestone is implemented.
-- Validate first with two feeds, then three/four, including repeated layout changes and surface recreation.
+- Fix rendering, pacing, timestamp, resource, or lifecycle defects before protected media is introduced.
+- Add explicit failure diagnostics when a codec or device cannot sustain three feeds.
+- Compare one, two, and three feeds to establish where capacity degrades; do not claim four-feed support without evidence.
+
+### Phase 4 — authorized F1 integration
+
+- Only after Phase 2 passes on both devices, connect the app-owned engine to ordinary authorized F1 feed resolution.
+- Preserve login/session refresh, entitlement headers, manifest preparation, license requests, and Widevine secure-output requirements.
+- Validate real feed codecs, containers, timestamps, live-edge behavior, audio, subtitles, quality selection, and decoder capacity.
+- Do not infer that a clear synthetic path proves protected F1 playback works.
 
 ### Phase 5 — release gate
-Do not claim success until the correct branch builds, unit tests pass, the signed APK is verified and uploaded, and actual device evidence confirms two-/three-feed playback is smooth and synchronized. Build status alone is not runtime proof.
+
+- `testDebugUnitTest` passes.
+- `assembleDebug` succeeds.
+- APK signature, identity, integrity, and artifact existence are verified.
+- Runtime evidence from the target phone and Android TV confirms smooth three-feed playback and records the requested metrics.
+- No success claim is made based on source changes or a cloud build alone.
 
 ## 5. Acceptance criteria
 
-- The engine can start without any TME metadata.
-- Two and three feed inputs can be selected and reach explicit, diagnosable states.
-- All active feeds share one session timeline and continuously re-synchronise after stalls.
-- One logical player/session controls all feeds; no independent ExoPlayer fallback.
-- Resize, layouts, audio selection, and TV remote navigation continue to work.
-- Unsupported codec combinations or insufficient decoder capacity produce clear diagnostics rather than endless loading.
-- No DRM bypass, invented F1 endpoint, or proprietary Tiledmedia runtime dependency.
-
+- The app starts and supports a single authorized F1 feed without requiring proprietary multiview metadata.
+- Three clear synthetic feeds can be decoded and composited through one app-owned GLES output surface.
+- First-frame latency, PTS drift, dropped-frame evidence, decoder usage, CPU/memory, and lifecycle behavior are measurable.
+- Device decoder limits are explicit and evidence-based.
+- Existing feed selection, layouts, resizing, controls, logging/screenshot settings, and TV navigation remain present.
+- Multi-feed production playback never silently falls back to independent ExoPlayers.
+- No authentication bypass, DRM bypass, invented F1 endpoint, or proprietary multiview runtime dependency is introduced.
 
 ## 2C. Cross-industry multiview research (Firecrawl + public engineering sources, 2026-10-09)
 
@@ -330,6 +308,22 @@ This section intentionally broadens beyond F1 projects. It distinguishes publicl
 **media-kit**
 - https://github.com/media-kit/media-kit
 - MIT-licensed playback framework with an Android SurfaceTexture rendering path. Worth a controlled comparison only if it can be hosted per feed without creating the same decoder-contention problem and if a separate compositor can consume its frames safely.
+
+### Updated architectural decision
+
+1. **Current baseline: three-feed custom Android renderer.** Continue with MediaCodec → SurfaceTexture → EGL/OpenGL ES using clear synthetic clips. This is the first measurable baseline and does not depend on a proprietary SDK.
+2. **Optional open-source comparisons only after baseline measurements.** GPAC, GStreamer, or another license-compatible project may be considered only as an independently validated component. No old native merger path is part of the current app.
+3. **Measure sustainable capacity, not just player count.** One logical session/compositor may still require one physical decoder per independent encoded camera feed. Prove what each target device can sustain.
+4. **Keep protected playback as a separate acceptance gate.** A clear synthetic prototype proves only clear decode/render/synchronization behavior. It does not prove Widevine compatibility or protected-output support.
+5. **No build/runtime success claim without evidence.** Cloud tests and signed APK verification establish build health; phone and Android TV runtime measurements establish rendering behavior.
+
+### Immediate next work
+
+- Complete the current cloud validation run: JVM unit tests, signed APK assembly, signature/integrity checks, and artifact upload.
+- Install and run the debug-only three-feed prototype on the target phone and Android TV.
+- Capture its per-feed first-frame latency, texture update gaps, timestamp skew, codec-reported dropped-frame metrics where exposed, late deadlines, GLES draw cadence, PSS/heap/CPU, and decoder names.
+- Fix any defects found and repeat until the synthetic proof passes.
+- Only then integrate authorized F1 feeds into the own decoder/compositor path.
 
 ### Updated architectural decision
 
