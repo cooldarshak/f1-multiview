@@ -141,7 +141,8 @@ class F1TvApiClient {
         // known 4.0 then 3.0 fallback order if that config is unavailable.
         ensureApiConfig()
         val endpoints = apiVersionCandidates(configuredVideoApiVersion,listOf("4.0","3.0")).map { apiVersion ->
-            BASE+"/"+apiVersion+"/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
+            val platform = if(apiVersion=="3.0") "WEB_HLS" else "WEB_DASH"
+            BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
         }
         var last:Throwable? = null
         for (endpoint in endpoints) {
