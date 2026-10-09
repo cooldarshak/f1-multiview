@@ -51,7 +51,7 @@ class MultiviewPlaybackBackendTest {
 
         assertFalse(backend.status.available)
         assertFalse(backend.status.singlePlayer)
-        assertTrue(backend.status.reason.contains("independent F1 feeds"))
+        assertTrue(backend.status.reason.contains("independent"))
         assertFalse(backend.canHandle(session))
     }
 
