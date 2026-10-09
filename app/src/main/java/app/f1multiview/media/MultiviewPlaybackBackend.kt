@@ -135,7 +135,7 @@ class NativeTmePlaybackBackend(
                     )
                 }
             } catch (error: Throwable) {
-                AppLogger.e("TME", "CMAF_PREFLIGHT_FAILED type=${error.javaClass.simpleName} message=${error.message}")
+                AppLogger.e("TME", "CMAF_PREFLIGHT_FAILED type=${error.javaClass.simpleName}")
             } finally {
                 preflightInFlight = false
             }
