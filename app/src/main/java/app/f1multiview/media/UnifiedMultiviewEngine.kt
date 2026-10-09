@@ -93,7 +93,7 @@ class UnifiedMultiviewEngine(context: Context) {
         }
         if (visibleVideoCount > 1) {
             multiFeedBlocked = true
-            decoderManager.release()
+            decoderManager.retain(emptySet())
             _multiviewStatus.value =
                 "MULTIVIEW NOT YET ENABLED: the own three-feed synthetic renderer must pass phone and Android TV runtime validation before protected F1 feed integration. No independent ExoPlayer fallback was created."
             AppLogger.e("OwnMultiviewEngine", "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=own-engine-runtime-validation-pending")
