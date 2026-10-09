@@ -44,6 +44,8 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private val pipelineLock = Any()
     private val pipelines = mutableListOf<SyntheticFeedDecoder>()
     private val statusLines = linkedMapOf<String, String>()
+    private val runtimeErrors = linkedMapOf<String, String>()
+    private var lastRuntimeVerdictLog: String? = null
     private var starting = false
     private var destroyed = false
     private var lastCpuSampleAtNs = 0L
@@ -166,6 +168,8 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
                 )
             )
             // Give both decoders one common epoch so setup time does not create separate clocks.
+            runtimeErrors.clear()
+            lastRuntimeVerdictLog = null
             playbackStartedAtNs = SystemClock.elapsedRealtimeNanos()
             val sharedPlaybackAnchorNs = System.nanoTime() + 500_000_000L
             feedDescriptors.zip(surfaces).forEach { (feed, surface) ->
@@ -183,6 +187,11 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         mainHandler.post {
             if (destroyed) return@post
             val key = line.substringBefore(' ')
+            if (line.contains(" ERROR ")) {
+                runtimeErrors[key] = line.substringAfter(" ERROR ")
+            } else if (line.contains(" configured ")) {
+                runtimeErrors.remove(key)
+            }
             statusLines[key] = line
             renderStatus()
             AppLogger.i("SyntheticMultiview", line)
@@ -193,6 +202,14 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
             add("Three MediaCodec decoders → three SurfaceTextures → one GLES compositor")
+            val verdict = runtimeVerdict()
+            add("RUNTIME VERDICT ${verdict.state}: ${verdict.summary}")
+            verdict.failures.forEach { add("  FAIL: $it") }
+            val verdictLog = "${verdict.state}: ${verdict.summary}: ${verdict.failures.joinToString("|")}"
+            if (verdictLog != lastRuntimeVerdictLog) {
+                lastRuntimeVerdictLog = verdictLog
+                AppLogger.i("SyntheticMultiviewGate", verdictLog)
+            }
             compositor.inputFrameDiagnostics(diagnosticEpochNs()).forEach(::add)
             add(compositor.drawDiagnostics())
             add(resourceDiagnostics())
@@ -204,6 +221,30 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     }
 
     private fun diagnosticEpochNs(): Long = playbackStartedAtNs.takeIf { it > 0L } ?: prototypeStartedAtNs
+
+    private fun runtimeVerdict(): SyntheticMultiviewRuntimeGate.Verdict {
+        val epochNs = diagnosticEpochNs()
+        val elapsedMs = if (playbackStartedAtNs > 0L) {
+            ((SystemClock.elapsedRealtimeNanos() - playbackStartedAtNs).coerceAtLeast(0L) / 1_000_000L)
+        } else 0L
+        val textureMetrics = compositor.runtimeTextureMetrics(epochNs).associateBy { it.feedId }
+        val decoderMetrics = synchronized(pipelineLock) { pipelines.associateBy { it.label } }
+        val feeds = SyntheticMultiviewRuntimeGate.expectedFeedIds.map { id ->
+            val texture = textureMetrics[id]
+            val decoder = decoderMetrics[id]
+            SyntheticMultiviewRuntimeGate.FeedMetrics(
+                feedId = id,
+                codecName = decoder?.codecNameSnapshot ?: "pending",
+                decoderOutputFrames = decoder?.outputFramesQueuedCount ?: 0L,
+                textureUpdates = texture?.textureUpdates ?: 0L,
+                firstFrameLatencyMs = texture?.firstFrameLatencyMs,
+                lastUpdateAgeMs = texture?.lastUpdateAgeMs,
+                maxUpdateGapMs = texture?.maxUpdateGapMs ?: 0L,
+                error = runtimeErrors[id] ?: decoder?.errorMessage
+            )
+        }
+        return SyntheticMultiviewRuntimeGate.evaluate(elapsedMs, feeds, compositor.runtimeDrawMetrics())
+    }
 
     private fun resourceDiagnostics(): String {
         val memory = Debug.MemoryInfo()
@@ -239,6 +280,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
                 }
             }
             pipelines.clear()
+            playbackStartedAtNs = 0L
             starting = false
         }
     }

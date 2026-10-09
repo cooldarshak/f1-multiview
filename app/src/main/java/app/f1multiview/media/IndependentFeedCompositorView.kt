@@ -72,6 +72,36 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     fun coalescedFrameNotifications(): List<Long> = renderer.sourceCoalescedNotifications.map { it.get() }
 
+    /** Structured measurements for the on-device acceptance gate. */
+    fun runtimeTextureMetrics(startedAtNs: Long): List<SyntheticMultiviewRuntimeGate.TextureMetrics> {
+        val nowNs = android.os.SystemClock.elapsedRealtimeNanos()
+        return syntheticFeedIds.mapIndexed { index, feedId ->
+            val firstNs = renderer.sourceFirstFrameAtNs[index].get()
+            val lastNs = renderer.sourceLastFrameAtNs[index].get()
+            SyntheticMultiviewRuntimeGate.TextureMetrics(
+                feedId = feedId,
+                textureUpdates = renderer.sourceFrameCount[index].get(),
+                firstFrameLatencyMs = if (firstNs > 0L) ((firstNs - startedAtNs).coerceAtLeast(0L) / 1_000_000L) else null,
+                lastUpdateAgeMs = if (lastNs > 0L) ((nowNs - lastNs).coerceAtLeast(0L) / 1_000_000L) else null,
+                maxUpdateGapMs = renderer.sourceMaxArrivalGapNs[index].get() / 1_000_000L
+            )
+        }
+    }
+
+    fun runtimeDrawMetrics(): SyntheticMultiviewRuntimeGate.DrawMetrics {
+        val firstNs = renderer.firstDrawAtNsSnapshot()
+        val lastNs = renderer.lastDrawAtNsSnapshot()
+        val count = renderer.renderedFrameCount.get()
+        val rate = if (count > 1L && firstNs > 0L && lastNs > firstNs) {
+            (count - 1L) * 1_000_000_000.0 / (lastNs - firstNs)
+        } else null
+        return SyntheticMultiviewRuntimeGate.DrawMetrics(
+            drawCalls = count,
+            drawRateFps = rate,
+            maxDrawGapMs = renderer.maxDrawGapNsSnapshot() / 1_000_000L
+        )
+    }
+
     /** Measured input-frame updates, first-frame latency, update gaps, and PTS skew. Coalesced notifications are a surface-update diagnostic, not an authoritative decoder-drop count. */
     fun inputFrameDiagnostics(startedAtNs: Long): List<String> = (0 until SYNTHETIC_FEED_COUNT).map { index ->
         val count = renderer.sourceFrameCount[index].get()
@@ -244,6 +274,10 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             lastDrawAtNs.set(drawTimeNs)
             renderedFrameCount.incrementAndGet()
         }
+
+        fun firstDrawAtNsSnapshot(): Long = firstDrawAtNs.get()
+        fun lastDrawAtNsSnapshot(): Long = lastDrawAtNs.get()
+        fun maxDrawGapNsSnapshot(): Long = maxDrawGapNs.get()
 
         fun drawDiagnostics(): String {
             val count = renderedFrameCount.get()

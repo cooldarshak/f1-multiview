@@ -1,43 +1,44 @@
 # Synthetic Multiview Prototype
 
 **Branch:** `feature/tiledmedia-multiview-rearchitecture`  
-**Status:** implementation draft; no build, unit test, or device run has been performed.
+**Scope:** isolated debug-only clear-content runtime proof. It is not the production F1 playback path.
 
-## Scope
+## What the harness exercises
 
-This isolated debug harness tests client-side composition of two independent, clear video feeds. It does not call F1 APIs, use F1 credentials, or handle DRM-protected content. It is separate from the production playback path and must not remove or replace existing resize/layout behavior.
+- Generates three distinct short clear H.264 MP4 clips locally. It does not call F1 APIs, access credentials, use network media, or use DRM.
+- Uses one `MediaExtractor` and one Android `MediaCodec` decoder per clip.
+- Sends the three decoder outputs to three `SurfaceTexture` inputs owned by one GLES compositor.
+- Draws LEFT, CENTER, and RIGHT into normalized one-third viewports. Distinct luma/chroma patterns and moving markers make a missing or swapped input visible.
+- Displays per-input texture updates, first-frame latency, update gaps, surface timestamps, draw cadence, decoder metrics, process CPU, PSS and heap use.
+- Produces an explicit on-device `WARMING`, `PASS`, or `FAIL` verdict. PASS requires evidence from all three decoder outputs, all three SurfaceTexture inputs, and the compositor.
 
-## Added implementation
+## Runtime acceptance gate
 
-- `SyntheticMultiviewClipFactory.kt` generates two local H.264 MP4 clips using Android's encoder API. Their luma patterns and moving markers differ so the output can demonstrate that both sources are present.
-- `SyntheticFeedDecoder.kt` owns one `MediaExtractor` and one `MediaCodec` decoder per clip, targets a supplied Surface, paces frames using presentation timestamps, loops the clip, and emits diagnostic status.
-- `IndependentFeedCompositorView.kt` owns one GLES view/context and two `SurfaceTexture` inputs, draws each decoder output in a side-by-side viewport, and counts render ticks.
-- `SyntheticMultiviewPrototypeActivity.kt` generates the clips, starts both decoders, and displays status.
-- The manifest registers the activity as internal/non-exported and landscape-only.
-- Debug Settings exposes a “RUN TEST” entry. The regular playback screen and resizable layouts remain untouched.
-- Surface lifecycle handling notifies decoder owners before releasing their output Surfaces.
+After at least 15 seconds of playback, the harness requires:
 
-## Implementation commits
+- Exactly LEFT, CENTER, and RIGHT are represented.
+- Each decoder configured and queued at least 30 output frames.
+- Each corresponding SurfaceTexture observed at least 30 updates and a first frame.
+- Each input's most recent update is no older than 1.5 seconds and its maximum observed update gap is at most 2 seconds.
+- The compositor recorded at least 60 draw calls, at least 8 draw calls/second, and no draw gap above 2 seconds.
+- No feed has reported a decoder or pipeline error.
 
-- `e63c0473` — local synthetic H.264 fixture generator
-- `f88c05e1` — independent-feed GLES compositor
-- `cef540ef` — MediaExtractor/MediaCodec decoder
-- `7ca0bcb7` — isolated prototype activity
-- `94c40bc5` — debug Settings entry
+These are initial diagnostic thresholds, not a universal performance guarantee. A FAIL exposes the failed criterion; errors must not be hidden to manufacture PASS. GLES draw rate is not display-present FPS, and SurfaceTexture updates are not an authoritative decoder-drop metric.
 
-## Required validation
+## Lifecycle behavior
 
-1. Ask for approval before triggering a build.
-2. Verify workflow status, unit tests, `assembleDebug`, APK signature, and artifact upload.
-3. Run Settings → Run Test. Confirm both clips are generated locally with no network access.
-4. Confirm both decoder names are reported, both feeds produce frames, both distinct patterns are visible, and the render counter advances.
-5. Stress Back/reopen and pause/resume; verify no crash, stale surface, or leaked decoder.
-6. Capture first-frame latency, frame pacing, dropped frames, CPU/memory, and thermal behavior on the target Samsung phone and Android TV device.
-7. Only after this clear-content proof, compare GPAC and/or GStreamer. A successful synthetic test does not prove authorized F1 feed compatibility, live synchronization, DRM-secure composition, or production performance.
+Decoder workers are interrupted when stopping to expedite park/sleep exit, then joined before compositor input surfaces are released. A stop timeout is logged and must be investigated. Back/reopen and pause/resume still require on-device validation.
 
-## Risks not yet resolved by runtime evidence
+## How to run when device evidence is needed
 
-- AVC encoder support for flexible YUV input and 320×180 varies by device. Unsupported fixture generation must fail visibly.
-- EGL/SurfaceTexture recreation and decoder shutdown ordering require runtime stress tests.
-- This prototype currently uses two equal-width viewports; it is not the final resizable layout engine.
-- No performance conclusions are valid until tested on target hardware.
+1. Install the latest validated debug APK.
+2. Open Settings and choose **Run Test**.
+3. Keep the harness open for at least 20 seconds after the feeds begin.
+4. Capture the final verdict and diagnostics, including any `FAIL` lines. Do not infer success from seeing three colors momentarily.
+5. Repeat after Back/reopen and pause/resume; test on the Samsung phone and Android TV device when available.
+
+## What this proves and what it does not
+
+A PASS proves that this device sustained three independent **clear synthetic** MediaCodec decode outputs into three SurfaceTexture inputs and one GLES compositor under the stated thresholds. It does not prove authorized F1 stream resolution, Widevine operation, protected-surface composition, live-feed synchronization, or production stability.
+
+The production engine continues to fail closed for more than one protected video feed. No independent ExoPlayer fallback is enabled, and the existing authorized single-feed path remains unchanged.

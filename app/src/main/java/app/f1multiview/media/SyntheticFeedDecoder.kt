@@ -28,6 +28,11 @@ internal class SyntheticFeedDecoder(
     private val lateFrameDeadlines = AtomicLong(0L)
     @Volatile private var codecName: String = "pending"
     @Volatile private var codecDroppedFrames: Long? = null
+    @Volatile var errorMessage: String? = null
+        private set
+
+    val codecNameSnapshot: String get() = codecName
+    val outputFramesQueuedCount: Long get() = outputFramesQueued.get()
 
     fun metricsLine(): String {
         val dropped = codecDroppedFrames?.toString() ?: "not-exposed-by-codec"
@@ -46,6 +51,8 @@ internal class SyntheticFeedDecoder(
     fun stopAndJoin(timeoutMs: Long = 1_000L): Boolean {
         stopRequested.set(true)
         val thread = worker ?: return true
+        // Interrupt park/sleep waits so teardown does not wait for the next frame deadline.
+        thread.interrupt()
         if (thread !== Thread.currentThread()) {
             runCatching { thread.join(timeoutMs) }
         }
@@ -91,7 +98,8 @@ internal class SyntheticFeedDecoder(
             decodeLoop(extractor, decoder, clipDurationUs)
         } catch (failure: Throwable) {
             if (!stopRequested.get()) {
-                onStatus("$feedLabel ERROR ${failure.javaClass.simpleName}: ${failure.message ?: "unknown"}")
+                errorMessage = "${failure.javaClass.simpleName}: ${failure.message ?: "unknown"}"
+                onStatus("$feedLabel ERROR $errorMessage")
             }
         } finally {
             runCatching { decoder?.stop() }
