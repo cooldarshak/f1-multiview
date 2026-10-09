@@ -28,19 +28,8 @@ android {
         versionCode=buildVersionCode
         versionName=buildVersionName
 
-        // Native TME is currently built and validated for ARM64 only.
-        // Do not let Gradle request x86/x86_64/armeabi-v7a native variants for
-        // which the GPAC dependency is deliberately not produced.
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
     }
     buildFeatures { compose=true; buildConfig=true }
-    externalNativeBuild {
-        cmake { path = file("src/main/cpp/CMakeLists.txt") }
-    }
-    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs", "build/gpac-jni")
-    ndkVersion = "27.2.12479018"
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
