@@ -2,7 +2,7 @@
 
 **Branch:** `feature/tiledmedia-multiview-rearchitecture`  
 **Updated:** 2026-10-09  
-**Build/test status:** Not yet run for this migration. Source changes use `[skip ci]`; no build was triggered during editing.
+**Build/test status:** Passed on commit `10511e329d165a6fcb6334c9ebf9f5cea738f0b8` (GitHub Actions run [#37923600086](https://github.com/cooldarshak/f1-multiview/actions/runs/37923600086)). The run executed `clean testDebugUnitTest assembleDebug`, verified APK alignment/signature/package metadata, and uploaded the signed APK artifact. No hardware runtime test was performed by CI.
 
 ## Non-negotiable implementation boundary
 
@@ -43,8 +43,8 @@ The isolated debug prototype uses three visually distinct, clear H.264 clips gen
 - [x] Three clear synthetic inputs are wired to three MediaCodec decoder instances and one GLES compositor in source.
 - [x] Diagnostics are exposed in the prototype UI/log.
 - [x] Old metadata-dependent production routing and native merger build wiring have been removed from the edited source paths.
-- [ ] Kotlin/Gradle compilation and JVM unit tests pass — cloud validation still required.
-- [ ] Signed APK integrity/signature/artifact checks pass — cloud validation still required.
+- [x] Kotlin/Gradle compilation and JVM unit tests pass (`testDebugUnitTest`; `assembleDebug` — GitHub Actions run #37923600086).
+- [x] Signed APK alignment, signature, package metadata, and artifact upload pass (APK SHA-256 `56edfa44654b8bcf9dbd3b43a822f10d1e52d6f58a4effcc12708a984a6bd44e`; artifact `11613361909`).
 - [ ] Three-feed runtime is smooth on the target Android phone — requires running the prototype on that device.
 - [ ] Three-feed runtime is smooth on Android TV — requires running the prototype on that device.
 - [ ] Actual first-frame latency, drift, dropped-frame behavior, PSS/heap/CPU, thermal effects, and sustainable decoder count are measured on both devices.
