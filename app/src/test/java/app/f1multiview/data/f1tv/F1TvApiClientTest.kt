@@ -52,7 +52,7 @@ class F1TvApiClientTest {
             {
               "url": "https://example.com/live.mpd",
               "tmeJson": null,
-              "isTmeAvailable": false,
+              "isTmeAvailable": true,
               "resultObj": {
                 "tmeJson": {
                   "version": 1,
