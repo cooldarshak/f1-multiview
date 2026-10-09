@@ -70,9 +70,9 @@ class NativeTmePlaybackBackend(
                 available = false,
                 singlePlayer = false,
                 reason = if (gpacPresent)
-                    "GPAC hevcmerge is present, but independent F1 feeds are not proven compatible spatial HEVC tiles; protected CMAF preflight is not implemented"
+                    "GPAC hevcmerge is present, but multi-URL CMAF preflight must prove HEVC tile structure and secure DRM compatibility before native playback can be enabled"
                 else
-                    "GPAC native merger is unavailable; independent-feed compatibility and protected CMAF preflight are also unproven"
+                    "GPAC native merger is unavailable; multi-URL topology, HEVC tile compatibility and secure DRM handling remain unproven"
             )
         }
 
