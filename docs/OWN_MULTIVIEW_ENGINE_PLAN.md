@@ -461,3 +461,12 @@ Scope and explicit non-claims:
 - The API is marked unstable by Media3, so version upgrades require revalidation.
 
 The next validation must feed an actual fragmented-MP4 fixture through `ExtractorInput` and capture `ExtractorOutput`/track sample metadata. A locally generated ordinary MP4 is not accepted as proof of fragmented-CMAF support. Only after that test passes should the prototype connect a bounded segment reader, then assess encrypted sample metadata and Widevine boundaries separately. Protected multi-feed remains blocked; no independent-ExoPlayer fallback is enabled.
+
+
+## 2F. Genuine fragmented-MP4 extraction gate
+
+The extractor gate now uses an independently maintained AndroidX Media fragmented H.264 MP4 test fixture, with provenance recorded beside the fixture. The JVM test runs the public Media3 `FragmentedMp4Extractor` over `DefaultExtractorInput`, handles extractor-requested seeks by resetting the input to the requested byte position, captures `ExtractorOutput` / `TrackOutput`, and asserts a discovered track, emitted format, sample metadata, sample bytes, non-negative timestamps, and a seek map. A separate negative case rejects non-media bytes during sniffing.
+
+This gate proves only clear fragmented-MP4 container parsing with this fixture. It does not resolve an HLS/DASH manifest, fetch network segments, decrypt samples, create a Widevine session, configure secure decoders, or prove protected F1 multiview. Those remain separate gates. Robolectric is used to provide Android framework classes to the local JVM test; CI must confirm compatibility before this gate is considered passed.
+
+Fixture provenance and Apache-2.0 notice: `app/src/test/resources/media/NOTICE.txt`.

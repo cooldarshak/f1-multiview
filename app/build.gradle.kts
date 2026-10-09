@@ -95,4 +95,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
+    // Android framework collection/runtime support for exercising Media3 extraction in JVM tests.
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }

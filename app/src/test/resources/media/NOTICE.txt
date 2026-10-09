@@ -1,0 +1,10 @@
+Fixture provenance and license
+
+File: media/sample_fragmented.mp4
+Source project: AndroidX Media (Media3), Android Open Source Project
+Source URL: https://github.com/androidx/media/blob/release/libraries/test_data/src/test/assets/media/mp4/sample_fragmented.mp4
+Source revision: release branch as retrieved on 2026-10-09
+Upstream fixture SHA-1 (Git blob): 16907fdd987223e0996d3cfc65ba346cb4123752
+
+The fixture is sourced from the Apache-2.0-licensed AndroidX Media repository. It is used only as a deterministic clear-media parser test fixture; it is not a protected F1 stream and does not validate DRM or protected multiview.
+Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
