@@ -20,7 +20,9 @@ The branch already has a GPAC-backed native experiment:
 - The current source contract therefore expects already-aligned HEVC access units and tile metadata. It is not yet a general-purpose engine that can take arbitrary independent F1 camera manifests and turn them into a tiled stream.
 - The current API-discovery gate means the native experiment does not start when F1's ordinary playback response lacks TME metadata.
 
-**Do not simply remove the gate and feed arbitrary camera streams into `hevcmerge`.** Independent camera feeds are not automatically compatible spatial tiles. Codec, profile, parameter sets, access-unit boundaries, timestamps, and tile geometry must all match the merger's requirements.
+**Do not simply remove the gate and feed arbitrary camera streams into `hevcmerge`.** GPAC documents `hevcmerge` as a merger for spatial tiles of one motion-constrained HEVC video: inputs must be synchronised and their codec parameter sets/tile geometry must be compatible. Separate onboard camera angles are different pictures, not spatial tiles of one picture.
+
+A second important finding: `scripts/build-gpac-android.sh` currently enables the HEVC tile filters but explicitly disables GPAC's `compositor`, `vout`, and `aout`. Therefore the current native GPAC build cannot yet serve as a general decoded-video mosaic engine. That is a build/configuration decision we must address deliberately, not assume away.
 
 ## 2. GitHub research: what we can reuse
 
@@ -50,7 +52,12 @@ Useful for understanding the native decode-to-texture-to-compositor path. We mus
 ### D. GPAC — already used in this branch
 Repository: https://github.com/gpac/gpac
 
-Keep it as a candidate for compressed-domain HEVC tile merging only when the actual input bitstreams satisfy its merge requirements. It does not by itself prove that arbitrary independent F1 onboard streams can be merged as compressed tiles.
+Relevant documentation:
+- HEVC tile merger: https://github.com/gpac/gpac/wiki/hevcmerge
+- Compositor, including `mosaic://` multi-source input: https://github.com/gpac/gpac/wiki/compositor
+- DASH/HLS input filter: https://github.com/gpac/gpac/wiki/dashin
+
+GPAC gives us two distinct candidates: `hevcmerge` for genuinely compatible spatial HEVC tiles, and a single GPAC filter session using multiple media inputs plus the compositor for independent camera feeds. The latter is promising but is **not enabled in our current Android build**; we must build it and prove its Android output-surface, timing, and performance behavior before relying on it.
 
 ### Research conclusion
 
@@ -72,13 +79,17 @@ Proposed components:
 8. **AdaptiveLoadController** — observe decoder load, dropped frames, buffer depth, and thermal/performance signals; reduce per-feed resolution/frame rate where supported rather than letting every feed stutter.
 9. **Diagnostics** — log per-feed codec, dimensions, input queue depth, first-frame latency, decoder errors, PTS drift, dropped frames, and compositor frame time. Never log tokens or secrets.
 
-### Two distinct implementation paths to evaluate
+### Three implementation paths to evaluate
 
-**Path 1 — compressed-domain tile merge:** use GPAC `hevcmerge` only if the actual streams are compatible HEVC tile inputs with valid matching timing and decoder configuration. This is the closest route to one merged encoded output, but it cannot be assumed to work for independent camera-angle streams.
+**Path 1 — compressed-domain tile merge:** use GPAC `hevcmerge` only if the actual inputs are spatial HEVC tiles with matching access-unit timestamps, decoder configuration, and valid tile geometry. It produces one merged HEVC bitstream but is not a merger for independent camera angles.
 
-**Path 2 — custom coordinated decode/composite:** each feed is demuxed and decoded under one engine; decoded textures are synchronised and composed into a single output surface. This can emulate the multiview behavior and layout, but may use multiple hardware decoder contexts and therefore has device-dependent limits. It is not the same compression/decoder optimization as a server-prepared tiled stream.
+**Path 2 — one GPAC media graph with a compositor (first prototype candidate):** enable and build GPAC's `dashin`/media input and `compositor` filters, feed the independent camera streams into one GPAC session, and render a mosaic to an Android-owned output surface. This keeps one graph/session owner and reuses an established open-source media framework. It is not yet proven in our Android build; compositor/vout are currently disabled, so we must validate native dependencies, surface ownership, live timing, and hardware decoding before adopting it.
 
-We must run a format/capability probe before choosing the primary path. Do not silently fall back from one path to another.
+**Path 3 — custom coordinated decode/composite:** use one app-owned engine to coordinate per-feed demux/decode pipelines, SurfaceTexture outputs, a shared timeline, and one OpenGL ES compositor. This can emulate the multiview behavior and layout, but may use multiple hardware decoder contexts and has device-dependent limits. It is not the same compression/decoder optimization as a server-prepared tiled stream.
+
+Public Tiledmedia documentation describes multiview transcoding/packaging in its cloud or a customer's transcoding pipeline. Consequently, we can reproduce the user-visible multiview behavior on-device, but we cannot promise the same bandwidth and single-decoder efficiency from arbitrary independent feeds without a compatible pre-tiled source or an equivalent upstream packaging stage.
+
+Run a format/capability probe and a two-feed prototype before choosing the primary path. Do not silently fall back from one path to another.
 
 ## 4. Phased execution plan
 
@@ -101,10 +112,10 @@ We must run a format/capability probe before choosing the primary path. Do not s
 - Keep the test path separate from real F1 entitlement and protected playback.
 
 ### Phase 3 — prove the native media path
-- Prototype GPAC HEVC merging with compatible test bitstreams and verify the merged output using a decoder, not just a successful native return.
-- Separately prototype MediaCodec -> SurfaceTexture -> OpenGL composition with two then three test feeds.
-- Measure CPU/GPU, memory, decoder allocation, frame drops, and thermal behavior on the target phone/TV.
-- Compare both paths against explicit acceptance criteria before choosing one.
+- Prototype GPAC HEVC merging with compatible spatial-tile test bitstreams and verify the merged output using a decoder, not just a successful native return.
+- Build a separate GPAC configuration with `dashin` and `compositor` enabled; prove that two local clear test streams render into one Android surface in one graph, then add a third stream.
+- If GPAC's Android compositor/output integration is unsuitable, prototype the custom MediaCodec -> SurfaceTexture -> OpenGL path with two then three synthetic feeds.
+- Measure CPU/GPU, memory, decoder allocation, frame drops, and thermal behavior on the target phone/TV. Choose based on evidence, not naming or architecture diagrams.
 
 ### Phase 4 — integrate the chosen engine with F1 feeds
 - Connect the engine to the existing authorized feed resolver without requiring TME metadata.
