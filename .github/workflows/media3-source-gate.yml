@@ -47,7 +47,18 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "8c6678b657ede1e7883fc164ef73ed483c7796c3"
 
-      - name: Compile upstream HLS and DASH modules
+      - name: Apply explicit media request-role patch
+        run: |
+          set -euo pipefail
+          cd media3-source
+          git apply --check ../patches/media3/0001-explicit-media-segment-role.patch
+          git apply ../patches/media3/0001-explicit-media-segment-role.patch
+          grep -Fq 'setCustomData("f1-multiview:media-segment:v1")' libraries/exoplayer_hls/src/main/java/androidx/media3/exoplayer/hls/HlsMediaChunk.java
+          test "$(grep -Fc 'setCustomData("f1-multiview:media-segment:v1")' libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java)" -eq 2
+          # Initialization/index construction must remain unmarked.
+          ! sed -n '/protected Chunk newInitializationChunk(/,/protected Chunk newMediaChunk(/p' libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java | grep -Fq 'f1-multiview:media-segment:v1'
+
+      - name: Compile patched upstream HLS and DASH modules
         working-directory: media3-source
         run: |
           set -euo pipefail
