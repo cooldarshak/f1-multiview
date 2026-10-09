@@ -46,6 +46,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     fun renderedFrameCount(): Long = renderer.renderedFrameCount.get()
 
+    /** GLES draw-call diagnostics; this is not display-present FPS. */
+    fun drawDiagnostics(): String = renderer.drawDiagnostics()
+
     fun inputFrameCounts(): List<Long> = renderer.sourceFrameCount.map { it.get() }
 
     /** Measured input-frame updates, first-frame latency, and observed update rate. */
