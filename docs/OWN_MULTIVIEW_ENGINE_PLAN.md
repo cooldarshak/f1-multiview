@@ -33,7 +33,34 @@ Useful references:
 - Resizable layouts and feed-selection UX.
 - The project is Electron/React with Shaka Player, so its whole playback stack is not a drop-in Android engine. Reuse or port only the specific MIT-licensed modules that fit, preserving attribution and the MIT license notice.
 
-### B. ChromeOS VideoDecodeEncodeDemo — open-source proof of concept
+### B. F1AppleTV — GPL-3.0, strong feature/edge-case reference
+Repository: https://github.com/NoahFetz/F1AppleTV
+
+Useful references:
+- A mature F1 TV feature set: simultaneous feeds, layout selection, saved setups, main-feed selection, muted followers, and TV-remote-oriented interaction patterns.
+- Its current playback implementation creates a separate AVPlayer for each feed and synchronizes followers by seeking them to the reference player. That makes it useful for UX, entitlement lifecycle, cancellation, and sync edge cases, but **not evidence of a single-decoder or single-compositor engine**.
+- The repository is GPL-3.0. Treat it as a behavioral/architectural reference; do not copy its code into our app unless we explicitly decide to adopt GPL-compatible distribution obligations.
+
+### C. Race Control — GPL-3.0, F1 playback and sync reference
+Repository: https://github.com/robvdpol/RaceControl
+
+Useful references:
+- F1 feed/catalog handling, user-controlled layouts, player controls, and its experimental multi-stream synchronization.
+- It supports multiple external/internal player implementations, so it is not a drop-in Android engine. Its GPL-3.0 license also means we should study behavior rather than transplant code unless we intentionally accept the license obligations.
+
+### D. Carbon for F1TV — browser sync reference
+Repository: https://github.com/Carbon-for-F1TV/Carbon-for-F1TV
+
+Useful reference:
+- Synchronization behavior and live-stream edge cases across simultaneous F1 TV streams. It is a browser extension/userscript, not a native decoder/compositor, so use it to inform synchronization tests rather than media architecture.
+
+### E. NexPlayer MultiView public documentation — constraints only, no SDK dependency
+Documentation: https://github.com/NexPlayer/NexPlayer_Multiview
+
+We will not use its proprietary SDK. Its public stream requirements are nevertheless useful general engineering guidance: aligned timestamps/period starts for DASH, EXT-X-PROGRAM-DATE-TIME for HLS, adequate live presentation delay, and lower-resolution renditions for smaller views. These are input/stream properties to verify, not guarantees that our F1 feeds satisfy them.
+
+### F. ChromeOS VideoDecodeEncodeDemo — open-source proof of concept
+
 Repository: https://github.com/chromeos/video-decode-encode-demo
 
 Useful reference:
