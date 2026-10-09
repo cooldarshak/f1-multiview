@@ -39,6 +39,21 @@ class BoundedMediaDataSourceTest {
     }
 
     @Test
+    fun closeAfterFailedOpenClosesPartiallyOpenedUpstream() {
+        val upstream = FakeDataSource(
+            byteArrayOf(1),
+            declaredLength = C.LENGTH_UNSET.toLong(),
+            openFailure = IOException("synthetic open failure")
+        )
+        val source = BoundedMediaDataSource(upstream, maxBytes = 2L)
+
+        assertThrows(IOException::class.java) { source.open(spec()) }
+        source.close()
+
+        assertEquals(1, upstream.closeCount)
+    }
+
+    @Test
     fun detectsPrematureEofForKnownLength() {
         val upstream = FakeDataSource(byteArrayOf(1, 2), declaredLength = 3L)
         val source = BoundedMediaDataSource(upstream, maxBytes = 3L)
@@ -90,7 +105,8 @@ class BoundedMediaDataSourceTest {
 
     private class FakeDataSource(
         private val payload: ByteArray,
-        private val declaredLength: Long
+        private val declaredLength: Long,
+        private val openFailure: IOException? = null
     ) : DataSource {
         var bytesRead = 0
             private set
@@ -99,7 +115,10 @@ class BoundedMediaDataSourceTest {
 
         override fun addTransferListener(transferListener: TransferListener) = Unit
 
-        override fun open(dataSpec: DataSpec): Long = declaredLength
+        override fun open(dataSpec: DataSpec): Long {
+            openFailure?.let { throw it }
+            return declaredLength
+        }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             if (bytesRead >= payload.size) return C.RESULT_END_OF_INPUT

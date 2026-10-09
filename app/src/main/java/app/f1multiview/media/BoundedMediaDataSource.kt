@@ -35,8 +35,10 @@ internal class BoundedMediaDataSource(
     @Throws(IOException::class)
     override fun open(dataSpec: DataSpec): Long {
         close()
-        val length = upstream.open(dataSpec)
+        // Media3 callers close a DataSource even when open() throws. Mark the upstream as
+        // needing close before invoking it so partially opened transports are cleaned up.
         opened = true
+        val length = upstream.open(dataSpec)
         expectedLength = length
         bytesRead = 0L
 
