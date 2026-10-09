@@ -45,6 +45,19 @@ class MultiviewRenderCoordinatorTest {
     }
 
     @Test
+    fun protectedClassificationDoesNotDowngradeWhenLaterResponseOmitsDrmMetadata() {
+        val coordinator = MultiviewRenderCoordinator()
+        val protected = feed("same-feed", "https://license.test").copy(streamType = "SDR_HD_DASHWV_SINGLE")
+        val initial = coordinator.bind(protected, "first", screenshotMode = true)
+        assertTrue(initial.protectedContent)
+
+        val laterIncompleteResponse = feed("same-feed").copy(drmType = "unknown", streamType = "SDR_HD_DASH_SINGLE")
+        val refreshed = coordinator.bind(laterIncompleteResponse, "second", screenshotMode = true)
+        assertTrue(refreshed.protectedContent)
+        assertEquals(MultiviewRenderCoordinator.RenderPath.SURFACE_VIEW, refreshed.path)
+    }
+
+    @Test
     fun widevineDrmTypeWithoutLicenseUrlIsStillProtected() {
         val coordinator = MultiviewRenderCoordinator()
         val stream = feed("widevine-drm-type").copy(
