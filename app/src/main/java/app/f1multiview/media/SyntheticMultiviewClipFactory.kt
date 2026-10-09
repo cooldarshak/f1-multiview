@@ -172,7 +172,7 @@ internal object SyntheticMultiviewClipFactory {
         }
         fillChromaPlane(planes[1], WIDTH / 2, HEIGHT / 2, 128)
         fillChromaPlane(planes[2], WIDTH / 2, HEIGHT / 2, 128)
-        return planes.sumOf { it.buffer.capacity() }
+        return imageDataSize()
     }
 
     private fun fillChromaPlane(
