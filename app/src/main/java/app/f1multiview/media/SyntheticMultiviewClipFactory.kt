@@ -26,7 +26,7 @@ internal object SyntheticMultiviewClipFactory {
     private const val BIT_RATE = 450_000
     private const val MIME = MediaFormat.MIMETYPE_VIDEO_AVC
 
-    fun createPair(context: Context): ClipPair {
+    fun createSet(context: Context): ClipSet {
         val directory = File(context.cacheDir, "synthetic-multiview").apply {
             if (!exists() && !mkdirs()) error("Unable to create synthetic clip directory")
         }
@@ -178,9 +178,8 @@ internal object SyntheticMultiviewClipFactory {
                 yBuffer.put(row * yPlane.rowStride + column * yPlane.pixelStride, value.toByte())
             }
         }
-        // Keep the feeds visually unmistakable in the compositor: left is warm/red,
-        // right is cool/blue. Neutral chroma made a successful render look like a blank
-        // grey screen and made it difficult to spot a swapped or missing viewport.
+        // Encode distinct chroma values for left, center, and right so missing or swapped
+        // viewports are easy to spot during the three-feed compositor test.
         val (u, v) = when (variant) {
             0 -> 90 to 240
             1 -> 54 to 34
