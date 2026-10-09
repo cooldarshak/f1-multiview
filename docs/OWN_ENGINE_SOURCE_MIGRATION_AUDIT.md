@@ -44,7 +44,8 @@ The current source changes make it a two-feed test:
 2. Read both fixtures through `MediaExtractor`.
 3. Decode them with two separate Android `MediaCodec` decoder instances.
 4. Queue both decoder outputs against one shared monotonic playback anchor.
-5. Deliver each decoder to its own `SurfaceTexture` input and draw both textures through one GLES compositor/output surface.
+5. Represent each synthetic input with the provider-neutral `FeedDescriptor` contract (including MIME, dimensions, and shared timeline group).
+6. Apply normalized `FeedViewport` values through `ViewportLayout`; the GLES renderer draws each feed into its assigned viewport on one compositor/output surface.
 
 ### Metrics now displayed/logged
 
