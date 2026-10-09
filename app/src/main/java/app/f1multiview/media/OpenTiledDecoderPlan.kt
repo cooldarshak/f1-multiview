@@ -64,6 +64,14 @@ data class OpenTiledDecoderPlan(
                     ?: (session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 })
                 val rows = session.tileCountVertical
                     ?: (session.feeds.maxOf { requireNotNull(it.tileRow) + 1 })
+                // Explicit tile geometry is only valid for a precomposed mosaic when
+                // the actual decoded source dimensions match the whole tile canvas.
+                // URL equality alone must not turn a normal single feed into a mosaic.
+                if (sourceVideoWidth > 0 && sourceVideoHeight > 0 &&
+                    (sourceVideoWidth != columns * tileWidth || sourceVideoHeight != rows * tileHeight)
+                ) {
+                    return null
+                }
                 val bindings = session.feeds.mapIndexed { index, feed ->
                     val feedId = session.feedIds[index]
                     val column = requireNotNull(feed.tileColumn)
