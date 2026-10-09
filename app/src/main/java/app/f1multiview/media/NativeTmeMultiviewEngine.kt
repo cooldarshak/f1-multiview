@@ -35,6 +35,8 @@ class NativeTmeMultiviewEngine(
         val reason = when (session.topology) {
             TmeTopology.SINGLE_MOSAIC_SOURCE ->
                 "single-mosaic input belongs to OpenTiledMultiviewBackend"
+            TmeTopology.MULTI_SOURCE_TILED_CANDIDATE ->
+                "tile-grid metadata is present, but CMAF/HEVC compatibility and DRM handling are not yet proven"
             TmeTopology.INDEPENDENT_FEED_SOURCES ->
                 "independent F1 feeds are not proven compatible spatial HEVC tiles"
             TmeTopology.UNKNOWN ->
@@ -154,6 +156,8 @@ class NativeTmeMultiviewEngine(
             null -> "No TME session has been prepared"
             TmeTopology.SINGLE_MOSAIC_SOURCE ->
                 "Single-source mosaic sessions belong to OpenTiledMultiviewBackend, not this independent-feed merger"
+            TmeTopology.MULTI_SOURCE_TILED_CANDIDATE ->
+                "Tile-grid metadata is only a candidate; CMAF/HEVC compatibility and DRM handling are not yet proven"
             TmeTopology.INDEPENDENT_FEED_SOURCES ->
                 "Independent feed URLs are not proven compatible spatial HEVC tiles"
             TmeTopology.UNKNOWN ->
