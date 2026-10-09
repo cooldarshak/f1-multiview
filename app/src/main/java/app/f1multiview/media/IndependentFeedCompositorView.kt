@@ -74,10 +74,10 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     private inner class Renderer : GLSurfaceView.Renderer {
         private val frameAvailable = Array(3) { AtomicBoolean(false) }
         val sourceFrameCount = Array(3) { AtomicLong(0L) }
-        val sourceFirstFrameAtNs = Array(2) { AtomicLong(0L) }
-        val sourceLastFrameAtNs = Array(2) { AtomicLong(0L) }
-        val sourceMediaTimestampNs = Array(2) { AtomicLong(0L) }
-        val sourceMaxArrivalGapNs = Array(2) { AtomicLong(0L) }
+        val sourceFirstFrameAtNs = Array(3) { AtomicLong(0L) }
+        val sourceLastFrameAtNs = Array(3) { AtomicLong(0L) }
+        val sourceMediaTimestampNs = Array(3) { AtomicLong(0L) }
+        val sourceMaxArrivalGapNs = Array(3) { AtomicLong(0L) }
         private val textureIds = IntArray(3)
         private val inputTextures = arrayOfNulls<SurfaceTexture>(3)
         private val inputSurfaces = arrayOfNulls<Surface>(3)
