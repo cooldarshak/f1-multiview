@@ -113,35 +113,26 @@ class F1TvApiClient {
     }
     suspend fun contentPlay(contentId:String,channelId:String?,platform:String):PlaybackResponse{
         val query="?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
-        // A successful 2.0 response is not proof that TME was negotiated. Probe the
-        // configured legacy 3.0 CONTENT/PLAY version when 2.0 returns ordinary playback
-        // without TME, while retaining the first authorized playable response if neither
-        // version supplies TME. No alternate endpoint or DRM behavior is introduced.
+        // Preserve the existing API-version selection until live response diagnostics
+        // establish that trying another version is required. Log shape before parsing,
+        // and retain requested version/status in the parsed result for gateway telemetry.
         val apiVersions=listOf("2.0","3.0")
         var last:Throwable?=null
-        var firstPlayable:PlaybackResponse?=null
         for(apiVersion in apiVersions){
             try{
                 val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
                 logPlaybackResponseShape(apiVersion,platform,response)
                 ensureSuccess(response,"content playback")
-                val parsed=parsePlaybackResponse(response,contentId,channelId,platform).copy(
+                return parsePlaybackResponse(response,contentId,channelId,platform).copy(
                     requestedApiVersion=apiVersion,
                     httpStatus=response.code
                 )
-                if(firstPlayable==null && parsed.manifestUrl.isNotBlank()) firstPlayable=parsed
-                if(!parsed.tmeJson.isNullOrBlank()){
-                    AppLogger.i("F1Playback","CONTENT_PLAY_VERSION_SELECTED platform=$platform requestedApiVersion=$apiVersion reason=TME_PRESENT")
-                    return parsed
-                }
-                if(firstPlayable==null) firstPlayable=parsed
-                AppLogger.i("F1Playback","CONTENT_PLAY_VERSION_NO_TME platform=$platform requestedApiVersion=$apiVersion httpStatus=${response.code}; probing next configured API version")
             }catch(t:Throwable){
                 last=t
                 AppLogger.w("F1Playback","CONTENT_PLAY_VERSION_FAILED platform=$platform requestedApiVersion=$apiVersion reason=${t.javaClass.simpleName}")
             }
         }
-        return firstPlayable ?: throw (last?:F1TvException("F1 TV playback failed"))
+        throw last?:F1TvException("F1 TV playback failed")
     }
 
     /** Logs response shape only; never logs response values, credentials, URLs, or body. */
