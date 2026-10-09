@@ -88,6 +88,15 @@ GPAC gives us two distinct candidates: `hevcmerge` for genuinely compatible spat
 
 We are not looking for a drop-in equivalent to Tiledmedia or attempting to clone its internals. We are building the app's required multiview capabilities from public Android media APIs, open standards, and reusable open-source components. The engine must be independently specified and tested.
 
+## 2A. Implementation progress (2026-10-09)
+
+The first provider-neutral foundation has been committed to the active branch:
+- `app/src/main/java/app/f1multiview/media/OwnMultiviewEngineContract.kt` defines feed descriptors, normalized viewports/layouts, explicit engine phases, per-feed status, and a shared session timeline without TME types.
+- `app/src/main/java/app/f1multiview/media/SessionTimelineSynchronizer.kt` defines a deterministic master/follower correction policy: hold followers when the master buffers, resume engine-paused followers, use rate correction for small drift, and seek for large drift with separate VOD/live thresholds.
+- `app/src/test/java/app/f1multiview/media/SessionTimelineSynchronizerTest.kt` contains eight JVM unit tests for these decisions.
+
+These files are an initial contract/policy layer, **not yet a functioning video compositor**. They are not wired into the existing playback path; no build or test run has been triggered. The next implementation milestone is a clear synthetic two-feed MediaCodec-to-SurfaceTexture/OpenGL prototype with measurable first-frame, drift, and frame-drop diagnostics. Only after that proof should the new engine replace the TME-dependent gate.
+
 ## 3. Target architecture
 
 The app exposes **one logical multiview player/session**. It must not create independent ExoPlayer instances as a workaround. Internally, the engine may need multiple decoder instances when the input consists of independent camera feeds; a single coordinator does not magically turn separate encoded streams into one decoder input.
@@ -122,7 +131,7 @@ An important engineering constraint remains independent of any vendor: arbitrary
 - Preserve resizing, TV remote controls, logging, and existing UI.
 - Do not trigger a build without explicit approval.
 
-### Phase 1 — audit the current implementation (research/code audit in progress)
+### Phase 1 — audit the current implementation (static code audit baseline complete; source-format probe remains)
 - Trace the complete path from selected F1 feed -> playback response -> feed descriptor -> aligned sample queue -> native merger -> decoder/output surface.
 - Identify every TME-specific type, gate, and assumption; classify each as reusable generic behavior, GPAC-specific behavior, or proprietary/TME-only plumbing.
 - Establish the exact input codec/container and whether real feeds are compatible with the current HEVC merger. Do not infer this from HTTP 200 or a manifest URL alone.
