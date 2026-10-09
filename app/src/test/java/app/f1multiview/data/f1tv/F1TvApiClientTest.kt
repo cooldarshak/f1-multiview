@@ -1,7 +1,6 @@
 package app.f1multiview.data.f1tv
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class F1TvApiClientTest {
