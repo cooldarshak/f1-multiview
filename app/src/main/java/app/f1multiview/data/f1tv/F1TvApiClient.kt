@@ -178,7 +178,6 @@ class F1TvApiClient {
         ensureApiConfig()
         val apiVersions=apiVersionCandidates(configuredPlayApiVersion,listOf("2.0","3.0"))
         var last:Throwable?=null
-        var bestResponse:PlaybackResponse?=null
         for(apiVersion in apiVersions){
             try{
                 val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
@@ -195,7 +194,7 @@ class F1TvApiClient {
                 AppLogger.w("F1Playback","CONTENT_PLAY_VERSION_FAILED platform=$platform requestedApiVersion=$apiVersion reason=${t.javaClass.simpleName}")
             }
         }
-        return bestResponse ?: throw (last?:F1TvException("F1 TV playback failed"))
+        throw last ?: F1TvException("F1 TV playback failed")
     }
 
     private fun playHeaders(): Map<String,String> = buildMap {
