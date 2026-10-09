@@ -87,7 +87,7 @@ The debug-only synthetic harness now generates **three distinct clear H.264 clip
 
 The diagnostics report per-feed first-texture-frame latency, texture update rate and gaps, surface timestamp skew, coalesced frame notifications, codec-reported dropped-frame metrics when exposed, late presentation deadlines, GLES draw cadence, process PSS/heap/CPU, and decoder-thread count. Coalesced callbacks and late presentation deadlines are explicitly not treated as authoritative decoder-drop counts.
 
-The source migration and validation status is tracked in [OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md](OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md). Cloud build/test validation is in progress; target-device runtime measurements are still required.
+The source migration and validation status is tracked in [OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md](OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md). Cloud build/test validation passed on commit `10511e329d165a6fcb6334c9ebf9f5cea738f0b8` (run [#37923600086](https://github.com/cooldarshak/f1-multiview/actions/runs/37923600086)); target-device runtime measurements are still required.
 
 ## 2B. Broader web research (Firecrawl + public technical documentation)
 
@@ -319,7 +319,7 @@ This section intentionally broadens beyond F1 projects. It distinguishes publicl
 
 ### Immediate next work
 
-- Complete the current cloud validation run: JVM unit tests, signed APK assembly, signature/integrity checks, and artifact upload.
+- Cloud validation is complete: JVM unit tests, signed APK assembly, signature/integrity checks, and artifact upload passed on commit `10511e329d165a6fcb6334c9ebf9f5cea738f0b8`.
 - Install and run the debug-only three-feed prototype on the target phone and Android TV.
 - Capture its per-feed first-frame latency, texture update gaps, timestamp skew, codec-reported dropped-frame metrics where exposed, late deadlines, GLES draw cadence, PSS/heap/CPU, and decoder names.
 - Fix any defects found and repeat until the synthetic proof passes.
