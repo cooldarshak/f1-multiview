@@ -43,7 +43,9 @@ class MultiviewSurfaceManager(private val context: Context) {
     ) {
         AppLogger.d("Surface", "bind start feed=$feedId player=${player.id} source=$source container=${System.identityHashCode(container)}")
         val current = bindings[feedId]
-        if (current != null && current.container === container && current.owner === player) {
+        val desiredProtected = renderCoordinator.isProtected(stream)
+        if (current != null && current.container === container && current.owner === player &&
+            current.protectedContent == desiredProtected) {
             renderCoordinator.update(feedId, source)
             val updated = current.copy(onTap = onTap, source = source)
             bindings[feedId] = updated
@@ -52,7 +54,12 @@ class MultiviewSurfaceManager(private val context: Context) {
             return
         }
 
-        current?.let { releaseBinding(it, unbindCoordinator = false) }
+        current?.let {
+            // Clear the old player's output before replacing a surface whose secure
+            // classification changed. Keep the logical coordinator slot during upgrade.
+            releaseBinding(it, unbindCoordinator = false)
+            bindings.remove(feedId)
+        }
         val params = FrameLayout.LayoutParams(-1, -1)
         val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
         val protectedContent = renderSlot.protectedContent
