@@ -4,13 +4,11 @@ import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.view.Surface
-import app.f1multiview.core.playback.TiledMultiviewSession
 import java.io.File
 import java.net.URI
 import java.net.URL
 import java.net.HttpURLConnection
 import java.nio.ByteBuffer
-import java.security.MessageDigest
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
@@ -36,11 +34,7 @@ internal data class HlsSegment(
     val durationUs: Long,
     val startTimeUs: Long
 )
-internal data class HlsPlaylist(
-    val initUri: String?,
-    val segments: List<HlsSegment>,
-    val encryptionMethod: String? = null
-)
+internal data class HlsPlaylist(val initUri: String?, val segments: List<HlsSegment>)
 
 class TmeCmafFeedReader(
     private val context: Context,
@@ -49,20 +43,15 @@ class TmeCmafFeedReader(
     private val initCache = mutableMapOf<String, ByteArray>()
 
     internal fun load(url: String): HlsPlaylist {
-        val text = get(url).toString(Charsets.UTF_8).trimStart('\uFEFF')
+        val text = get(url).toString(Charsets.UTF_8)
         val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
-        require(lines.firstOrNull() == "#EXTM3U") {
-            "Unsupported manifest: expected an HLS playlist (DASH/MPD is not supported by this CMAF reader)"
-        }
-        val sessionEncryptionMethod = lines.firstOrNull { it.startsWith("#EXT-X-SESSION-KEY:") }
-            ?.let(::parseEncryptionMethod)
 
         if (lines.any { it.startsWith("#EXT-X-STREAM-INF:") }) {
             var bestBandwidth = -1L
             var best: String? = null
             lines.forEachIndexed { i, line ->
                 if (!line.startsWith("#EXT-X-STREAM-INF:")) return@forEachIndexed
-                val bandwidth = Regex("""(?:^|[:,])BANDWIDTH=(\d+)""")
+                val bandwidth = Regex("""(?:^|,)BANDWIDTH=(\d+)""")
                     .find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                 val child = lines.drop(i + 1).firstOrNull { !it.startsWith("#") } ?: return@forEachIndexed
                 if (bandwidth >= bestBandwidth) {
@@ -71,14 +60,12 @@ class TmeCmafFeedReader(
                 }
             }
             require(!best.isNullOrBlank()) { "HLS master has no media variant" }
-            val child = load(best!!)
-            return child.copy(encryptionMethod = child.encryptionMethod ?: sessionEncryptionMethod)
+            return load(best!!)
         }
 
         var mediaSequence = 0L
         var nextSequence = 0L
         var initUri: String? = null
-        var encryptionMethod: String? = sessionEncryptionMethod
         var durationUs: Long? = null
         var playlistTimeUs = 0L
         val segments = mutableListOf<HlsSegment>()
@@ -87,8 +74,6 @@ class TmeCmafFeedReader(
             when {
                 line.startsWith("#EXT-X-MEDIA-SEQUENCE:") ->
                     mediaSequence = line.substringAfter(':').toLong()
-                line.startsWith("#EXT-X-KEY:") ->
-                    encryptionMethod = parseEncryptionMethod(line)
                 line.startsWith("#EXT-X-MAP:") ->
                     Regex("""URI="([^"]+)"""").find(line)?.groupValues?.get(1)?.let {
                         initUri = resolve(url, it)
@@ -109,127 +94,7 @@ class TmeCmafFeedReader(
                 }
             }
         }
-        return HlsPlaylist(initUri, segments, encryptionMethod)
-    }
-
-    private fun parseEncryptionMethod(line: String): String? {
-        val method = Regex("""(?:^|[, :])METHOD=([^,]+)""")
-            .find(line)?.groupValues?.get(1)?.trim()
-            ?: return "UNKNOWN"
-        return method.takeUnless { it.equals("NONE", ignoreCase = true) }
-    }
-
-    /**
-     * Inspects one authorized feed without copying or decrypting compressed sample data.
-     * It reads manifest/init/fragment metadata only. Protected feeds are reported and
-     * rejected before the clear-content extraction path can touch sample payloads.
-     */
-    internal fun inspectFirstSegment(url: String, feedId: String): TmeCmafFeedEvidence {
-        return runCatching {
-            val playlist = load(url)
-            val segment = playlist.segments.firstOrNull()
-                ?: error("HLS playlist has no media segment")
-            if (!playlist.encryptionMethod.isNullOrBlank()) {
-                return TmeCmafFeedEvidence(
-                    feedId = feedId,
-                    mimeType = null,
-                    width = null,
-                    height = null,
-                    codecConfigFingerprint = null,
-                    encrypted = true,
-                    sampleCount = 0,
-                    firstSampleTimeUs = null,
-                    firstSampleIsSync = null,
-                    encryptionMethod = playlist.encryptionMethod
-                )
-            }
-
-            val init = playlist.initUri?.let { initCache.getOrPut(it) { get(it) } } ?: ByteArray(0)
-            val media = get(segment.uri)
-            val file = File.createTempFile("f1tme-probe-", ".mp4", context.cacheDir)
-            try {
-                file.outputStream().use { out ->
-                    if (init.isNotEmpty()) out.write(init)
-                    out.write(media)
-                }
-                val extractor = MediaExtractor()
-                try {
-                    extractor.setDataSource(file.absolutePath)
-                    val track = (0 until extractor.trackCount).firstOrNull {
-                        extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)
-                            ?.startsWith("video/") == true
-                    } ?: error("CMAF fragment has no video track")
-                    val format = extractor.getTrackFormat(track)
-                    val mime = format.getString(MediaFormat.KEY_MIME)
-                    val csd = format.getByteBuffer("csd-0")
-                    val configBytes = csd?.duplicate()?.let { buffer ->
-                        ByteArray(buffer.remaining()).also { buffer.get(it) }
-                    }
-                    val fingerprint = configBytes?.let {
-                        MessageDigest.getInstance("SHA-256").digest(it)
-                            .joinToString("") { byte -> "%02x".format(byte) }
-                    }
-                    val width = format.getInteger(MediaFormat.KEY_WIDTH, -1).takeIf { it > 0 }
-                    val height = format.getInteger(MediaFormat.KEY_HEIGHT, -1).takeIf { it > 0 }
-                    extractor.selectTrack(track)
-                    var sampleCount = 0
-                    var firstTimeUs: Long? = null
-                    var firstSync: Boolean? = null
-                    var encryptedSampleSeen = false
-                    while (sampleCount < 32 && extractor.sampleTime >= 0L) {
-                        if (firstTimeUs == null) {
-                            firstTimeUs = extractor.sampleTime
-                            firstSync = extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
-                        }
-                        if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED != 0) {
-                            encryptedSampleSeen = true
-                            break
-                        }
-                        sampleCount++
-                        if (!extractor.advance()) break
-                    }
-                    TmeCmafFeedEvidence(
-                        feedId = feedId,
-                        mimeType = mime,
-                        width = width,
-                        height = height,
-                        codecConfigFingerprint = fingerprint,
-                        ppsTilesEnabled = if (mime.equals("video/hevc", ignoreCase = true)) {
-                            configBytes?.let(HevcPpsTileInspector::tilesEnabled)
-                        } else {
-                            null
-                        },
-                        encrypted = encryptedSampleSeen ||
-                            format.getInteger("is-encrypted", 0) != 0 ||
-                            format.getInteger("encrypted", 0) != 0,
-                        sampleCount = sampleCount,
-                        firstSampleTimeUs = firstTimeUs,
-                        firstSampleIsSync = firstSync,
-                        encryptionMethod = null
-                    )
-                } finally {
-                    extractor.release()
-                }
-            } finally {
-                file.delete()
-            }
-        }.getOrElse { error ->
-            TmeCmafFeedEvidence(
-                feedId = feedId,
-                mimeType = null,
-                width = null,
-                height = null,
-                codecConfigFingerprint = null,
-                encrypted = false,
-                sampleCount = 0,
-                firstSampleTimeUs = null,
-                firstSampleIsSync = null,
-                inspectionError = error.message
-                    ?.replace(Regex("""https?://[^"']+"""), "<url>")
-                    ?.take(180)
-                    ?: error.javaClass.simpleName
-            )
-        }
+        return HlsPlaylist(initUri, segments)
     }
 
     internal fun extract(
@@ -319,7 +184,7 @@ class TmeCmafFeedReader(
             c.connectTimeout = 10_000
             c.readTimeout = 15_000
             requestHeaders.forEach { (key, value) -> c.setRequestProperty(key, value) }
-            check(c.responseCode in 200..299) { "HTTP " + c.responseCode + " while fetching CMAF resource" }
+            check(c.responseCode in 200..299) { "HTTP " + c.responseCode + " for " + url }
             return c.inputStream.use { it.readBytes() }
         } finally {
             c.disconnect()
@@ -364,8 +229,7 @@ class TmeCmafCoordinator(
     private val decoder: TmeNativeDecoder,
     private val requestHeaders: Map<String, String> = emptyMap(),
     private val outputWidth: Int? = null,
-    private val outputHeight: Int? = null,
-    private val preflightSession: TiledMultiviewSession
+    private val outputHeight: Int? = null
 ) {
     @Volatile private var running = false
     private var worker: Thread? = null
@@ -383,24 +247,6 @@ class TmeCmafCoordinator(
         worker = Thread({
             try {
                 val readers = sources.associateWith { TmeCmafFeedReader(context, requestHeaders) }
-
-                // This is the final runtime gate immediately before the native merger.
-                // The earlier capability check is synchronous and cannot inspect network
-                // media. Never extract protected samples or configure hevcmerge unless a
-                // future preflight implementation explicitly establishes merge eligibility.
-                val preflightEvidence = sources.map { tileSource ->
-                    readers.getValue(tileSource).inspectFirstSegment(tileSource.url, tileSource.feedId)
-                }
-                val preflight = TmeCmafPreflight.assess(preflightSession, preflightEvidence)
-                AppLogger.i(
-                    "TME",
-                    "CMAF_RUNTIME_PREFLIGHT status=${preflight.status} eligible=${preflight.nativeMergeEligible} " +
-                        "topology=${preflightSession.topology} summary=${preflight.summary}"
-                )
-                check(preflight.nativeMergeEligible) {
-                    "Native CMAF merge refused by preflight: ${preflight.status}: ${preflight.summary}"
-                }
-
                 // Media sequence numbers are monotonic for the live playlist. Retain only
                 // the last committed sequence instead of an ever-growing set for the
                 // duration of a race.
