@@ -69,9 +69,6 @@ import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.DebugPresentationSettings
 import app.f1multiview.media.AppLogger
-import app.f1multiview.media.OpenTiledSecureSurfaceView
-import app.f1multiview.media.OpenTiledCompositorView
-import app.f1multiview.media.OpenTiledMultiviewEngine
 import app.f1multiview.BuildConfig
 import app.f1multiview.model.*
 import app.f1multiview.viewmodel.*
@@ -176,14 +173,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
 
-    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId, ui.tmeDiscoveryPending) {
-        // Never let the generic Media3 scheduler race ahead of session-level TME
-        // discovery. If the reference stream has not been resolved yet, allocating
-        // even one ExoPlayer is already the wrong physical architecture.
-        if (ui.tmeDiscoveryPending) {
-            AppLogger.i("Playback", "TME_GATE discovery pending; decoder scheduler held")
-            return@LaunchedEffect
-        }
+    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
         val selectedIds = ui.selectedStreamIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         val videoSelectedIds = ui.selectedStreamIds.filter { id ->
@@ -215,8 +205,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             streams = ordered,
             visibleIds = videoSelectedIds,
             referenceId = mainId,
-            autoplay = false,
-            tmeSession = ui.tiledMultiviewSession
+            autoplay = false
         )
         startedFeeds.keys.retainAll(scheduled)
     }
@@ -977,10 +966,8 @@ private fun PitWall(
     onToggleStream: (String) -> Unit,
     onSetMainStream: (String) -> Unit
 ) {
-    val backendStatus by engine.backendStatus.collectAsState()
-    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }
-    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
-        .let { if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) it else it.take(4) }
+    val multiviewStatus by engine.multiviewStatus.collectAsState()
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -1001,7 +988,7 @@ private fun PitWall(
         Box(Modifier.width(5.dp).height(28.dp).background(Red, RoundedCornerShape(3.dp)))
         Text("LIVE PIT WALL", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 14.dp))
         Spacer(Modifier.weight(1f))
-        Text(if (selected.isEmpty()) "SELECT FEEDS" else if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) tiledSelected.size.toString() + "/24" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+        Text(if (selected.isEmpty()) "SELECT FEEDS" else selected.size.toString() + "/4", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Surface(
             Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
@@ -1023,15 +1010,7 @@ private fun PitWall(
     }
     if (feedPanelOpen) LazyRow(Modifier.fillMaxWidth().padding(top = 8.dp), contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(ui.streams) { stream ->
-            val picked = if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) {
-                val session = ui.tiledMultiviewSession
-                val channel = stream.channelId?.trim().takeIf { !it.isNullOrBlank() }
-                val index = channel?.let { ch -> session?.feeds?.indexOfFirst { it.channelId?.toString() == ch } } ?: -1
-                val tileId = if (index >= 0) session?.feedIds?.getOrNull(index) else stream.id
-                tileId != null && tileId in ui.selectedTiledFeedIds
-            } else {
-                stream.id in ui.selectedStreamIds
-            }
+            val picked = stream.id in ui.selectedStreamIds
             val isMain = stream.id == ui.mainStreamId
             var feedFocused by remember(stream.id) { mutableStateOf(false) }
             Surface(Modifier.clip(RoundedCornerShape(10.dp)), shape = RoundedCornerShape(10.dp), color = if (isMain) Red else if (picked) Color(0xFF5A1012) else Surface2, border = BorderStroke(1.dp, if (isMain) Red else Color.White.copy(alpha = .08f))) {
@@ -1039,14 +1018,7 @@ private fun PitWall(
                     Row(
                         Modifier.fillMaxWidth()
                             .clickable {
-                                if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) {
-                                    // TME selection is logical-feed state, not the generic
-                                    // independent-player selection state.
-                                    // The parent callback remains for fallback backends.
-                                    onToggleStream(stream.id)
-                                } else {
-                                    onToggleStream(stream.id)
-                                }
+                                onToggleStream(stream.id)
                             }
                             .focusable()
                             .onFocusChanged { feedFocused = it.isFocused }
@@ -1080,7 +1052,7 @@ private fun PitWall(
         Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(170.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Surface1)) {
             Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
                 Text("CHOOSE YOUR FEEDS", color = White, fontWeight = FontWeight.ExtraBold)
-                Text(if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) "Choose up to 24 logical feeds. Mark any feed as MAIN to replace the current main feed." else "Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("Choose up to 4 feeds. Mark any feed as MAIN to replace the current main feed.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
         return
@@ -1122,27 +1094,14 @@ private fun PitWall(
         }
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
-        if ((backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)) {
-            val protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null
-            val protectedCompositorSupported = remember(protectedSource) {
-                !protectedSource || engine.protectedTiledCompositorSupported()
-            }
-            if (protectedSource && !protectedCompositorSupported) {
-                OpenTiledSecureWall(
-                    engine = engine,
-                    session = ui.tiledMultiviewSession,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
-                )
-            } else {
-                OpenTiledMultiviewWall(
-                    engine = engine,
-                    feedIds = tiledSelected,
-                    protectedSource = protectedSource,
-                    layout = ui.layout,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
-                )
-            }
-        } else {
+        if (selected.size > 1) {
+            Text(multiviewStatus, color = Color(0xFFFFD28A), fontSize = 10.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
+        }
+        CanonicalMultiviewLayout(
+            ui, selected, engine, errors, if (isTv) tvResizeMode else false, {},
+            modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
+        ) else {
             CanonicalMultiviewLayout(
                 ui,
                 selected,
@@ -1700,229 +1659,6 @@ private fun CanonicalMultiviewLayout(
         }
     }
 }
-@OptIn(UnstableApi::class)
-@Composable
-private fun OpenTiledMultiviewWall(
-    engine: UnifiedMultiviewEngine,
-    feedIds: List<String>,
-    protectedSource: Boolean,
-    layout: LayoutPreset,
-    modifier: Modifier = Modifier,
-    onFeedFocus: (String) -> Unit = {},
-    onVideoTap: () -> Unit = {}
-) {
-    val context = LocalContext.current
-    val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
-
-    var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
-    var mainX by rememberSaveable { mutableFloatStateOf(.55f) }
-    var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
-    var fourSideH2 by rememberSaveable { mutableFloatStateOf(.34f) }
-    var topX by rememberSaveable { mutableFloatStateOf(.33f) }
-    var topX2 by rememberSaveable { mutableFloatStateOf(.5f) }
-    var bottomX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
-    var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
-
-    val outputSlots = remember(
-        feedIds, layout, splitX, splitY, mainX, fourSideH1, fourSideH2,
-        topX, topX2, bottomX, bottomX2, gridY
-    ) {
-        val ids = feedIds.distinct().take(24)
-        fun slot(id: String, x: Float, y: Float, width: Float, height: Float, z: Int) =
-            OpenTiledMultiviewEngine.OutputSlot(id, x, y, width, height, z)
-        when {
-            ids.isEmpty() -> emptyList()
-            ids.size == 1 -> listOf(slot(ids[0], 0f, 0f, 1f, 1f, 0))
-            ids.size == 2 -> listOf(
-                slot(ids[0], 0f, 0f, splitX, 1f, 0),
-                slot(ids[1], splitX, 0f, 1f - splitX, 1f, 1)
-            )
-            ids.size == 3 -> listOf(
-                slot(ids[0], 0f, 0f, mainX, 1f, 0),
-                slot(ids[1], mainX, 0f, 1f - mainX, splitY, 1),
-                slot(ids[2], mainX, splitY, 1f - mainX, 1f - splitY, 2)
-            )
-            layout == LayoutPreset.GRID_4 && ids.size >= 4 -> listOf(
-                slot(ids[0], 0f, 0f, mainX, 1f, 0),
-                slot(ids[1], mainX, 0f, 1f - mainX, fourSideH1, 1),
-                slot(ids[2], mainX, fourSideH1, 1f - mainX, fourSideH2, 2),
-                slot(ids[3], mainX, fourSideH1 + fourSideH2, 1f - mainX, (1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f), 3)
-            )
-            layout == LayoutPreset.GRID_6 && ids.size >= 6 -> listOf(
-                slot(ids[0], 0f, 0f, topX, gridY, 0),
-                slot(ids[1], topX, 0f, (1f - topX) * topX2, gridY, 1),
-                slot(ids[2], topX + (1f - topX) * topX2, 0f, (1f - topX) * (1f - topX2), gridY, 2),
-                slot(ids[3], 0f, gridY, bottomX, 1f - gridY, 3),
-                slot(ids[4], bottomX, gridY, (1f - bottomX) * bottomX2, 1f - gridY, 4),
-                slot(ids[5], bottomX + (1f - bottomX) * bottomX2, gridY, (1f - bottomX) * (1f - bottomX2), 1f - gridY, 5)
-            )
-            else -> {
-                val columns = if (ids.size <= 4) 2 else 3
-                val rows = (ids.size + columns - 1) / columns
-                ids.mapIndexed { index, id ->
-                    slot(id, (index % columns).toFloat() / columns, (index / columns).toFloat() / rows,
-                        1f / columns, 1f / rows, index)
-                }
-            }
-        }
-    }
-
-    BoxWithConstraints(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
-
-    /*
-     * AndroidView owns the View instance it creates. Never return a remembered/external
-     * View from factory: doing so allows the same View to retain an old parent and causes
-     * "The specified child already has a parent" during Compose's ViewHolder creation.
-     * The engine binding follows the AndroidView lifecycle instead.
-     */
-    if (!screenshotMode) key(protectedSource) {
-        AndroidView(
-                modifier = Modifier.fillMaxSize(),
-            factory = {
-                FrameLayout(context).apply {
-                    val tiledView = engine.openTiledView(
-                        context,
-                        protectedOutput = protectedSource
-                    )
-                    addView(
-                        tiledView,
-                        FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT
-                        )
-                    )
-                    tiledView.setFeedTapListener { tileId ->
-                        onFeedFocus(tileId)
-                        onVideoTap()
-                    }
-                    engine.attachOpenTiledView(tiledView)
-                }
-            },
-            update = { container ->
-                val tiledView = container.getChildAt(0) as? OpenTiledCompositorView
-                tiledView?.setFeedTapListener { tileId ->
-                    onFeedFocus(tileId)
-                    onVideoTap()
-                }
-                engine.selectOpenTiledFeeds(feedIds)
-                engine.setOpenTiledOutputSlots(outputSlots)
-            },
-            onRelease = { released ->
-                val tiledView = released.getChildAt(0) as? OpenTiledCompositorView
-                if (tiledView != null) {
-                    engine.detachOpenTiledView(tiledView)
-                }
-                released.removeAllViews()
-            }
-        )
-    }
-        if (screenshotMode) {
-            ScreenshotPlaceholder(label = "TILED MULTIVIEW", modifier = Modifier.fillMaxSize())
-        }
-        if (!screenshotMode) {
-            when {
-                feedIds.size == 2 -> {
-                    Box(Modifier.offset(x = maxWidth * splitX - 1.5.dp).height(maxHeight).width(3.dp)) {
-                        ResizeHandle(Orientation.Horizontal, true) { splitX = (splitX + it / 900f).coerceIn(.2f, .8f) }
-                    }
-                }
-                feedIds.size == 3 -> {
-                    Box(Modifier.offset(x = maxWidth * mainX - 1.5.dp).height(maxHeight).width(3.dp)) {
-                        ResizeHandle(Orientation.Horizontal, true) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
-                    }
-                    Box(Modifier.offset(x = maxWidth * mainX, y = maxHeight * splitY - 1.5.dp).width(maxWidth * (1f - mainX)).height(3.dp)) {
-                        ResizeHandle(Orientation.Vertical, true) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                    }
-                }
-                layout == LayoutPreset.GRID_4 && feedIds.size >= 4 -> {
-                    Box(Modifier.offset(x = maxWidth * mainX - 1.5.dp).height(maxHeight).width(3.dp)) {
-                        ResizeHandle(Orientation.Horizontal, true) { mainX = (mainX + it / 1000f).coerceIn(.45f, .78f) }
-                    }
-                    Box(Modifier.offset(x = maxWidth * mainX, y = maxHeight * fourSideH1 - 1.5.dp).width(maxWidth * (1f - mainX)).height(3.dp)) {
-                        ResizeHandle(Orientation.Vertical, true) {
-                            val d = it / 900f
-                            fourSideH1 = (fourSideH1 + d).coerceIn(.16f, .58f)
-                            fourSideH2 = (fourSideH2 - d).coerceIn(.16f, .58f)
-                        }
-                    }
-                    Box(Modifier.offset(x = maxWidth * mainX, y = maxHeight * (fourSideH1 + fourSideH2) - 1.5.dp).width(maxWidth * (1f - mainX)).height(3.dp)) {
-                        ResizeHandle(Orientation.Vertical, true) { fourSideH2 = (fourSideH2 + it / 900f).coerceIn(.16f, .58f) }
-                    }
-                }
-                layout == LayoutPreset.GRID_6 && feedIds.size >= 6 -> {
-                    Box(Modifier.offset(y = maxHeight * gridY - 1.5.dp).width(maxWidth).height(3.dp)) {
-                        ResizeHandle(Orientation.Vertical, true) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
-                    }
-                    Box(Modifier.offset(x = maxWidth * topX - 1.5.dp).width(3.dp).height(maxHeight * gridY)) {
-                        ResizeHandle(Orientation.Horizontal, true) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                    }
-                    Box(Modifier.offset(x = maxWidth * (topX + (1f - topX) * topX2) - 1.5.dp).width(3.dp).height(maxHeight * gridY)) {
-                        ResizeHandle(Orientation.Horizontal, true) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                    }
-                    Box(Modifier.offset(x = maxWidth * bottomX - 1.5.dp, y = maxHeight * gridY).width(3.dp).height(maxHeight * (1f - gridY))) {
-                        ResizeHandle(Orientation.Horizontal, true) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                    }
-                    Box(Modifier.offset(x = maxWidth * (bottomX + (1f - bottomX) * bottomX2) - 1.5.dp, y = maxHeight * gridY).width(3.dp).height(maxHeight * (1f - gridY))) {
-                        ResizeHandle(Orientation.Horizontal, true) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                    }
-                }
-            }
-        }
-    }
-}
-@Composable
-private fun OpenTiledSecureWall(
-    engine: UnifiedMultiviewEngine,
-    session: app.f1multiview.core.playback.TiledMultiviewSession?,
-    modifier: Modifier = Modifier,
-    onVideoTap: () -> Unit = {}
-) {
-    val context = LocalContext.current
-    val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
-    if (session == null) return
-
-    Box(modifier = modifier.clip(RoundedCornerShape(14.dp))) {
-
-    if (!screenshotMode) AndroidView(
-            modifier = Modifier.fillMaxSize(),
-        factory = {
-            FrameLayout(context).apply {
-                val secureView = OpenTiledSecureSurfaceView(context)
-                secureView.setSession(session)
-                secureView.setOnClickListener { onVideoTap() }
-                addView(
-                    secureView,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                )
-                engine.attachOpenTiledSecureView(secureView)
-            }
-        },
-        update = { container ->
-            val secureView = container.getChildAt(0) as? OpenTiledSecureSurfaceView
-            if (secureView != null) {
-                secureView.setSession(session)
-            }
-            engine.selectOpenTiledFeeds(session.feedIds.take(24))
-        },
-        onRelease = { released ->
-            val secureView = released.getChildAt(0) as? OpenTiledSecureSurfaceView
-            if (secureView != null) {
-                engine.detachOpenTiledSecureView(secureView)
-            }
-            released.removeAllViews()
-        }
-    )
-        if (screenshotMode) {
-            ScreenshotPlaceholder(label = "SECURE TILED MULTIVIEW", modifier = Modifier.fillMaxSize())
-        }
-    }
-}
-
 @Composable
 private fun ResizableCompactWall(selected: List<StreamSource>, engine: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -2522,12 +2258,8 @@ private fun FullscreenMultiview(
     onClose: () -> Unit,
     onReplayPosition: (Long) -> Unit
 ) {
-    val backendStatus by engine.backendStatus.collectAsState()
-    val isTme = (backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.OPEN_TME || backendStatus.kind == app.f1multiview.media.MultiviewBackendKind.NATIVE_TME)
-    val selected = ui.selectedStreamIds
-        .mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }
-        .take(if (isTme) 24 else 4)
-    val tiledSelected = ui.selectedTiledFeedIds.ifEmpty { ui.tiledMultiviewSession?.feedIds?.take(24).orEmpty() }
+    val multiviewStatus by engine.multiviewStatus.collectAsState()
+    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
 
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
@@ -2682,34 +2414,14 @@ private fun FullscreenMultiview(
                         bottom = 4.dp
                     )
             ) {
-                if (isTme) {
-                    val protectedSource = ui.streams.firstOrNull { it.id == ui.mainStreamId }?.drmLicenseUrl != null
-                    val protectedCompositorSupported = remember(protectedSource) {
-                        !protectedSource || engine.protectedTiledCompositorSupported()
-                    }
-                    if (protectedSource && !protectedCompositorSupported) {
-                        OpenTiledSecureWall(
-                            engine = engine,
-                            session = ui.tiledMultiviewSession,
-                            modifier = Modifier.fillMaxSize(),
-                            onVideoTap = { controlsVisible = !controlsVisible }
-                        )
-                    } else {
-                        OpenTiledMultiviewWall(
-                            engine = engine,
-                            feedIds = tiledSelected,
-                            protectedSource = protectedSource,
-                            layout = ui.layout,
-                            modifier = Modifier.fillMaxSize(),
-                            onFeedFocus = { tileId ->
-                                activeFeedId = vm.streamIdForTiledFeed(tileId) ?: activeFeedId
-                                controlsVisible = true
-                                menu = null
-                            },
-                            onVideoTap = { controlsVisible = !controlsVisible }
-                        )
-                    }
-                } else {
+                CanonicalMultiviewLayout(
+                    ui = ui, selected = selected, engine = engine, errors = errors,
+                    editSize = editSize,
+                    onFocus = { id -> activeFeedId = id; menu = null },
+                    activeId = activeFeedId, modifier = Modifier.fillMaxSize(),
+                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                    onVideoTap = { controlsVisible = !controlsVisible }
+                ) else {
                     CanonicalMultiviewLayout(
                         ui = ui,
                         selected = selected,
@@ -2752,7 +2464,7 @@ private fun FullscreenMultiview(
                         // Feed selection is deliberately separate from active-feed focus.
                         // Clicking a right-rail item adds/removes it from the wall; it never
                         // replaces the large left feed.
-                        if (ui.tiledMultiviewSession != null) vm.toggleTiledStream(id) else vm.toggleStream(id)
+                        vm.toggleStream(id)
                         menu = null
                     },
                     modifier = Modifier
@@ -2761,6 +2473,11 @@ private fun FullscreenMultiview(
                         .padding(end = 7.dp, top = 4.dp, bottom = 4.dp)
                 )
             }
+        }
+
+        if (selected.size > 1) {
+            Text(multiviewStatus, color = Color(0xFFFFD28A), fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = if (controlsVisible) 54.dp else 8.dp))
         }
 
         if (controlsVisible) {
