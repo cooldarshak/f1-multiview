@@ -150,7 +150,7 @@ internal object SyntheticMultiviewClipFactory {
         }
     }
 
-    private fun fillImage(image: android.media.Image, frame: Int, variant: Int) {
+    private fun fillImage(image: android.media.Image, frame: Int, variant: Int): Int {
         val planes = image.planes
         require(planes.size == 3) { "Expected a three-plane YUV420 encoder input" }
         val yBase = if (variant == 0) 64 else 160
@@ -159,9 +159,9 @@ internal object SyntheticMultiviewClipFactory {
         val yBuffer = yPlane.buffer
         for (row in 0 until HEIGHT) {
             for (column in 0 until WIDTH) {
-                val band = row in movingBandStart until movingBandStart + 24
-                val marker = column in ((frame * 5 + variant * 37) % (WIDTH - 48)) until
-                    (((frame * 5 + variant * 37) % (WIDTH - 48)) + 48)
+                val band = row >= movingBandStart && row < movingBandStart + 24
+                val markerStart = (frame * 5 + variant * 37) % (WIDTH - 48)
+                val marker = column >= markerStart && column < markerStart + 48
                 val value = when {
                     band && marker -> 235
                     band -> (yBase + 48).coerceAtMost(220)
@@ -172,6 +172,7 @@ internal object SyntheticMultiviewClipFactory {
         }
         fillChromaPlane(planes[1], WIDTH / 2, HEIGHT / 2, 128)
         fillChromaPlane(planes[2], WIDTH / 2, HEIGHT / 2, 128)
+        return planes.sumOf { it.buffer.capacity() }
     }
 
     private fun fillChromaPlane(
