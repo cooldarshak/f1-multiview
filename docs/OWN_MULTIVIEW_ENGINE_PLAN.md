@@ -95,9 +95,9 @@ The first provider-neutral foundation has been committed to the active branch:
 - `app/src/main/java/app/f1multiview/media/SessionTimelineSynchronizer.kt` defines a deterministic master/follower correction policy: hold followers when the master buffers, resume engine-paused followers, use rate correction for small drift, and seek for large drift with separate VOD/live thresholds.
 - `app/src/test/java/app/f1multiview/media/SessionTimelineSynchronizerTest.kt` contains eight JVM unit tests for these decisions.
 
-These files are an initial contract/policy layer, **not yet the production playback path**. An isolated debug-only synthetic prototype now generates two distinct clear H.264 fixtures, describes them with provider-neutral `FeedDescriptor` values, decodes them with two Android MediaCodec instances, and composites their SurfaceTextures through one GLES output view using normalized `FeedViewport`/`ViewportLayout` values. Its source now displays/logs first-texture-frame latency, texture update rate/gaps, surface PTS skew, coalesced frame notifications, codec-reported dropped-frame metrics when available, late presentation deadlines, GLES draw cadence, process PSS/heap/CPU, and decoder thread count. Coalesced callbacks and late deadlines are explicitly not treated as authoritative decoder-drop counts.
+These files are an initial contract/policy layer, **not yet the production playback path**. An isolated debug-only synthetic prototype now generates three distinct clear H.264 fixtures, describes them with provider-neutral `FeedDescriptor` values, decodes them with three Android MediaCodec instances, and composites their SurfaceTextures through one GLES output view using normalized `FeedViewport`/`ViewportLayout` values. Its source now displays/logs first-texture-frame latency, texture update rate/gaps, surface PTS skew, coalesced frame notifications, codec-reported dropped-frame metrics when available, late presentation deadlines, GLES draw cadence, process PSS/heap/CPU, and decoder thread count. Coalesced callbacks and late deadlines are explicitly not treated as authoritative decoder-drop counts.
 
-The source-level dependency map and staged removal plan are recorded in [OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md](OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md). No build or test run has been triggered. **The production path still contains TME-dependent control flow and has not yet been migrated**; do not claim the architecture is corrected. Next, validate the two-feed prototype with an approved build and runtime measurements, then replace the production TME discovery/session path with the provider-neutral own-engine contract, preserving the existing UI controls/layouts/resizing/TV remote behavior and never silently falling back to one ExoPlayer per feed.
+The source-level dependency map and staged removal plan are recorded in [OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md](OWN_ENGINE_SOURCE_MIGRATION_AUDIT.md). No build or test run has been triggered. **The production path still contains TME-dependent control flow and has not yet been migrated**; do not claim the architecture is corrected. Next, validate the three-feed prototype with an approved build and runtime measurements, then replace the production TME discovery/session path with the provider-neutral own-engine contract, preserving the existing UI controls/layouts/resizing/TV remote behavior and never silently falling back to one ExoPlayer per feed.
 
 ## 2B. Broader web research (Firecrawl + public technical documentation)
 
@@ -189,7 +189,7 @@ Proposed components:
 
 **Path 3 — custom coordinated decode/composite:** use one app-owned engine to coordinate per-feed demux/decode pipelines, SurfaceTexture outputs, a shared timeline, and one OpenGL ES compositor. This can emulate the multiview behavior and layout, but may use multiple hardware decoder contexts and has device-dependent limits. It is not the same compression/decoder optimization as a server-prepared tiled stream.
 
-An important engineering constraint remains independent of any vendor: arbitrary independent camera feeds cannot be assumed to combine into one encoded stream or one decoder input. We must establish the source formats and then choose a technically valid open implementation. Run a format/capability probe and a two-feed prototype before choosing the primary path. Do not silently fall back from one path to another.
+An important engineering constraint remains independent of any vendor: arbitrary independent camera feeds cannot be assumed to combine into one encoded stream or one decoder input. We must establish the source formats and then choose a technically valid open implementation. Run a format/capability probe and a three-feed prototype before choosing the primary path. Do not silently fall back from one path to another.
 
 ## 4. Phased execution plan
 
@@ -212,7 +212,7 @@ An important engineering constraint remains independent of any vendor: arbitrary
 4. `scripts/build-gpac-android.sh` explicitly disables GPAC `compositor`, `vout`, and `aout`; therefore the currently built GPAC configuration cannot provide the proposed independent-stream compositor without a separate build/configuration and Android output-surface proof.
 5. The current default backend is `Media3MultiPlayerFallbackBackend`, while the code intentionally blocks that backend for more than one visible video. Simply removing the gate would therefore violate the one-logical-engine requirement and risk returning to the multi-ExoPlayer behavior the project is meant to replace.
 6. Research of F1AppleTV and Race Control confirms that existing F1 clients provide valuable layout, feed lifecycle, and synchronization patterns, but both use separate per-feed players in their current implementations. They are references for product behavior and test cases, not evidence of single-decoder composition.
-7. The first implementation milestone must be a vendor-neutral engine contract and clear synthetic two-feed rendering proof. Only after that should the F1 feed resolver be wired into it; the actual F1 codec/container/timestamp characteristics still need to be measured rather than assumed.
+7. The first implementation milestone must be a vendor-neutral engine contract and clear synthetic three-feed rendering proof. Only after that should the F1 feed resolver be wired into it; the actual F1 codec/container/timestamp characteristics still need to be measured rather than assumed.
 
 
 - Trace the complete path from selected F1 feed -> playback response -> feed descriptor -> aligned sample queue -> native merger -> decoder/output surface.
@@ -342,7 +342,7 @@ This section intentionally broadens beyond F1 projects. It distinguishes publicl
 
 ### Immediate next work
 - Inspect the existing Gradle/NDK and native-surface lifecycle on the active branch.
-- Add a minimal isolated two-feed synthetic harness without altering existing production UI or removing resize behavior.
+- Add a minimal isolated three-feed synthetic harness without altering existing production UI or removing resize behavior.
 - Reuse only license-compatible examples and document any code copied or adapted.
 - Measure whether two streams can be decoded and composited smoothly on target hardware before selecting a framework.
 - Then inspect the actual authorized F1 feed formats and decide whether the same client pipeline can support them; do not return to TME discovery as a prerequisite.
