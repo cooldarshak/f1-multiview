@@ -373,6 +373,24 @@ A viable next prototype should test a minimal Android view hierarchy with two au
 
 If the provider's DRM/session integration or the target device cannot support simultaneous secure outputs, document the exact observed failure (API level, device/codec, secure output creation/attachment result, concurrent-session/license result, and logs) and retain the visible block. Do not infer a universal Android limitation from the current GLES limitation.
 
+### Secure-surface lifecycle instrumentation (2026-10-09)
+
+The app now emits structured `SecureSurface` lifecycle events for each SurfaceView binding:
+`BOUND`, `CREATED`, `CHANGED`, and `DESTROYED`. Events include logical feed/player identity,
+view/container identity, requested protected classification, surface validity, attachment state,
+and dimensions. The engine diagnostics snapshot exposes counts of bound, attached, and valid
+protected SurfaceView bindings plus per-view dimensions/identities.
+
+These are observability signals, not proof that Android's compositor actually presents protected
+frames or that the provider grants concurrent licenses/decoder sessions. In particular,
+`secureFlagRequested` records the app's request to secure the SurfaceView; it is not a read-back
+verification of the platform's effective security state. The current engine still blocks visible
+multi-video selection before binding independent player outputs. Therefore, two simultaneous
+protected surfaces cannot yet be proven by this instrumentation alone. Next acceptance gate is a
+controlled authorized two-feed session that records two distinct valid secure outputs at once,
+successful frame presentation for each, no license/session denial, and resize/rebind/detach
+stability on the target phone; repeat on Android TV before enabling the feature.
+
 ### Validation status
 
 The surface cleanup source change is committed as a6aefc96eb220531f94885937d82af738d7d31b2. Cloud validation must complete against the updated branch head. No claim is made yet that the stale-detach scenario is runtime-tested or that protected multiview works. The next source/device gate is an Android lifecycle regression test plus a two-secure-SurfaceView feasibility spike; resizing and layout controls remain in scope.
