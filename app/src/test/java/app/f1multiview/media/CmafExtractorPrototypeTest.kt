@@ -5,7 +5,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.DefaultExtractorInput
-import androidx.media3.extractor.DataReader
+import androidx.media3.common.DataReader
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.PositionHolder
