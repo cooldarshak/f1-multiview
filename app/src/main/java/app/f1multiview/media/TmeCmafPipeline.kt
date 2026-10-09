@@ -61,7 +61,7 @@ class TmeCmafFeedReader(
             var best: String? = null
             lines.forEachIndexed { i, line ->
                 if (!line.startsWith("#EXT-X-STREAM-INF:")) return@forEachIndexed
-                val bandwidth = Regex("""(?:^|,)BANDWIDTH=(\d+)""")
+                val bandwidth = Regex("""(?:^|[:,])BANDWIDTH=(\d+)""")
                     .find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                 val child = lines.drop(i + 1).firstOrNull { !it.startsWith("#") } ?: return@forEachIndexed
                 if (bandwidth >= bestBandwidth) {
