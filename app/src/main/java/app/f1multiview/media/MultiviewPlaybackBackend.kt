@@ -4,6 +4,7 @@ import app.f1multiview.core.playback.TiledMultiviewSession
 import app.f1multiview.data.f1tv.TmePlayback
 import app.f1multiview.data.f1tv.TmeTopology
 import app.f1multiview.model.StreamSource
+import android.content.Context
 
 /**
  * Capability boundary between the app's multiview orchestration and the physical
@@ -44,14 +45,19 @@ interface MultiviewPlaybackBackend {
  * tiled stream.
  */
 class NativeTmePlaybackBackend(
-    context: android.content.Context
+    context: Context
 ) : MultiviewPlaybackBackend {
+    private val appContext = context.applicationContext
+    @Volatile private var preflightInFlight = false
+    @Volatile private var preflightKey: String? = null
+    @Volatile private var preflightReport: TmeCmafPreflightReport? = null
+
     // Do not construct the physical engine merely to query backend capability/status.
     // The engine owns MediaCodec/native resources and is only needed when playback is
     // actually requested. This also keeps capability tests independent of Android
     // framework objects.
     private val engine by lazy(LazyThreadSafetyMode.NONE) {
-        NativeTmeMultiviewEngine(context)
+        NativeTmeMultiviewEngine(appContext)
     }
 
     override val status: MultiviewBackendStatus
@@ -72,6 +78,70 @@ class NativeTmePlaybackBackend(
 
     override fun canHandle(session: TiledMultiviewSession): Boolean = engine.canHandle(session)
 
+    /**
+     * Starts a one-shot, metadata-only probe of the first HLS/CMAF segment for each
+     * multi-URL feed. It never decrypts protected samples or enables the merger.
+     * Results are retained for the existing diagnostics screen/logging.
+     */
+    @Synchronized
+    fun inspectInputs(session: TiledMultiviewSession, source: StreamSource) {
+        if (session.topology == TmeTopology.SINGLE_MOSAIC_SOURCE || session.feeds.size < 2) return
+        val key = (session.contentId?.toString() ?: "unknown") + ":" +
+            session.feedIds.joinToString("|") + ":" + session.feeds.map { it.url.orEmpty() }.joinToString("|")
+        if (preflightKey == key || preflightInFlight) return
+        preflightKey = key
+        preflightInFlight = true
+        Thread({
+            try {
+                val evidence = session.feeds.mapIndexed { index, feed ->
+                    val url = feed.url
+                    if (url.isNullOrBlank()) {
+                        TmeCmafFeedEvidence(
+                            feedId = session.feedIds[index],
+                            mimeType = null,
+                            width = null,
+                            height = null,
+                            codecConfigFingerprint = null,
+                            encrypted = false,
+                            sampleCount = 0,
+                            firstSampleTimeUs = null,
+                            firstSampleIsSync = null,
+                            inspectionError = "Feed URL is missing"
+                        )
+                    } else {
+                        TmeCmafFeedReader(appContext, source.requestHeaders)
+                            .inspectFirstSegment(url, session.feedIds[index])
+                    }
+                }
+                val report = TmeCmafPreflight.assess(session, evidence)
+                preflightReport = report
+                AppLogger.i(
+                    "TME",
+                    "CMAF_PREFLIGHT status=${report.status} nativeMergeEligible=${report.nativeMergeEligible} " +
+                        "topology=${session.topology} feeds=${evidence.size} summary=${report.summary}"
+                )
+                evidence.forEach { item ->
+                    AppLogger.i(
+                        "TME",
+                        "CMAF_FEED_EVIDENCE feed=${item.feedId} mime=${item.mimeType ?: "unknown"} " +
+                            "size=${item.width ?: 0}x${item.height ?: 0} encrypted=${item.encrypted} " +
+                            "encryptionMethod=${item.encryptionMethod ?: "none-or-unknown"} samples=${item.sampleCount} " +
+                            "firstPtsUs=${item.firstSampleTimeUs ?: -1L} firstSync=${item.firstSampleIsSync ?: "unknown"} " +
+                            "codecConfigFingerprint=${item.codecConfigFingerprint?.take(16) ?: "none"} " +
+                            "error=${item.inspectionError ?: "none"}"
+                    )
+                }
+            } catch (error: Throwable) {
+                AppLogger.e("TME", "CMAF_PREFLIGHT_FAILED type=${error.javaClass.simpleName} message=${error.message}")
+            } finally {
+                preflightInFlight = false
+            }
+        }, "f1-cmaf-preflight").also {
+            it.isDaemon = true
+            it.start()
+        }
+    }
+
     fun prepare(session: TiledMultiviewSession, source: StreamSource): Boolean =
         engine.prepare(session, source)
 
@@ -84,7 +154,15 @@ class NativeTmePlaybackBackend(
     fun play() = engine.play()
     fun pause() = engine.pause()
     fun release() = engine.release()
-    fun diagnostics(): Map<String, String> = engine.diagnostics()
+    fun diagnostics(): Map<String, String> {
+        val report = preflightReport
+        return engine.diagnostics() + mapOf(
+            "cmafPreflightInFlight" to preflightInFlight.toString(),
+            "cmafPreflightStatus" to (report?.status?.name ?: "NOT_RUN"),
+            "cmafPreflightNativeMergeEligible" to (report?.nativeMergeEligible?.toString() ?: "false"),
+            "cmafPreflightSummary" to (report?.summary ?: "No multi-URL CMAF preflight has completed")
+        )
+    }
 }
 
 /**
