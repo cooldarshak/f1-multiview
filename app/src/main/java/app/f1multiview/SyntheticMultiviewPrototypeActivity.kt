@@ -176,7 +176,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         }
         statusLines["pipeline"] = "Three MediaCodec decoders started on one shared playback timeline"
         renderStatus()
-        AppLogger.i("SyntheticMultiview", "prototype started with two clear local H.264 feeds")
+        AppLogger.i("SyntheticMultiview", "prototype started with three clear local H.264 feeds")
     }
 
     private fun onDecoderStatus(line: String) {
