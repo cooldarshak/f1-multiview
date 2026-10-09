@@ -433,3 +433,17 @@ If public APIs cannot support the authorized F1 license/demux boundary without p
 ### Validation gate
 
 No feature enablement until a controlled authorized two-feed run shows (a) both protected outputs created, valid and attached concurrently, (b) successful visible frame presentation from both feeds, (c) no license/session denial, and (d) stable resize/rebind/detach behavior. Repeat on Android TV. Source checks and CI are necessary but cannot establish this runtime proof.
+
+
+### Playback pipeline audit findings (2026-10-09)
+
+The source audit of `Media3DecoderManager` found two important constraints:
+
+- The current authorized stream path is Media3/ExoPlayer-owned: it builds a `MediaItem`, a Media3 `MediaSource`, and a `DefaultDrmSessionManager`, then assigns that source to an ExoPlayer. Its F1-specific HLS data source and license-request properties also carry authorization details. These cannot be dropped when designing the app-owned pipeline.
+- The decoder recovery path previously attempted to force Widevine security level L3 for a secondary feed after suspected secure-decoder exhaustion. That automatic downgrade has been removed. Recovery now retains the provider/device-selected Widevine security level and uses the normal quality recovery path. If resources remain unavailable, the error must be surfaced rather than changing the security level silently.
+
+This audit does **not** establish that Media3 exposes a supported, stable public API for extracting its internal DASH/CMAF demux and DRM-session machinery into a shared app-owned pipeline. A real replacement must prove the public API boundary for authorized manifest requests, CMAF segment parsing, encrypted sample handling, license renewal/session lifetime, and secure decoder output. It must preserve the existing F1 request headers and token handling without logging secrets or bypassing entitlement.
+
+### Next implementation gate
+
+Before production multiview can be enabled, prototype the app-owned source pipeline against clear synthetic CMAF inputs first, then add the authorized DRM boundary only where public APIs support it. Keep the current single-feed Media3 playback path intact during that work. Do not route multiple visible feeds through the existing per-feed ExoPlayer manager, and do not use a secure-surface layout experiment as proof of actual protected frame presentation.
