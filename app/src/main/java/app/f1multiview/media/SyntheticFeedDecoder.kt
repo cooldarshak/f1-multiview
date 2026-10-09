@@ -19,7 +19,7 @@ internal class SyntheticFeedDecoder(
     private val onStatus: (String) -> Unit
 ) {
     private val stopRequested = AtomicBoolean(false)
-    private val renderedSamples = AtomicLong(0L)
+    private val outputFramesQueued = AtomicLong(0L)
     @Volatile private var worker: Thread? = null
 
     fun start() {
@@ -74,7 +74,7 @@ internal class SyntheticFeedDecoder(
             runCatching { decoder?.release() }
             runCatching { extractor?.release() }
             worker = null
-            if (stopRequested.get()) onStatus("$feedLabel stopped frames=${renderedSamples.get()}")
+            if (stopRequested.get()) onStatus("$feedLabel stopped frames=${outputFramesQueued.get()}")
         }
     }
 
@@ -99,7 +99,10 @@ internal class SyntheticFeedDecoder(
                         inputEosQueued = true
                     } else {
                         val sampleTimeUs = extractor.sampleTime.coerceAtLeast(0L)
-                        decoder.queueInputBuffer(inputIndex, 0, sampleSize, sampleTimeUs, extractor.sampleFlags)
+                        val sampleFlags = if (
+                            (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0
+                        ) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+                        decoder.queueInputBuffer(inputIndex, 0, sampleSize, sampleTimeUs, sampleFlags)
                         extractor.advance()
                     }
                 }
@@ -136,9 +139,9 @@ internal class SyntheticFeedDecoder(
                             val relativeUs = (info.presentationTimeUs - firstPtsUs).coerceAtLeast(0L)
                             val renderAtNs = playbackAnchorNs + relativeUs * 1_000L
                             decoder.releaseOutputBuffer(outputIndex, renderAtNs)
-                            val count = renderedSamples.incrementAndGet()
+                            val count = outputFramesQueued.incrementAndGet()
                             if (count == 1L || count % 30L == 0L) {
-                                onStatus("$feedLabel renderedSamples=$count")
+                                onStatus("$feedLabel outputFramesQueued=$count")
                             }
                         } else {
                             decoder.releaseOutputBuffer(outputIndex, false)
