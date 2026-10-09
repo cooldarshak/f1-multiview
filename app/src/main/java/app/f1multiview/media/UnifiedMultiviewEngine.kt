@@ -57,6 +57,7 @@ class UnifiedMultiviewEngine(context: Context) {
         // Physical backend selection is topology-driven and fail-closed.
         selectedMultiviewBackend = when (session.topology) {
             app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE -> openTiledBackend
+            app.f1multiview.data.f1tv.TmeTopology.MULTI_SOURCE_TILED_CANDIDATE -> nativeTmeBackend
             app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES -> nativeTmeBackend
             app.f1multiview.data.f1tv.TmeTopology.UNKNOWN -> nativeTmeBackend
         }
@@ -288,9 +289,12 @@ class UnifiedMultiviewEngine(context: Context) {
                 AppLogger.e("TME", "Single-source tiled backend could not be prepared; refusing Media3 multi-player fallback")
                 return emptySet()
             }
-        } else if (resolvedTmeSession?.topology == app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES) {
+        } else if (resolvedTmeSession?.topology in setOf(
+                app.f1multiview.data.f1tv.TmeTopology.MULTI_SOURCE_TILED_CANDIDATE,
+                app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES
+            )) {
             // Never silently downgrade an F1 TME session into one ExoPlayer per feed.
-            // Independent F1 tile URLs require the compressed-domain OpenTME merger.
+            // Multi-URL inputs are preflighted before any native merge is enabled.
             // Until that backend proves the one-stream/one-decoder invariant, fail closed.
             val model = resolvedTmeSession
             decoderManager.release()
