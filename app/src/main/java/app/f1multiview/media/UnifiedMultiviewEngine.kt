@@ -35,7 +35,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
     fun multiviewDiagnostics(): Map<String, String> =
-        decoderResourceDiagnostics() + mapOf("multiviewStatus" to _multiviewStatus.value)
+        decoderResourceDiagnostics() + surfaceManager.secureSurfaceDiagnostics() + mapOf("multiviewStatus" to _multiviewStatus.value)
 
     internal fun backendPlayer(id: String): ExoPlayer {
         check(!multiFeedBlocked) { _multiviewStatus.value }
