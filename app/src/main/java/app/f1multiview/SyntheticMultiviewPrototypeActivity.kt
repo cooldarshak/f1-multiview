@@ -3,6 +3,8 @@ package app.f1multiview
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Debug
+import android.os.Process
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -40,6 +42,8 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private val statusLines = linkedMapOf<String, String>()
     private var starting = false
     private var destroyed = false
+    private var lastCpuSampleAtNs = 0L
+    private var lastCpuSampleMs = 0L
     private val diagnosticTicker = object : Runnable {
         override fun run() {
             if (destroyed || !::compositor.isInitialized) return
@@ -70,7 +74,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             textSize = 12f
             setPadding(18, 14, 18, 14)
             setBackgroundColor(0xD9000000.toInt())
-            text = "SYNTHETIC MULTIVIEW PROTOTYPE\nGenerating three clear H.264 test clips…"
+            text = "SYNTHETIC MULTIVIEW PROTOTYPE\nGenerating two clear H.264 test clips…"
             isFocusable = true
             contentDescription = "Synthetic multiview diagnostics. Press Back to exit."
         }
@@ -93,7 +97,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
                 mainHandler.post {
                     if (destroyed) return@post
                     clips = generated
-                    statusLines["source"] = "Generated local H.264 clips: ${generated.files.joinToString(" / ") { it.length().toString() }} bytes"
+                    statusLines["source"] = "Generated two local H.264 clips: ${generated.files.joinToString(" / ") { it.length().toString() }} bytes"
                     renderStatus()
                     startIfReady()
                 }
@@ -129,13 +133,13 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     }
 
     private fun startIfReady() {
-        if (destroyed || starting || clips == null || currentSurfaces?.size != 3) return
+        if (destroyed || starting || clips == null || currentSurfaces?.size != 2) return
         synchronized(pipelineLock) {
             if (pipelines.isNotEmpty()) return
             starting = true
             val files = requireNotNull(clips).files
             val surfaces = requireNotNull(currentSurfaces)
-            val labels = listOf("LEFT", "CENTER", "RIGHT")
+            val labels = listOf("LEFT", "RIGHT")
             // Give every decoder one common epoch slightly in the future so setup time does not
             // create a different playback clock for each feed.
             val sharedPlaybackAnchorNs = System.nanoTime() + 500_000_000L
@@ -147,9 +151,9 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             pipelines.toList().forEach(SyntheticFeedDecoder::start)
             starting = false
         }
-        statusLines["pipeline"] = "Three MediaCodec decoders started on one shared playback timeline"
+        statusLines["pipeline"] = "Two MediaCodec decoders started on one shared playback timeline"
         renderStatus()
-        AppLogger.i("SyntheticMultiview", "prototype started with three clear local H.264 feeds")
+        AppLogger.i("SyntheticMultiview", "prototype started with two clear local H.264 feeds")
     }
 
     private fun onDecoderStatus(line: String) {
@@ -165,13 +169,37 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private fun renderStatus() {
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
-            add("Three MediaCodec decoders → three SurfaceTextures → one GLES compositor")
+            add("Two MediaCodec decoders → two SurfaceTextures → one GLES compositor")
             compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach(::add)
             add(compositor.drawDiagnostics())
+            add(resourceDiagnostics())
+            synchronized(pipelineLock) { pipelines.map { it.metricsLine() } }.forEach(::add)
             statusLines.values.forEach(::add)
             add("Press Back to exit")
         }
         statusView.text = lines.joinToString("\n")
+    }
+
+    private fun resourceDiagnostics(): String {
+        val memory = Debug.MemoryInfo()
+        Debug.getMemoryInfo(memory)
+        val runtime = Runtime.getRuntime()
+        val usedHeapMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
+        val maxHeapMb = runtime.maxMemory() / (1024L * 1024L)
+        val nowNs = SystemClock.elapsedRealtimeNanos()
+        val cpuMs = Process.getElapsedCpuTime()
+        val previousAtNs = lastCpuSampleAtNs
+        val previousCpuMs = lastCpuSampleMs
+        lastCpuSampleAtNs = nowNs
+        lastCpuSampleMs = cpuMs
+        val cpuPercent = if (previousAtNs > 0L && nowNs > previousAtNs) {
+            val wallMs = (nowNs - previousAtNs) / 1_000_000.0
+            String.format(java.util.Locale.US, "%.1f", ((cpuMs - previousCpuMs) / wallMs) * 100.0)
+        } else "warming"
+        val decoderThreads = Thread.getAllStackTraces().keys.count {
+            it.isAlive && it.name.startsWith("synthetic-decoder-")
+        }
+        return "resources pss=${memory.totalPss}KB heap=${usedHeapMb}/${maxHeapMb}MB processCpu=${cpuPercent}% of one core decoderThreads=$decoderThreads"
     }
 
     private fun stopDecodersAndWait() {
