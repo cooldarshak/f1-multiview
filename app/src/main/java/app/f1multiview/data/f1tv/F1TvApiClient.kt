@@ -150,12 +150,14 @@ class F1TvApiClient {
         val result=root?.optJSONObject("resultObj")
         val topKeys=root?.let{jsonKeys(it)}?:emptyList()
         val resultKeys=result?.let{jsonKeys(it)}?:emptyList()
-        val relevant=(topKeys+resultKeys).distinct().filter{
-            it.contains("tme",true) || it.contains("tiled",true) ||
-                it.contains("multichannel",true) || it.contains("channelViewMode",true) ||
-                it.contains("playApiVersion",true)
-        }
         val sources=listOfNotNull(root,result)
+        val relevant=sources.flatMap{obj->
+            jsonKeys(obj).filter{key->
+                key.contains("tme",true) || key.contains("tiled",true) ||
+                    key.contains("multichannel",true) || key.contains("channelViewMode",true) ||
+                    key.contains("playApiVersion",true)
+            }.map{key->"$key:${jsonType(obj.opt(key))}"}
+        }.distinct().sorted()
         val availability=sources.flatMap{obj->
             jsonKeys(obj).filter{it.equals("isTmeAvailable",true)}.map{key->
                 val value=obj.opt(key)
