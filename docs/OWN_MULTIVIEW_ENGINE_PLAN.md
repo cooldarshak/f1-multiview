@@ -385,3 +385,8 @@ A source audit found that pipeline version >= 3 was being used as a proxy for Wi
 The Media3 load boundary now refuses to start a stream when it is explicitly classified as protected but has no resolved license endpoint. This prevents accidentally building a non-DRM MediaItem for a feed the resolver says is protected. It reports an explicit per-feed error and does not silently downgrade to clear playback. A license URL still triggers protected classification even when other metadata fields are absent.
 
 JVM regression coverage was added for the pipeline-version false positive, missing-license fail-closed behavior, and license-endpoint-only classification. This remains a safety/metadata correctness step; it does not enable concurrent protected feeds or prove secure-surface composition.
+
+
+### Follow-up: stale playback is cleared when protected metadata becomes incomplete
+
+The fail-closed Media3 load path also clears any existing player/decoder lease for that feed before returning the missing-license error. This matters when a previously resolved feed is refreshed: refusing the new source must not leave an older player attached and running under a stale logical feed identity. The error is then recorded after cleanup so it remains visible. This behavior is source-level hardened; the pending validation workflow must verify compilation and tests.
