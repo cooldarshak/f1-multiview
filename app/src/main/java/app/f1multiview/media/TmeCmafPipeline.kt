@@ -225,7 +225,7 @@ class TmeCmafFeedReader(
                 firstSampleTimeUs = null,
                 firstSampleIsSync = null,
                 inspectionError = error.message
-                    ?.replace(Regex("""https?://[^\\s\"']+"""), "<url>")
+                    ?.replace(Regex("""https?://[^"']+"""), "<url>")
                     ?.take(180)
                     ?: error.javaClass.simpleName
             )
