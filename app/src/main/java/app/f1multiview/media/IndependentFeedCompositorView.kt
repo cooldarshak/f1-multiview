@@ -60,15 +60,15 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         val fps = if (count > 1L && lastNs > firstNs) {
             String.format(java.util.Locale.US, "%.1f", (count - 1L) * 1_000_000_000.0 / (lastNs - firstNs))
         } else "warming"
-        val mediaTimestampMs = renderer.sourceMediaTimestampNs[index].get().let {
+        val surfaceTimestampMs = renderer.sourceSurfaceTimestampNs[index].get().let {
             if (it > 0L) "${it / 1_000_000L}ms" else "pending"
         }
         val maxGapMs = renderer.sourceMaxArrivalGapNs[index].get() / 1_000_000L
         val ageMs = if (lastNs == 0L) "never" else "${(android.os.SystemClock.elapsedRealtimeNanos() - lastNs).coerceAtLeast(0L) / 1_000_000L}ms"
-        "feed${index + 1}: frames=$count firstFrame=$firstMs observedFps=$fps lastFrameAge=$ageMs mediaTs=$mediaTimestampMs maxArrivalGap=${maxGapMs}ms"
+        "feed${index + 1}: textureUpdates=$count firstFrame=$firstMs textureUpdatesPerSecond=$fps lastUpdateAge=$ageMs surfaceTs=$surfaceTimestampMs maxUpdateGap=${maxGapMs}ms"
     } + listOf(
         renderer.drawDiagnostics(),
-        "syntheticMediaTimestampSkew(notSyncVerdict)=${renderer.latestMediaTimestampSkewMs()}ms"
+        "surfaceTimestampSkew(notSyncVerdict)=${renderer.latestSurfaceTimestampSkewMs()}ms"
     )
 
     override fun onDetachedFromWindow() {
@@ -81,7 +81,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         val sourceFrameCount = Array(3) { AtomicLong(0L) }
         val sourceFirstFrameAtNs = Array(3) { AtomicLong(0L) }
         val sourceLastFrameAtNs = Array(3) { AtomicLong(0L) }
-        val sourceMediaTimestampNs = Array(3) { AtomicLong(0L) }
+        val sourceSurfaceTimestampNs = Array(3) { AtomicLong(0L) }
         val sourceMaxArrivalGapNs = Array(3) { AtomicLong(0L) }
         private val textureIds = IntArray(3)
         private val inputTextures = arrayOfNulls<SurfaceTexture>(3)
@@ -176,7 +176,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                         }
                         sourceFirstFrameAtNs[index].compareAndSet(0L, frameTimeNs)
                         inputTextures[index]?.timestamp?.let { timestampNs ->
-                            if (timestampNs > 0L) sourceMediaTimestampNs[index].set(timestampNs)
+                            if (timestampNs > 0L) sourceSurfaceTimestampNs[index].set(timestampNs)
                         }
                         sourceFrameCount[index].incrementAndGet()
                     }
@@ -225,8 +225,8 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             return "GLES draw calls=$count drawCallRate=$rate/s maxDrawGap=${maxDrawGapNs.get() / 1_000_000L}ms (not display-present FPS)"
         }
 
-        fun latestMediaTimestampSkewMs(): Long {
-            val timestamps = sourceMediaTimestampNs.map { it.get() }
+        fun latestSurfaceTimestampSkewMs(): Long {
+            val timestamps = sourceSurfaceTimestampNs.map { it.get() }
             if (timestamps.any { it <= 0L }) return -1L
             val minimum = timestamps.minOrNull() ?: return -1L
             val maximum = timestamps.maxOrNull() ?: return -1L
