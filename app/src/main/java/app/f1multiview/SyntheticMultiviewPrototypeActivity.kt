@@ -33,7 +33,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     }
     private lateinit var compositor: IndependentFeedCompositorView
     private lateinit var statusView: TextView
-    private var clips: SyntheticMultiviewClipFactory.ClipPair? = null
+    private var clips: SyntheticMultiviewClipFactory.ClipSet? = null
     @Volatile private var currentSurfaces: List<Surface>? = null
     private val pipelineLock = Any()
     private val pipelines = mutableListOf<SyntheticFeedDecoder>()
@@ -83,7 +83,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
                 mainHandler.post {
                     if (destroyed) return@post
                     clips = generated
-                    statusLines["source"] = "Generated local H.264 clips: ${generated.left.length()} / ${generated.right.length()} bytes"
+                    statusLines["source"] = "Generated local H.264 clips: ${generated.files.joinToString(" / ") { it.length().toString() }} bytes"
                     renderStatus()
                     startIfReady()
                 }
@@ -119,23 +119,22 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     }
 
     private fun startIfReady() {
-        if (destroyed || starting || clips == null || currentSurfaces?.size != 2) return
+        if (destroyed || starting || clips == null || currentSurfaces?.size != 3) return
         synchronized(pipelineLock) {
             if (pipelines.isNotEmpty()) return
             starting = true
-            val pair = requireNotNull(clips)
+            val files = requireNotNull(clips).files
             val surfaces = requireNotNull(currentSurfaces)
-            val left = SyntheticFeedDecoder("LEFT", pair.left, surfaces[0], ::onDecoderStatus)
-            val right = SyntheticFeedDecoder("RIGHT", pair.right, surfaces[1], ::onDecoderStatus)
-            pipelines += left
-            pipelines += right
-            left.start()
-            right.start()
+            val labels = listOf("LEFT", "CENTER", "RIGHT")
+            files.zip(surfaces).forEachIndexed { index, (file, surface) ->
+                pipelines += SyntheticFeedDecoder(labels[index], file, surface, ::onDecoderStatus)
+            }
+            pipelines.toList().forEach(SyntheticFeedDecoder::start)
             starting = false
         }
-        statusLines["pipeline"] = "Two independent MediaCodec decoder pipelines started"
+        statusLines["pipeline"] = "Three independent MediaCodec decoder pipelines started"
         renderStatus()
-        AppLogger.i("SyntheticMultiview", "prototype started with two clear local H.264 feeds")
+        AppLogger.i("SyntheticMultiview", "prototype started with three clear local H.264 feeds")
     }
 
     private fun onDecoderStatus(line: String) {
@@ -151,7 +150,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private fun renderStatus() {
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
-            add("Two MediaCodec decoders → two SurfaceTextures → one GLES compositor")
+            add("Three MediaCodec decoders → three SurfaceTextures → one GLES compositor")
             compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach(::add)
             val elapsedSeconds = ((SystemClock.elapsedRealtimeNanos() - prototypeStartedAtNs).coerceAtLeast(1L)) / 1_000_000_000.0
             val renderFps = compositor.renderedFrameCount() / elapsedSeconds
