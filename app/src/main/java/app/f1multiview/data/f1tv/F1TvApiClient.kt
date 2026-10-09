@@ -35,6 +35,10 @@ class F1TvApiClient {
             return (listOfNotNull(preferred)+fallbackVersions).distinct()
         }
 
+        /** Prefer a TME-bearing response while retaining normal playback as the last resort. */
+        internal fun preferTmeResponse(current:PlaybackResponse?,candidate:PlaybackResponse):PlaybackResponse =
+            if(current==null || (current.tmeJson.isNullOrBlank() && !candidate.tmeJson.isNullOrBlank())) candidate else current
+
         private fun normalizeApiVersion(value:String?):String? =
             value?.trim()?.takeIf{API_VERSION_PATTERN.matches(it)}
     }
@@ -178,22 +182,29 @@ class F1TvApiClient {
         ensureApiConfig()
         val apiVersions=apiVersionCandidates(configuredPlayApiVersion,listOf("2.0","3.0"))
         var last:Throwable?=null
+        var bestResponse:PlaybackResponse?=null
         for(apiVersion in apiVersions){
             try{
                 val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
                 logPlaybackResponseShape(apiVersion,platform,response)
                 ensureSuccess(response,"content playback")
-                return parsePlaybackResponse(response,contentId,channelId,platform).copy(
+                val parsed=parsePlaybackResponse(response,contentId,channelId,platform).copy(
                     requestedApiVersion=apiVersion,
                     httpStatus=response.code
                 )
+                if(!parsed.tmeJson.isNullOrBlank()){
+                    AppLogger.i("F1Playback","CONTENT_PLAY_TME_FOUND platform=$platform requestedApiVersion=$apiVersion")
+                    return parsed
+                }
+                bestResponse=preferTmeResponse(bestResponse,parsed)
+                AppLogger.w("F1Playback","CONTENT_PLAY_NO_TME platform=$platform requestedApiVersion=$apiVersion; trying remaining API versions")
             }catch(t:Throwable){
                 if(t is CancellationException) throw t
                 last=t
                 AppLogger.w("F1Playback","CONTENT_PLAY_VERSION_FAILED platform=$platform requestedApiVersion=$apiVersion reason=${t.javaClass.simpleName}")
             }
         }
-        throw last?:F1TvException("F1 TV playback failed")
+        return bestResponse ?: throw (last?:F1TvException("F1 TV playback failed"))
     }
 
     /** Logs response shape only; never logs response values, credentials, URLs, or body. */
