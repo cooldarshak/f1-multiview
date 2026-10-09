@@ -3,6 +3,7 @@ package app.f1multiview.media
 import android.content.Context
 import android.view.Surface
 import app.f1multiview.core.playback.TiledMultiviewSession
+import app.f1multiview.data.f1tv.TmeTopology
 import app.f1multiview.model.StreamSource
 
 /**
@@ -26,8 +27,15 @@ class NativeTmeMultiviewEngine(
     private var currentSources: List<TmeTileSource> = emptyList()
     private var outputSurface: android.view.Surface? = null
 
-    fun canHandle(session: TiledMultiviewSession): Boolean =
-        merger.available &&
+    fun canHandle(session: TiledMultiviewSession): Boolean {
+        // GPAC hevcmerge combines compatible spatial HEVC tiles from one picture.
+        // It is not a general-purpose compositor for independent camera videos.
+        // Current F1 metadata labels distinct URLs as independent feeds, but does
+        // not prove that their compressed pictures share tile-slice dependencies.
+        // Until CMAF/bitstream preflight establishes that invariant, never route
+        // these feeds into hevcmerge and report a successful one-decoder graph.
+        if (session.topology != TmeTopology.SINGLE_MOSAIC_SOURCE) return false
+        return merger.available &&
             session.isUsable &&
             session.feeds.size >= 2 &&
             session.tileCountHorizontal != null &&
@@ -43,6 +51,7 @@ class NativeTmeMultiviewEngine(
                     it.tileColumn < session.tileCountHorizontal &&
                     it.tileRow < session.tileCountVertical
             }
+    }
 
     fun prepare(
         session: TiledMultiviewSession,
