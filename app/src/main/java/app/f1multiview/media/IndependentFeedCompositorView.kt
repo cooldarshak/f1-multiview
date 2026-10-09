@@ -18,9 +18,8 @@ private const val SYNTHETIC_FEED_COUNT = 3
  * Experimental client-side compositor for independent decoded feeds.
  *
  * Each decoder writes to its own SurfaceTexture, while this view owns one EGL/GLES context and
- * one output surface. This is intentionally separate from OpenTiledCompositorView: that class
- * consumes one already-composed mosaic stream and must keep its existing protected-playback
- * behavior unchanged.
+ * one output surface. This is a clear synthetic proof harness only; it makes no claim about
+ * protected playback, secure decoder surfaces, or production F1 manifest ingestion.
  *
  * This prototype is clear-content-only. It makes no claim about Widevine secure-surface support.
  */
