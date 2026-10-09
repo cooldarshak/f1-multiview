@@ -57,7 +57,6 @@ class UnifiedMultiviewEngine(context: Context) {
         // Physical backend selection is topology-driven and fail-closed.
         selectedMultiviewBackend = when (session.topology) {
             app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE -> openTiledBackend
-            app.f1multiview.data.f1tv.TmeTopology.MULTI_SOURCE_TILED_CANDIDATE -> nativeTmeBackend
             app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES -> nativeTmeBackend
             app.f1multiview.data.f1tv.TmeTopology.UNKNOWN -> nativeTmeBackend
         }
@@ -272,7 +271,6 @@ class UnifiedMultiviewEngine(context: Context) {
             return emptySet()
         }
         if (resolvedTmeSession != null && resolvedTmeSession.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
-            if (tmeSource != null) nativeTmeBackend.inspectInputs(resolvedTmeSession, tmeSource)
             if (isNativeTmeActive()) nativeTmeBackend.release()
             openTiledPrepared = if (resolvedTmePlayback != null && tmeSource != null) openTiledBackend.prepare(resolvedTmePlayback, tmeSource, referenceId) else false
             if (openTiledPrepared) {
@@ -290,12 +288,9 @@ class UnifiedMultiviewEngine(context: Context) {
                 AppLogger.e("TME", "Single-source tiled backend could not be prepared; refusing Media3 multi-player fallback")
                 return emptySet()
             }
-        } else if (resolvedTmeSession != null && resolvedTmeSession.topology in setOf(
-                app.f1multiview.data.f1tv.TmeTopology.MULTI_SOURCE_TILED_CANDIDATE,
-                app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES
-            )) {
+        } else if (resolvedTmeSession?.topology == app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES) {
             // Never silently downgrade an F1 TME session into one ExoPlayer per feed.
-            // Multi-URL inputs are preflighted before any native merge is enabled.
+            // Independent F1 tile URLs require the compressed-domain OpenTME merger.
             // Until that backend proves the one-stream/one-decoder invariant, fail closed.
             val model = resolvedTmeSession
             decoderManager.release()
@@ -303,10 +298,6 @@ class UnifiedMultiviewEngine(context: Context) {
                 openTiledEngine.stopClockCorrection()
                 openTiledEngine.release()
             }
-            // Inspect the real authorized HLS/CMAF inputs before deciding whether
-            // a future native single-decoder path is technically possible. This probe
-            // reads manifest/track metadata only and never decrypts protected samples.
-            if (tmeSource != null) nativeTmeBackend.inspectInputs(model, tmeSource)
             if (tmeSource != null && nativeTmeBackend.prepare(model, tmeSource)) {
                 activeTmeSession = model
                 selectedMultiviewBackend = nativeTmeBackend
