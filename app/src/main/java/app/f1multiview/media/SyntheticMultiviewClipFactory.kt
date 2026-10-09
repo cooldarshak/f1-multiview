@@ -180,8 +180,8 @@ internal object SyntheticMultiviewClipFactory {
                 yBuffer.put(row * yPlane.rowStride + column * yPlane.pixelStride, value.toByte())
             }
         }
-        // Encode distinct chroma values for left, center, and right so missing or swapped
-        // viewports are easy to spot during the three-feed compositor test.
+        // Encode distinct chroma values for the left and right feeds so missing or swapped
+        // viewports are easy to spot during the two-feed compositor test.
         val (u, v) = when (variant) {
             0 -> 90 to 240
             1 -> 54 to 34
