@@ -1,6 +1,7 @@
 package app.f1multiview.media
 
 import android.content.Context
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
@@ -26,11 +27,7 @@ class MultiviewSurfaceManager(private val context: Context) {
 
     /**
      * Compose owns the root FrameLayout. This manager owns only the rendering child inside it.
-     *
-     * The root is intentionally passed in from AndroidView.update, not populated in
-     * AndroidView.factory. AndroidView adds the factory result to its own ViewHolder before
-     * update is executed, so the media layer can never return a pre-populated/externally
-     * parented root to Compose.
+     * The root is passed in from AndroidView.update; this manager never clears the root.
      */
     fun bind(
         feedId: String,
@@ -55,8 +52,6 @@ class MultiviewSurfaceManager(private val context: Context) {
         }
 
         current?.let {
-            // Clear the old player's output before replacing a surface whose secure
-            // classification changed. Keep the logical coordinator slot during upgrade.
             releaseBinding(it, unbindCoordinator = false)
             bindings.remove(feedId)
         }
@@ -72,26 +67,17 @@ class MultiviewSurfaceManager(private val context: Context) {
             val touchInterceptor = createTouchInterceptor(onTap)
             container.addView(touchInterceptor, params)
             bindings[feedId] = SurfaceBinding(
-                feedId = feedId,
-                source = source,
-                protectedContent = protectedContent,
-                container = container,
-                owner = player,
-                onTap = onTap,
-                textureView = texture,
-                touchInterceptor = touchInterceptor
+                feedId = feedId, source = source, protectedContent = protectedContent,
+                container = container, owner = player, onTap = onTap,
+                textureView = texture, touchInterceptor = touchInterceptor
             )
         } else {
             val surface = SurfaceView(context)
-            if (protectedContent) {
-                // Keep Widevine output on a secure surface.
-                surface.setSecure(true)
-            }
+            if (protectedContent) surface.setSecure(true)
             if (android.os.Build.VERSION.SDK_INT >= 34) {
-                // In scrolling feed rails, keep the surface alive with the view attachment
-                // rather than visibility so the next frame can start without a surface-creation wait.
                 surface.setSurfaceLifecycle(SurfaceView.SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT)
             }
+            installSurfaceDiagnostics(feedId, surface, protectedContent)
             container.addView(surface, params)
             val touchInterceptor = createTouchInterceptor(onTap)
             container.addView(touchInterceptor, params)
@@ -101,16 +87,47 @@ class MultiviewSurfaceManager(private val context: Context) {
                 HdrSurfaceHints.applyHlg(surface, source)
             }
             bindings[feedId] = SurfaceBinding(
-                feedId = feedId,
-                source = source,
-                protectedContent = protectedContent,
-                container = container,
-                owner = player,
-                onTap = onTap,
-                surfaceView = surface,
-                touchInterceptor = touchInterceptor
+                feedId = feedId, source = source, protectedContent = protectedContent,
+                container = container, owner = player, onTap = onTap,
+                surfaceView = surface, touchInterceptor = touchInterceptor
+            )
+            AppLogger.i(
+                "SecureSurface",
+                "BOUND feed=$feedId player=${player.id} protected=$protectedContent secureFlagRequested=$protectedContent " +
+                    "viewId=${System.identityHashCode(surface)} containerId=${System.identityHashCode(container)} " +
+                    "bounds=${surface.width}x${surface.height} api=${android.os.Build.VERSION.SDK_INT}"
             )
         }
+    }
+
+    private fun installSurfaceDiagnostics(feedId: String, view: SurfaceView, protectedContent: Boolean) {
+        view.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                AppLogger.i(
+                    "SecureSurface",
+                    "CREATED feed=$feedId protected=$protectedContent viewId=${System.identityHashCode(view)} " +
+                        "surfaceValid=${holder.surface.isValid} attached=${view.isAttachedToWindow} " +
+                        "bounds=${view.width}x${view.height}"
+                )
+            }
+
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                AppLogger.i(
+                    "SecureSurface",
+                    "CHANGED feed=$feedId protected=$protectedContent viewId=${System.identityHashCode(view)} " +
+                        "surfaceValid=${holder.surface.isValid} format=$format size=${width}x$height " +
+                        "attached=${view.isAttachedToWindow}"
+                )
+            }
+
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                AppLogger.i(
+                    "SecureSurface",
+                    "DESTROYED feed=$feedId protected=$protectedContent viewId=${System.identityHashCode(view)} " +
+                        "attached=${view.isAttachedToWindow} bounds=${view.width}x${view.height}"
+                )
+            }
+        })
     }
 
     fun update(feedId: String, player: EnginePlayerHandle, source: String) {
@@ -121,19 +138,18 @@ class MultiviewSurfaceManager(private val context: Context) {
                 releaseVideoOutput(it)
                 if (it.surfaceView != null) player.setVideoSurfaceView(it.surfaceView)
                 if (it.textureView != null) player.setVideoTextureView(it.textureView)
-                bindings[feedId] = it.copy(owner = player, source = source)
-                attachExisting(it.copy(owner = player), player, source)
+                val updated = it.copy(owner = player, source = source)
+                bindings[feedId] = updated
+                attachExisting(updated, player, source)
             } else {
-                bindings[feedId] = it.copy(source = source)
-                attachExisting(it.copy(source = source), player, source)
+                val updated = it.copy(source = source)
+                bindings[feedId] = updated
+                attachExisting(updated, player, source)
             }
         }
     }
 
-    /**
-     * Releases only the binding represented by the AndroidView being removed. A stale
-     * Compose onRelease must not detach a newer binding for the same logical feed.
-     */
+    /** A stale Compose onRelease must not detach a newer binding for the same logical feed. */
     fun detach(feedId: String, player: EnginePlayerHandle, container: FrameLayout) {
         AppLogger.d("Surface", "detach request feed=$feedId player=${player.id} container=${System.identityHashCode(container)}")
         val binding = bindings[feedId] ?: run {
@@ -151,14 +167,37 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     fun binding(feedId: String): SurfaceBinding? = bindings[feedId]
-
     fun boundFeedIds(): Set<String> = bindings.keys.toSet()
-
     fun renderSlot(feedId: String): MultiviewRenderCoordinator.RenderSlot? = renderCoordinator.slot(feedId)
-
     fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = renderCoordinator.slots()
-
     fun isGpuComposable(feedId: String): Boolean = renderCoordinator.isGpuComposable(feedId)
+
+    fun secureSurfaceDiagnostics(): Map<String, String> {
+        val surfaces = bindings.values.mapNotNull { binding ->
+            binding.surfaceView?.let { view ->
+                binding.feedId to mapOf(
+                    "protected" to binding.protectedContent.toString(),
+                    "viewId" to System.identityHashCode(view).toString(),
+                    "containerId" to System.identityHashCode(binding.container).toString(),
+                    "attached" to view.isAttachedToWindow.toString(),
+                    "surfaceValid" to view.holder.surface.isValid.toString(),
+                    "width" to view.width.toString(),
+                    "height" to view.height.toString()
+                )
+            }
+        }
+        val protected = surfaces.filter { it.second["protected"] == "true" }
+        return mapOf(
+            "surfaceBindingCount" to surfaces.size.toString(),
+            "protectedSurfaceBindingCount" to protected.size.toString(),
+            "attachedProtectedSurfaceCount" to protected.count { it.second["attached"] == "true" }.toString(),
+            "validProtectedSurfaceCount" to protected.count { it.second["surfaceValid"] == "true" }.toString(),
+            "protectedSurfaces" to protected.joinToString(";") { (id, data) ->
+                "$id:view=${data["viewId"]}:container=${data["containerId"]}:attached=${data["attached"]}:" +
+                    "valid=${data["surfaceValid"]}:size=${data["width"]}x${data["height"]}"
+            }
+        )
+    }
 
     fun clear() {
         AppLogger.i("Surface", "clear bindings=${bindings.keys}")
@@ -172,25 +211,13 @@ class MultiviewSurfaceManager(private val context: Context) {
         binding.textureView?.let(binding.owner::clearVideoTextureView)
     }
 
-    /**
-     * Remove only views owned by this binding. The container is supplied by Compose and
-     * may contain children owned by another layer; removeAllViews() can silently destroy
-     * newer/replacement content during a stale rebind or release callback.
-     */
+    /** Remove only exact children owned by this binding; never remove unrelated Compose children. */
     private fun releaseBinding(binding: SurfaceBinding, unbindCoordinator: Boolean) {
         releaseVideoOutput(binding)
-        binding.surfaceView?.let { view ->
-            if (view.parent === binding.container) binding.container.removeView(view)
-        }
-        binding.textureView?.let { view ->
-            if (view.parent === binding.container) binding.container.removeView(view)
-        }
-        binding.touchInterceptor?.let { view ->
-            if (view.parent === binding.container) binding.container.removeView(view)
-        }
-        if (unbindCoordinator) {
-            renderCoordinator.unbind(binding.feedId)
-        }
+        binding.surfaceView?.let { view -> if (view.parent === binding.container) binding.container.removeView(view) }
+        binding.textureView?.let { view -> if (view.parent === binding.container) binding.container.removeView(view) }
+        binding.touchInterceptor?.let { view -> if (view.parent === binding.container) binding.container.removeView(view) }
+        if (unbindCoordinator) renderCoordinator.unbind(binding.feedId)
     }
 
     private fun createTouchInterceptor(onTap: (() -> Unit)?): View =
@@ -198,18 +225,14 @@ class MultiviewSurfaceManager(private val context: Context) {
             isClickable = true
             isFocusable = false
             setOnTouchListener { _, event ->
-                if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
-                    onTap?.invoke()
-                }
+                if (event.actionMasked == android.view.MotionEvent.ACTION_UP) onTap?.invoke()
                 true
             }
         }
 
     private fun attachExisting(binding: SurfaceBinding, player: EnginePlayerHandle, source: String) {
         binding.touchInterceptor?.setOnTouchListener { _, event ->
-            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
-                binding.onTap?.invoke()
-            }
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) binding.onTap?.invoke()
             true
         }
         binding.textureView?.let(player::setVideoTextureView)
