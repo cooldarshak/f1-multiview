@@ -35,8 +35,6 @@ class NativeTmeMultiviewEngine(
         val reason = when (session.topology) {
             TmeTopology.SINGLE_MOSAIC_SOURCE ->
                 "single-mosaic input belongs to OpenTiledMultiviewBackend"
-            TmeTopology.MULTI_SOURCE_TILED_CANDIDATE ->
-                "tile-grid metadata is present, but CMAF/HEVC compatibility and DRM handling are not yet proven"
             TmeTopology.INDEPENDENT_FEED_SOURCES ->
                 "independent F1 feeds are not proven compatible spatial HEVC tiles"
             TmeTopology.UNKNOWN ->
@@ -99,7 +97,6 @@ class NativeTmeMultiviewEngine(
 
     fun play() {
         val surface = outputSurface ?: return
-        val currentSession = session ?: return
         if (coordinator == null && currentSources.isNotEmpty()) {
             coordinator = TmeCmafCoordinator(
                 coordinatorContext,
@@ -107,8 +104,7 @@ class NativeTmeMultiviewEngine(
                 decoder,
                 source?.requestHeaders.orEmpty(),
                 session?.tileCountHorizontal?.let { it * requireNotNull(session?.tileWidth) },
-                currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) },
-                currentSession
+                session?.tileCountVertical?.let { it * requireNotNull(session?.tileHeight) }
             ).also { c ->
                 c.start(
                     currentSources,
@@ -153,26 +149,19 @@ class NativeTmeMultiviewEngine(
             mergeLatencyMs = 0,
             decoderRecreationCount = decoder.telemetry().decoderRecreationCount
         )
-        val currentSession = session
-        val capabilityReason = when (currentSession?.topology) {
-            null -> "No TME session has been prepared"
-            TmeTopology.SINGLE_MOSAIC_SOURCE ->
-                "Single-source mosaic sessions belong to OpenTiledMultiviewBackend, not this independent-feed merger"
-            TmeTopology.MULTI_SOURCE_TILED_CANDIDATE ->
-                "Tile-grid metadata is only a candidate; CMAF/HEVC compatibility and DRM handling are not yet proven"
-            TmeTopology.INDEPENDENT_FEED_SOURCES ->
-                "Independent feed URLs are not proven compatible spatial HEVC tiles"
-            TmeTopology.UNKNOWN ->
-                "TME input topology is unknown"
-        }
         return mapOf(
             "backend" to "NATIVE_TME",
             "available" to "false",
             "gpacLibraryPresent" to merger.available.toString(),
-            "capabilityReason" to capabilityReason,
-            "prepared" to (currentSession != null).toString(),
+            "capabilityReason" to if (session == null)
+                "No TME session has been prepared"
+            else if (session.topology != TmeTopology.SINGLE_MOSAIC_SOURCE)
+                "Independent feed URLs are not proven compatible spatial HEVC tiles"
+            else
+                "Single-source mosaic sessions belong to OpenTiledMultiviewBackend, not this independent-feed merger",
+            "prepared" to (session != null).toString(),
             "configured" to configured.toString(),
-            "logicalFeedCount" to (currentSession?.feeds?.size ?: 0).toString(),
+            "logicalFeedCount" to (session?.feeds?.size ?: 0).toString(),
             "physicalMerger" to if (merger.available)
                 "GPAC_HEVCMERGE_LIBRARY_ONLY_NOT_ENABLED"
             else "UNAVAILABLE",
@@ -212,8 +201,7 @@ class NativeTmeMultiviewEngine(
             decoder,
             currentSource.requestHeaders,
             currentSession.tileCountHorizontal?.let { it * requireNotNull(currentSession.tileWidth) },
-            currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) },
-            currentSession
+            currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) }
         ).also { c ->
             c.start(
                 sources,
