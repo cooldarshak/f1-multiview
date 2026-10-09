@@ -324,3 +324,30 @@ This section intentionally broadens beyond F1 projects. It distinguishes publicl
 - Capture its per-feed first-frame latency, texture update gaps, timestamp skew, codec-reported dropped-frame metrics where exposed, late deadlines, GLES draw cadence, PSS/heap/CPU, and decoder names.
 - Fix any defects found and repeat until the synthetic proof passes.
 - Only then integrate authorized F1 feeds into the own decoder/compositor path.
+
+
+## Real authorized F1 stream compatibility stage (2026-10-09)
+
+The real-stream boundary is now instrumented without enabling a DRM bypass or a per-feed
+ExoPlayer fallback:
+
+- `F1TvApiClient.contentPlay` emits a safe `AUTHORIZED_STREAM_RESOLVED` event after the
+  authorized playback API returns. It records content ID, platform/API version, manifest
+  family (DASH/HLS/other), license presence, DRM type, stream type, pipeline version, and
+  whether a play token exists. It never logs manifest URLs, license URLs, cookies, or token
+  values.
+- When more than one visible video feed is selected, `UnifiedMultiviewEngine` records a
+  per-feed capability report: manifest family, whether DRM is configured, the platform
+  Widevine security-level property if available, and the number of declared secure video
+  decoder candidates.
+- The report explicitly marks protected composition unsupported by the current GLES
+  compositor. Declared secure decoder candidates are only platform capability hints; they
+  do not prove that three concurrent secure decoders can be allocated or composed.
+- Protected multi-feed playback remains visibly blocked. Single-feed authorized Media3
+  playback and secure `SurfaceView` output remain the supported path while a protected
+  compositor architecture is not established.
+
+This stage is instrumentation and compatibility assessment, not proof of multi-feed playback.
+The next validation must collect the safe diagnostics from a real authorized session on the
+target phone and Android TV, then determine a DRM-compliant rendering path before enabling
+multiple protected feeds. No build was triggered as part of this source change.
