@@ -34,17 +34,17 @@ The existing native experiment uses a compressed HEVC merge operation. Its own c
 - `media/SessionTimelineSynchronizer.kt` defines a deterministic master/follower correction policy and has unit tests.
 - These files do not, by themselves, decode, synchronize, composite, or present video and are not yet the production playback path.
 
-## Synthetic two-feed rendering proof path
+## Synthetic three-feed rendering proof path
 
 The debug-only `SyntheticMultiviewPrototypeActivity` is the first runtime proof harness. It uses no F1 endpoint, account credential, Widevine license, or DRM-protected content.
 
-The current source changes make it a two-feed test:
+The current source changes make it a three-feed test:
 
-1. Generate two visually distinct local clear H.264 MP4 fixtures using Android's encoder and muxer APIs.
+1. Generate three visually distinct local clear H.264 MP4 fixtures using Android's encoder and muxer APIs.
 2. Read both fixtures through `MediaExtractor`.
-3. Decode them with two separate Android `MediaCodec` decoder instances.
+3. Decode them with three separate Android `MediaCodec` decoder instances.
 4. Queue both decoder outputs against one shared monotonic playback anchor.
-5. Represent each synthetic input with the provider-neutral `FeedDescriptor` contract (including MIME, dimensions, and shared timeline group).
+5. Represent each of the three synthetic inputs with the provider-neutral `FeedDescriptor` contract (including MIME, dimensions, and shared timeline group).
 6. Apply normalized `FeedViewport` values through `ViewportLayout`; the GLES renderer draws each feed into its assigned viewport on one compositor/output surface.
 
 ### Metrics now displayed/logged
@@ -62,7 +62,7 @@ The distinction between measured values and estimates is intentional. In particu
 
 ## Required migration order
 
-1. Run the two-feed synthetic proof on the target Android phone and Android TV device; record first-frame latency, PTS skew, codec metrics, PSS/heap/CPU, thermal behavior, and whether frames visibly stall or drop.
+1. Run the three-feed synthetic proof on the target Android phone and Android TV device; record first-frame latency, PTS skew, codec metrics, PSS/heap/CPU, thermal behavior, and whether frames visibly stall or drop.
 2. Fix defects in the synthetic decode/render path before routing any F1 stream into it.
 3. Replace the production TME discovery/session contract with provider-neutral `FeedDescriptor`, timeline, viewport, and diagnostics types. Remove profile-selection logic that searches for TME metadata.
 4. Integrate the own engine with the existing feed selection, main-feed selection, resizing, layouts, audio/control surfaces, subtitles/quality where supported, and TV remote focus/navigation. Keep unsupported operations visible rather than silently falling back.
@@ -74,7 +74,7 @@ The distinction between measured values and estimates is intentional. In particu
 
 - [x] Isolated clear synthetic fixtures and MediaCodec decode path exist.
 - [x] One GLES output compositor consumes independent decoder surfaces.
-- [x] Prototype source updated from three feeds to two feeds.
+- [x] Prototype source updated to three independent feeds.
 - [x] Added explicit timing, texture, process-resource, and codec-metric diagnostics.
 - [ ] Build and JVM tests verified — intentionally not run because builds require explicit user approval.
 - [ ] Runtime proof on the target phone and Android TV verified.
