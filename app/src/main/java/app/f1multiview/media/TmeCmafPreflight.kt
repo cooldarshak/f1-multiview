@@ -25,6 +25,7 @@ data class TmeCmafFeedEvidence(
 
 enum class TmeCmafPreflightStatus {
     SINGLE_MOSAIC_SOURCE,
+    SINGLE_SOURCE_NOT_MOSAIC,
     INCOMPLETE_EVIDENCE,
     INSPECTION_FAILED,
     DRM_PROTECTED_REQUIRES_SECURE_PIPELINE,
@@ -62,13 +63,6 @@ object TmeCmafPreflight {
         fun report(status: TmeCmafPreflightStatus, summary: String) =
             TmeCmafPreflightReport(status, nativeMergeEligible = false, summary, evidence)
 
-        if (session.topology == TmeTopology.SINGLE_MOSAIC_SOURCE) {
-            return report(
-                TmeCmafPreflightStatus.SINGLE_MOSAIC_SOURCE,
-                "One shared source URL: use the existing single-player mosaic path; do not run the independent-feed merger."
-            )
-        }
-
         if (evidence.size != session.feeds.size || evidence.size < 2) {
             return report(
                 TmeCmafPreflightStatus.INCOMPLETE_EVIDENCE,
@@ -100,6 +94,32 @@ object TmeCmafPreflight {
             return report(
                 TmeCmafPreflightStatus.NON_HEVC_INPUT,
                 "Expected HEVC tracks; incompatible/unknown MIME on: ${nonHevc.joinToString { "${it.feedId}=${it.mimeType}" }}."
+            )
+        }
+
+        if (session.topology == TmeTopology.SINGLE_MOSAIC_SOURCE) {
+            val columns = session.tileCountHorizontal
+            val rows = session.tileCountVertical
+            if (columns == null || columns <= 0 || rows == null || rows <= 0 ||
+                session.tileWidth == null || session.tileHeight == null
+            ) {
+                return report(
+                    TmeCmafPreflightStatus.METADATA_DOES_NOT_PROVE_TILE_GRID,
+                    "A shared URL is present, but explicit tile counts and tile dimensions are required to verify a mosaic."
+                )
+            }
+            val expectedWidth = session.tileWidth * columns
+            val expectedHeight = session.tileHeight * rows
+            val observed = evidence.map { it.width to it.height }.distinct()
+            if (observed.size == 1 && observed.single() == (expectedWidth to expectedHeight)) {
+                return report(
+                    TmeCmafPreflightStatus.SINGLE_MOSAIC_SOURCE,
+                    "Confirmed one shared HEVC source with dimensions ${expectedWidth}x${expectedHeight}, matching the declared ${columns}x${rows} tile grid."
+                )
+            }
+            return report(
+                TmeCmafPreflightStatus.SINGLE_SOURCE_NOT_MOSAIC,
+                "Shared URL dimensions ${observed.joinToString()} do not match the declared mosaic canvas ${expectedWidth}x${expectedHeight}; do not assume this is a precomposed mosaic."
             )
         }
 
@@ -287,7 +307,7 @@ internal object HevcPpsTileInspector {
 
         fun readBits(count: Int): Int {
             var result = 0
-            repeat(count) { result = (result shl 1) or if (readBit()) 1 else 0 }
+            repeat(count) { result = (result shl 1) or (if (readBit()) 1 else 0) }
             return result
         }
 
