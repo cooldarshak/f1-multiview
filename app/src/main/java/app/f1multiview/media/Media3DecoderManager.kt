@@ -19,9 +19,6 @@ import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
 import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
-import androidx.media3.exoplayer.drm.FrameworkMediaDrm
-import androidx.media3.exoplayer.drm.DummyExoMediaDrm
-import androidx.media3.exoplayer.drm.UnsupportedDrmException
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import android.os.Handler
 import android.os.Looper
@@ -77,7 +74,6 @@ class Media3DecoderManager(context: Context) {
     private val selectedQualities = mutableMapOf<String, Quality>()
     private val streamKinds = mutableMapOf<String, app.f1multiview.model.StreamKind>()
     private val streams = mutableMapOf<String, StreamSource>()
-    private val l3SecondaryFallback = mutableSetOf<String>()
     private val decoderRecoveryAttempts = mutableMapOf<String, Int>()
     private var audioPlayerId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -233,21 +229,10 @@ class Media3DecoderManager(context: Context) {
         return if (!licenseUrl.isNullOrBlank()) {
             val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
             drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
-            val drmBuilder = DefaultDrmSessionManager.Builder().setMultiSession(false)
-            if (stream.id in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
-                drmBuilder.setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { uuid ->
-                    try {
-                        FrameworkMediaDrm.newInstance(uuid).also { mediaDrm ->
-                            val current = runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrNull()
-                            if (current != "L3") runCatching { mediaDrm.setPropertyString("securityLevel", "L3") }
-                            AppLogger.i("Media3DecoderManager", "Secondary " + stream.id + ": Widevine security level=" + runCatching { mediaDrm.getPropertyString("securityLevel") }.getOrDefault("unknown"))
-                        }
-                    } catch (_: UnsupportedDrmException) {
-                        DummyExoMediaDrm()
-                    }
-                }
-            }
-            val drmManager = drmBuilder.build(callback)
+            // Preserve the provider/device-selected Widevine security level.
+            val drmManager = DefaultDrmSessionManager.Builder()
+                .setMultiSession(false)
+                .build(callback)
             DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
         } else {
             DefaultMediaSourceFactory(dataSource)
@@ -527,51 +512,6 @@ class Media3DecoderManager(context: Context) {
         })
     }
 
-    private fun isLikelySecureDecoderCapacityFailure(id: String, error: PlaybackException): Boolean {
-        val stream = streams[id]
-        val secureCandidate = id != audioPlayerId &&
-            players.size >= 4 &&
-            stream?.drmLicenseUrl?.isNullOrBlank() == false
-        if (!secureCandidate) return false
-
-        val evidence = buildList {
-            add(error.message.orEmpty())
-            add(error.errorCodeName)
-            var cause: Throwable? = error.cause
-            repeat(8) {
-                if (cause == null) return@repeat
-                add(cause?.javaClass?.name.orEmpty())
-                add(cause?.message.orEmpty())
-                cause = cause?.cause
-            }
-        }.joinToString(" | ").lowercase()
-
-        val resourceEvidence = listOf(
-            "resourcebusyexception",
-            "insufficient resource",
-            "insufficientresources",
-            "resource busy",
-            "too many",
-            "resource exhausted",
-            "resource limit",
-            "secure decoder",
-            "securedecoder",
-            "omx.error.insufficientresources",
-            "error_insufficient_resources"
-        ).any(evidence::contains)
-
-        AppLogger.w(
-            "Media3DecoderManager",
-            "Decoder failure id=$id players=${players.size} drm=true capacityEvidence=$resourceEvidence " +
-                "code=${error.errorCodeName} message=${error.message}"
-        )
-        return resourceEvidence || (
-            players.size >= 4 &&
-            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED &&
-            evidence.contains("mediacodec")
-        )
-    }
-
     private fun recoverFromDecoderFailure(id: String, player: ExoPlayer, error: PlaybackException) {
         val isMain = id == audioPlayerId
         val requested = selectedQualities[id] ?: Quality.AUTO
@@ -581,23 +521,8 @@ class Media3DecoderManager(context: Context) {
         // has evidence consistent with secure-decoder/resource exhaustion. Do not
         // downgrade every decoder error: a bad codec/manifest must follow the normal
         // recovery ladder instead.
-        val capacityFailure = isLikelySecureDecoderCapacityFailure(id, error)
-        if (!isMain && capacityFailure && id !in l3SecondaryFallback && android.os.Build.VERSION.SDK_INT >= 28) {
-            l3SecondaryFallback.add(id)
-            decoderRecoveryAttempts[id] = attempts + 1
-            player.stop()
-            player.clearMediaItems()
-            _errors.value = _errors.value + (
-                id to "Secondary secure decoder capacity suspected; retrying with Widevine L3"
-            )
-            mainHandler.postDelayed({
-                if (players[id] === player) {
-                    streams[id]?.let { load(it, forceReload = true) }
-                    player.playWhenReady = true
-                }
-            }, 250L)
-            return
-        }
+        // Never force a Widevine security-level downgrade to recover from decoder pressure.
+        // Keep the normal quality/resource recovery path and surface a visible error if it fails.
         val recoveryQuality = qualityManager.recoveryQuality(requested, isMain)
 
         decoderRecoveryAttempts[id] = attempts + 1
@@ -746,7 +671,6 @@ class Media3DecoderManager(context: Context) {
         streamKinds.remove(id)
         streams.remove(id)
         decoderRecoveryAttempts.remove(id)
-        l3SecondaryFallback.remove(id)
         startupRequestedAtMs.remove(id)
         startupFirstFrameAtMs.remove(id)
         startupPlayingAtMs.remove(id)
@@ -799,7 +723,6 @@ class Media3DecoderManager(context: Context) {
         streamKinds.clear()
         streams.clear()
         decoderRecoveryAttempts.clear()
-        l3SecondaryFallback.clear()
         startupRequestedAtMs.clear()
         startupFirstFrameAtMs.clear()
         startupPlayingAtMs.clear()
