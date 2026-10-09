@@ -302,6 +302,10 @@ class UnifiedMultiviewEngine(context: Context) {
                 openTiledEngine.stopClockCorrection()
                 openTiledEngine.release()
             }
+            // Inspect the real authorized HLS/CMAF inputs before deciding whether
+            // a future native single-decoder path is technically possible. This probe
+            // reads manifest/track metadata only and never decrypts protected samples.
+            if (tmeSource != null) nativeTmeBackend.inspectInputs(model, tmeSource)
             if (tmeSource != null && nativeTmeBackend.prepare(model, tmeSource)) {
                 activeTmeSession = model
                 selectedMultiviewBackend = nativeTmeBackend
