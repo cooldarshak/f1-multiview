@@ -27,6 +27,7 @@ class TmeCmafPreflightTest {
         feedId: String,
         encrypted: Boolean = false,
         fingerprint: String = "same-hvcc",
+        ppsTilesEnabled: Boolean? = true,
         timeUs: Long = 1_000_000L,
         mime: String = "video/hevc",
         width: Int = 960,
@@ -38,6 +39,7 @@ class TmeCmafPreflightTest {
         width = width,
         height = height,
         codecConfigFingerprint = fingerprint,
+        ppsTilesEnabled = ppsTilesEnabled,
         encrypted = encrypted,
         sampleCount = 30,
         firstSampleTimeUs = timeUs,
@@ -112,4 +114,15 @@ class TmeCmafPreflightTest {
         assertEquals(TmeCmafPreflightStatus.TILE_GEOMETRY_MISMATCH, report.status)
         assertFalse(report.nativeMergeEligible)
     }
+    @Test
+    fun ppsThatDisablesTilesFailsBeforeMergerConfiguration() {
+        val report = TmeCmafPreflight.assess(
+            session(),
+            listOf(evidence("world", ppsTilesEnabled = false), evidence("onboard"))
+        )
+
+        assertEquals(TmeCmafPreflightStatus.HEVC_PPS_TILES_DISABLED, report.status)
+        assertFalse(report.nativeMergeEligible)
+    }
+
 }
