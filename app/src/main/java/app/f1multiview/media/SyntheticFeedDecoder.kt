@@ -7,6 +7,7 @@ import android.view.Surface
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.LockSupport
 
 /**
  * Minimal clear-MP4 decoder used only by SyntheticMultiviewPrototypeActivity.
@@ -140,10 +141,14 @@ internal class SyntheticFeedDecoder(
                             // than resetting a per-decoder anchor preserves the shared timeline.
                             val timelineUs = loopIndex * clipDurationUs + info.presentationTimeUs.coerceAtLeast(0L)
                             val renderAtNs = sharedPlaybackAnchorNs + timelineUs * 1_000L
-                            decoder.releaseOutputBuffer(outputIndex, renderAtNs)
-                            val count = outputFramesQueued.incrementAndGet()
-                            if (count == 1L || count % 30L == 0L) {
-                                onStatus("$feedLabel outputFramesQueued=$count")
+                            if (awaitPresentationTime(renderAtNs)) {
+                                decoder.releaseOutputBuffer(outputIndex, renderAtNs)
+                                val count = outputFramesQueued.incrementAndGet()
+                                if (count == 1L || count % 30L == 0L) {
+                                    onStatus("$feedLabel outputFramesQueued=$count")
+                                }
+                            } else {
+                                decoder.releaseOutputBuffer(outputIndex, false)
                             }
                         } else {
                             decoder.releaseOutputBuffer(outputIndex, false)
@@ -159,5 +164,19 @@ internal class SyntheticFeedDecoder(
                 Thread.sleep(2L)
             }
         }
+    }
+
+    /**
+     * SurfaceTexture consumes queued buffers; assigning a timestamp alone is not a reliable
+     * pacing mechanism for this path. Pace each decoder against the same monotonic epoch before
+     * releasing the output buffer, so one feed cannot run ahead simply because it decodes faster.
+     */
+    private fun awaitPresentationTime(targetNs: Long): Boolean {
+        while (!stopRequested.get()) {
+            val remainingNs = targetNs - System.nanoTime()
+            if (remainingNs <= 0L) return true
+            LockSupport.parkNanos(minOf(remainingNs, 5_000_000L))
+        }
+        return false
     }
 }
