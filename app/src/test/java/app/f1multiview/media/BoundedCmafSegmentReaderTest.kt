@@ -41,8 +41,13 @@ class BoundedCmafSegmentReaderTest {
             segmentLength = 3,
             maxSegmentBytes = 3
         )
+        val target = ByteArray(8)
 
-        assertThrows(IOException::class.java) { reader.read(ByteArray(8), 0, 8) }
+        // DataReader is allowed to return fewer bytes than requested. Truncation is only
+        // established when the next read reports EOF before the declared segment boundary.
+        assertEquals(2, reader.read(target, 0, target.size))
+        assertEquals(2L, reader.bytesRead)
+        assertThrows(IOException::class.java) { reader.read(target, 0, target.size) }
         assertEquals(2L, reader.bytesRead)
     }
 
