@@ -58,6 +58,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         current?.let {
             releaseBinding(it, unbindCoordinator = false)
             bindings.remove(feedId)
+            containerGenerations.remove(it.container)
         }
         val generation = nextGeneration.getAndIncrement()
         // Each concrete AndroidView container keeps its own generation. A stale release
