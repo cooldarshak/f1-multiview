@@ -155,7 +155,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         }
 
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
-            for (index in 0..1) {
+            for (index in 0..2) {
                 if (frameAvailable[index].compareAndSet(true, false)) {
                     runCatching {
                         inputTextures[index]?.updateTexImage()
@@ -201,9 +201,11 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         }
 
         fun latestMediaTimestampSkewMs(): Long {
-            val left = sourceMediaTimestampNs[0].get()
-            val right = sourceMediaTimestampNs[1].get()
-            return if (left <= 0L || right <= 0L) -1L else kotlin.math.abs(left - right) / 1_000_000L
+            val timestamps = sourceMediaTimestampNs.map { it.get() }
+            if (timestamps.any { it <= 0L }) return -1L
+            val minimum = timestamps.minOrNull() ?: return -1L
+            val maximum = timestamps.maxOrNull() ?: return -1L
+            return (maximum - minimum) / 1_000_000L
         }
 
         fun notifyListener(value: Listener?) {
