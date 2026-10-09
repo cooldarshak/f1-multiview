@@ -193,6 +193,11 @@ class TmeCmafFeedReader(
                         width = width,
                         height = height,
                         codecConfigFingerprint = fingerprint,
+                        ppsTilesEnabled = if (mime.equals("video/hevc", ignoreCase = true)) {
+                            configBytes?.let(HevcPpsTileInspector::tilesEnabled)
+                        } else {
+                            null
+                        },
                         encrypted = encryptedSampleSeen ||
                             format.getInteger("is-encrypted", 0) != 0 ||
                             format.getInteger("encrypted", 0) != 0,
