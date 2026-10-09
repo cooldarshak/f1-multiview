@@ -243,7 +243,7 @@ class F1TvApiClient {
                     val keys=value.keys()
                     while(keys.hasNext()){
                         val key=keys.next()
-                        val childPath=if(path=="\\$") key else "$path.$key"
+                        val childPath=if(path=="\$") key else "$path.$key"
                         visit(value.opt(key),childPath)
                     }
                 }
@@ -252,7 +252,7 @@ class F1TvApiClient {
                 }
             }
         }
-        visit(root,"\\$")
+        visit(root,"\$")
         return out
     }
 
