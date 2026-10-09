@@ -62,6 +62,7 @@ internal object SyntheticMultiviewClipFactory {
         var inputEosQueued = false
         var frame = 0
         val info = MediaCodec.BufferInfo()
+        val deadlineMs = SystemClock.elapsedRealtime() + 30_000L
 
         try {
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
@@ -71,14 +72,14 @@ internal object SyntheticMultiviewClipFactory {
             // Keep feeding frames while draining output. Draining after every input prevents
             // encoder output buffers from filling and stalling the synthetic source.
             while (!outputEos) {
+                check(SystemClock.elapsedRealtime() < deadlineMs) {
+                    "Encoder timed out while generating ${output.name}"
+                }
                 if (frame < FRAME_COUNT && !inputEosQueued) {
                     val inputIndex = encoder.dequeueInputBuffer(10_000)
                     if (inputIndex >= 0) {
                         val image = encoder.getInputImage(inputIndex)
-                        if (image == null) {
-                            encoder.queueInputBuffer(inputIndex, 0, 0, frameTimeUs(frame), 0)
-                            error("Encoder does not expose flexible YUV input images on this device")
-                        }
+                            ?: error("Encoder does not expose flexible YUV input images on this device")
                         try {
                             fillImage(image, frame, variant)
                         } finally {
@@ -155,12 +156,12 @@ internal object SyntheticMultiviewClipFactory {
         require(planes.size == 3) { "Expected a three-plane YUV420 encoder input" }
         val yBase = if (variant == 0) 64 else 160
         val movingBandStart = (frame * 3) % (HEIGHT - 24)
+        val markerStart = (frame * 5 + variant * 37) % (WIDTH - 48)
         val yPlane = planes[0]
         val yBuffer = yPlane.buffer
         for (row in 0 until HEIGHT) {
             for (column in 0 until WIDTH) {
                 val band = row >= movingBandStart && row < movingBandStart + 24
-                val markerStart = (frame * 5 + variant * 37) % (WIDTH - 48)
                 val marker = column >= markerStart && column < markerStart + 48
                 val value = when {
                     band && marker -> 235
