@@ -58,8 +58,14 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         val fps = if (count > 1L && lastNs > firstNs) {
             String.format(java.util.Locale.US, "%.1f", (count - 1L) * 1_000_000_000.0 / (lastNs - firstNs))
         } else "warming"
-        "feed${index + 1}: frames=$count firstFrame=$firstMs observedFps=$fps"
-    }
+        val mediaTimestampMs = renderer.sourceMediaTimestampNs[index].get().let {
+            if (it > 0L) "${it / 1_000_000L}ms" else "pending"
+        }
+        val maxGapMs = renderer.sourceMaxArrivalGapNs[index].get() / 1_000_000L
+        "feed${index + 1}: frames=$count firstFrame=$firstMs observedFps=$fps mediaTs=$mediaTimestampMs maxArrivalGap=${maxGapMs}ms"
+    } + listOf(
+        "latestMediaTimestampSkew=${renderer.latestMediaTimestampSkewMs()}ms"
+    )
 
     override fun onDetachedFromWindow() {
         queueEvent { renderer.releaseInputs(listener) }
@@ -71,6 +77,8 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         val sourceFrameCount = Array(2) { AtomicLong(0L) }
         val sourceFirstFrameAtNs = Array(2) { AtomicLong(0L) }
         val sourceLastFrameAtNs = Array(2) { AtomicLong(0L) }
+        val sourceMediaTimestampNs = Array(2) { AtomicLong(0L) }
+        val sourceMaxArrivalGapNs = Array(2) { AtomicLong(0L) }
         private val textureIds = IntArray(2)
         private val inputTextures = arrayOfNulls<SurfaceTexture>(2)
         private val inputSurfaces = arrayOfNulls<Surface>(2)
@@ -154,8 +162,15 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                         inputTextures[index]?.updateTexImage()
                         inputTextures[index]?.getTransformMatrix(transformMatrices[index])
                         val frameTimeNs = android.os.SystemClock.elapsedRealtimeNanos()
+                        val previousArrivalNs = sourceLastFrameAtNs[index].getAndSet(frameTimeNs)
+                        if (previousArrivalNs > 0L) {
+                            val gapNs = frameTimeNs - previousArrivalNs
+                            sourceMaxArrivalGapNs[index].updateAndGet { previousMax -> maxOf(previousMax, gapNs) }
+                        }
                         sourceFirstFrameAtNs[index].compareAndSet(0L, frameTimeNs)
-                        sourceLastFrameAtNs[index].set(frameTimeNs)
+                        inputTextures[index]?.timestamp?.let { timestampNs ->
+                            if (timestampNs > 0L) sourceMediaTimestampNs[index].set(timestampNs)
+                        }
                         sourceFrameCount[index].incrementAndGet()
                     }
                 }
@@ -184,6 +199,12 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glDisableVertexAttribArray(positionLocation)
             GLES20.glDisableVertexAttribArray(textureLocation)
             renderedFrameCount.incrementAndGet()
+        }
+
+        fun latestMediaTimestampSkewMs(): Long {
+            val left = sourceMediaTimestampNs[0].get()
+            val right = sourceMediaTimestampNs[1].get()
+            return if (left <= 0L || right <= 0L) -1L else kotlin.math.abs(left - right) / 1_000_000L
         }
 
         fun notifyListener(value: Listener?) {
