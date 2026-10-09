@@ -18,6 +18,8 @@ internal class SyntheticFeedDecoder(
     private val outputSurface: Surface,
     private val onStatus: (String) -> Unit
 ) {
+    val label: String get() = feedLabel
+
     private val stopRequested = AtomicBoolean(false)
     private val outputFramesQueued = AtomicLong(0L)
     @Volatile private var worker: Thread? = null
