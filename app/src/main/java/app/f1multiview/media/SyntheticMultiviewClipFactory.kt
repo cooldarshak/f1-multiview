@@ -118,7 +118,8 @@ internal object SyntheticMultiviewClipFactory {
                         }
                         outputIndex >= 0 -> {
                             val buffer = encoder.getOutputBuffer(outputIndex)
-                            if (info.size > 0) {
+                            val codecConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                            if (info.size > 0 && !codecConfig) {
                                 check(muxerStarted && buffer != null) {
                                     "Encoder produced samples before its output format was ready"
                                 }
