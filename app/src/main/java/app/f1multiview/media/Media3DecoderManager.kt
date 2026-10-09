@@ -26,8 +26,6 @@ import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import android.os.Handler
 import android.os.Looper
 import app.f1multiview.core.playback.Quality
-import app.f1multiview.data.f1tv.TmePlaybackParser
-import app.f1multiview.data.f1tv.TmeTopology
 import app.f1multiview.model.StreamSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -257,11 +255,6 @@ class Media3DecoderManager(context: Context) {
     }
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
-        val tme = stream.tmeJson?.let(TmePlaybackParser::parse)
-        if (tme?.topology == TmeTopology.SINGLE_MOSAIC_SOURCE || tme?.topology == TmeTopology.INDEPENDENT_FEED_SOURCES) {
-            AppLogger.e("Media3DecoderManager", "REFUSE_TME_PLAYER feed=" + stream.id + " topology=" + tme.topology + "; TME backend owns physical playback")
-            return false
-        }
         val url = stream.url ?: return false
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
