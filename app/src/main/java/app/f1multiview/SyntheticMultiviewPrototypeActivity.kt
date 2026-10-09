@@ -30,6 +30,7 @@ import java.util.concurrent.Executors
 class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedCompositorView.Listener {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val prototypeStartedAtNs = SystemClock.elapsedRealtimeNanos()
+    @Volatile private var playbackStartedAtNs = 0L
     private val worker = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "synthetic-multiview-setup").apply { isDaemon = true }
     }
@@ -47,7 +48,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private val diagnosticTicker = object : Runnable {
         override fun run() {
             if (destroyed || !::compositor.isInitialized) return
-            compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach {
+            compositor.inputFrameDiagnostics(diagnosticEpochNs()).forEach {
                 AppLogger.i("SyntheticMultiviewMetrics", it)
             }
             renderStatus()
@@ -142,6 +143,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             val labels = listOf("LEFT", "RIGHT")
             // Give every decoder one common epoch slightly in the future so setup time does not
             // create a different playback clock for each feed.
+            playbackStartedAtNs = SystemClock.elapsedRealtimeNanos()
             val sharedPlaybackAnchorNs = System.nanoTime() + 500_000_000L
             files.zip(surfaces).forEachIndexed { index, (file, surface) ->
                 pipelines += SyntheticFeedDecoder(
@@ -170,7 +172,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
             add("Two MediaCodec decoders → two SurfaceTextures → one GLES compositor")
-            compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach(::add)
+            compositor.inputFrameDiagnostics(diagnosticEpochNs()).forEach(::add)
             add(compositor.drawDiagnostics())
             add(resourceDiagnostics())
             synchronized(pipelineLock) { pipelines.map { it.metricsLine() } }.forEach(::add)
@@ -179,6 +181,8 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         }
         statusView.text = lines.joinToString("\n")
     }
+
+    private fun diagnosticEpochNs(): Long = playbackStartedAtNs.takeIf { it > 0L } ?: prototypeStartedAtNs
 
     private fun resourceDiagnostics(): String {
         val memory = Debug.MemoryInfo()
