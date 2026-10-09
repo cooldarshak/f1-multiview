@@ -272,6 +272,7 @@ class UnifiedMultiviewEngine(context: Context) {
             return emptySet()
         }
         if (resolvedTmeSession != null && resolvedTmeSession.topology == app.f1multiview.data.f1tv.TmeTopology.SINGLE_MOSAIC_SOURCE) {
+            if (tmeSource != null) nativeTmeBackend.inspectInputs(resolvedTmeSession, tmeSource)
             if (isNativeTmeActive()) nativeTmeBackend.release()
             openTiledPrepared = if (resolvedTmePlayback != null && tmeSource != null) openTiledBackend.prepare(resolvedTmePlayback, tmeSource, referenceId) else false
             if (openTiledPrepared) {
