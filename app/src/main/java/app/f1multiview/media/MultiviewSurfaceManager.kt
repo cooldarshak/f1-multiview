@@ -26,10 +26,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     private val bindings = linkedMapOf<String, SurfaceBinding>()
     private val renderCoordinator = MultiviewRenderCoordinator()
     private val nextGeneration = java.util.concurrent.atomic.AtomicLong(1L)
-
-    companion object {
-        private val BINDING_GENERATION_TAG = View.generateViewId()
-    }
+    private val containerGenerations = java.util.WeakHashMap<FrameLayout, Long>()
 
     /**
      * Compose owns the root FrameLayout. This manager owns only the rendering child inside it.
@@ -51,7 +48,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             current.protectedContent == desiredProtected) {
             renderCoordinator.update(feedId, source)
             val updated = current.copy(onTap = onTap, source = source)
-            container.setTag(BINDING_GENERATION_TAG, current.generation)
+            containerGenerations[container] = current.generation
             bindings[feedId] = updated
             attachExisting(updated, player, source)
             AppLogger.d("Surface", "bind reused feed=$feedId container=${System.identityHashCode(container)}")
@@ -65,7 +62,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         val generation = nextGeneration.getAndIncrement()
         // Each concrete AndroidView container keeps its own generation. A stale release
         // from an old container cannot match the replacement binding for this feed.
-        container.setTag(BINDING_GENERATION_TAG, generation)
+        containerGenerations[container] = generation
         val params = FrameLayout.LayoutParams(-1, -1)
         val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
         val protectedContent = renderSlot.protectedContent
@@ -167,7 +164,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             AppLogger.w("Surface", "detach ignored: no binding feed=$feedId")
             return
         }
-        val releasedGeneration = container.getTag(BINDING_GENERATION_TAG) as? Long
+        val releasedGeneration = containerGenerations[container]
         val currentIdentity = SurfaceBindingLease.Identity(
             generation = binding.generation,
             container = binding.container,
@@ -183,6 +180,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             return
         }
         bindings.remove(feedId)
+        containerGenerations.remove(container)
         renderCoordinator.unbind(feedId)
         releaseBinding(binding, unbindCoordinator = false)
         AppLogger.d("Surface", "detach complete feed=$feedId")
@@ -225,6 +223,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         AppLogger.i("Surface", "clear bindings=${bindings.keys}")
         bindings.values.toList().forEach { releaseBinding(it, unbindCoordinator = false) }
         bindings.clear()
+        containerGenerations.clear()
         renderCoordinator.clear()
     }
 
