@@ -15,7 +15,8 @@ import java.util.UUID
  *
  * This probes platform declarations only. It does not request a license, open a stream,
  * infer actual concurrent decoder capacity, or claim that protected output can be composited.
- * Widevine output stays on a secure SurfaceView until a supported protected compositor exists.
+ * Protected output is reported as a candidate for independent secure SurfaceView layers managed
+ * by Android; this is not a claim that concurrent sessions or frame presentation work on-device.
  */
 internal object ProtectedFeedCompatibility {
     private val WIDEVINE_UUID: UUID = C.WIDEVINE_UUID
@@ -46,7 +47,7 @@ internal object ProtectedFeedCompatibility {
             drmConfigured = drmConfigured,
             widevineSecurityLevel = widevineSecurityLevel(),
             secureDecoderCandidates = countSecureDecoderCandidates(),
-            protectedComposition = "UNSUPPORTED_BY_CURRENT_GLES_COMPOSITOR"
+            protectedComposition = "SECURE_SURFACEVIEW_LAYERING_CANDIDATE_NOT_RUNTIME_VERIFIED"
         )
     }
 
