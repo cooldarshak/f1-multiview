@@ -56,15 +56,17 @@ class NativeTmePlaybackBackend(
 
     override val status: MultiviewBackendStatus
         get() {
-            val available = runCatching { GpacNativeTmeMerger().available }.getOrDefault(false)
+            val gpacPresent = runCatching { GpacNativeTmeMerger().available }.getOrDefault(false)
             return MultiviewBackendStatus(
                 kind = MultiviewBackendKind.NATIVE_TME,
-                available = available,
-                singlePlayer = true,
-                reason = if (available)
-                    "GPAC hevcmerge -> one MediaCodec -> one Surface"
+                // Native library presence is not proof that this backend can merge
+                // unrelated F1 camera feeds or decode their protected CMAF samples.
+                available = false,
+                singlePlayer = false,
+                reason = if (gpacPresent)
+                    "GPAC hevcmerge is present, but independent F1 feeds are not proven compatible spatial HEVC tiles; protected CMAF preflight is not implemented"
                 else
-                    "ARM64 GPAC native merger is unavailable"
+                    "GPAC native merger is unavailable; independent-feed compatibility and protected CMAF preflight are also unproven"
             )
         }
 
