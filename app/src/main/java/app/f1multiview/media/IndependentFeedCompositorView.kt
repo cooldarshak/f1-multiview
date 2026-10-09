@@ -49,6 +49,18 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     fun inputFrameCounts(): Pair<Long, Long> =
         renderer.sourceFrameCount[0].get() to renderer.sourceFrameCount[1].get()
 
+    /** Measured input-frame updates, first-frame latency, and observed update rate. */
+    fun inputFrameDiagnostics(startedAtNs: Long): List<String> = (0..1).map { index ->
+        val count = renderer.sourceFrameCount[index].get()
+        val firstNs = renderer.sourceFirstFrameAtNs[index].get()
+        val lastNs = renderer.sourceLastFrameAtNs[index].get()
+        val firstMs = if (firstNs == 0L) "pending" else "${(firstNs - startedAtNs).coerceAtLeast(0L) / 1_000_000L}ms"
+        val fps = if (count > 1L && lastNs > firstNs) {
+            String.format(java.util.Locale.US, "%.1f", (count - 1L) * 1_000_000_000.0 / (lastNs - firstNs))
+        } else "warming"
+        "feed${index + 1}: frames=$count firstFrame=$firstMs observedFps=$fps"
+    }
+
     override fun onDetachedFromWindow() {
         queueEvent { renderer.releaseInputs(listener) }
         super.onDetachedFromWindow()
@@ -57,6 +69,8 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     private inner class Renderer : GLSurfaceView.Renderer {
         private val frameAvailable = Array(2) { AtomicBoolean(false) }
         val sourceFrameCount = Array(2) { AtomicLong(0L) }
+        val sourceFirstFrameAtNs = Array(2) { AtomicLong(0L) }
+        val sourceLastFrameAtNs = Array(2) { AtomicLong(0L) }
         private val textureIds = IntArray(2)
         private val inputTextures = arrayOfNulls<SurfaceTexture>(2)
         private val inputSurfaces = arrayOfNulls<Surface>(2)
@@ -139,6 +153,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                     runCatching {
                         inputTextures[index]?.updateTexImage()
                         inputTextures[index]?.getTransformMatrix(transformMatrices[index])
+                        val frameTimeNs = android.os.SystemClock.elapsedRealtimeNanos()
+                        sourceFirstFrameAtNs[index].compareAndSet(0L, frameTimeNs)
+                        sourceLastFrameAtNs[index].set(frameTimeNs)
                         sourceFrameCount[index].incrementAndGet()
                     }
                 }
