@@ -99,6 +99,7 @@ class NativeTmeMultiviewEngine(
 
     fun play() {
         val surface = outputSurface ?: return
+        val currentSession = session ?: return
         if (coordinator == null && currentSources.isNotEmpty()) {
             coordinator = TmeCmafCoordinator(
                 coordinatorContext,
@@ -106,7 +107,8 @@ class NativeTmeMultiviewEngine(
                 decoder,
                 source?.requestHeaders.orEmpty(),
                 session?.tileCountHorizontal?.let { it * requireNotNull(session?.tileWidth) },
-                session?.tileCountVertical?.let { it * requireNotNull(session?.tileHeight) }
+                currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) },
+                currentSession
             ).also { c ->
                 c.start(
                     currentSources,
@@ -210,7 +212,8 @@ class NativeTmeMultiviewEngine(
             decoder,
             currentSource.requestHeaders,
             currentSession.tileCountHorizontal?.let { it * requireNotNull(currentSession.tileWidth) },
-            currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) }
+            currentSession.tileCountVertical?.let { it * requireNotNull(currentSession.tileHeight) },
+            currentSession
         ).also { c ->
             c.start(
                 sources,
