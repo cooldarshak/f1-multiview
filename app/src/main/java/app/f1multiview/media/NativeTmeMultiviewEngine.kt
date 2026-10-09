@@ -149,19 +149,24 @@ class NativeTmeMultiviewEngine(
             mergeLatencyMs = 0,
             decoderRecreationCount = decoder.telemetry().decoderRecreationCount
         )
+        val currentSession = session
+        val capabilityReason = when (currentSession?.topology) {
+            null -> "No TME session has been prepared"
+            TmeTopology.SINGLE_MOSAIC_SOURCE ->
+                "Single-source mosaic sessions belong to OpenTiledMultiviewBackend, not this independent-feed merger"
+            TmeTopology.INDEPENDENT_FEED_SOURCES ->
+                "Independent feed URLs are not proven compatible spatial HEVC tiles"
+            TmeTopology.UNKNOWN ->
+                "TME input topology is unknown"
+        }
         return mapOf(
             "backend" to "NATIVE_TME",
             "available" to "false",
             "gpacLibraryPresent" to merger.available.toString(),
-            "capabilityReason" to if (session == null)
-                "No TME session has been prepared"
-            else if (session.topology != TmeTopology.SINGLE_MOSAIC_SOURCE)
-                "Independent feed URLs are not proven compatible spatial HEVC tiles"
-            else
-                "Single-source mosaic sessions belong to OpenTiledMultiviewBackend, not this independent-feed merger",
-            "prepared" to (session != null).toString(),
+            "capabilityReason" to capabilityReason,
+            "prepared" to (currentSession != null).toString(),
             "configured" to configured.toString(),
-            "logicalFeedCount" to (session?.feeds?.size ?: 0).toString(),
+            "logicalFeedCount" to (currentSession?.feeds?.size ?: 0).toString(),
             "physicalMerger" to if (merger.available)
                 "GPAC_HEVCMERGE_LIBRARY_ONLY_NOT_ENABLED"
             else "UNAVAILABLE",
