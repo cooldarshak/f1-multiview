@@ -30,13 +30,13 @@ internal class SyntheticFeedDecoder(
         }
     }
 
-    fun stopAndJoin(timeoutMs: Long = 750L) {
+    fun stopAndJoin(timeoutMs: Long = 1_000L): Boolean {
         stopRequested.set(true)
-        worker?.let { thread ->
-            if (thread !== Thread.currentThread()) {
-                runCatching { thread.join(timeoutMs) }
-            }
+        val thread = worker ?: return true
+        if (thread !== Thread.currentThread()) {
+            runCatching { thread.join(timeoutMs) }
         }
+        return !thread.isAlive
     }
 
     private fun decodeLoop() {
