@@ -5,7 +5,6 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaDrm
 import android.os.Build
-import android.util.Log
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
 import app.f1multiview.model.StreamSource
@@ -54,13 +53,15 @@ internal object ProtectedFeedCompatibility {
 
     private fun widevineSecurityLevel(): String {
         if (Build.VERSION.SDK_INT < 18) return "API_UNAVAILABLE"
+        var drm: MediaDrm? = null
         return try {
-            MediaDrm(WIDEVINE_UUID).use { drm ->
-                runCatching { drm.getPropertyString("securityLevel") }.getOrNull()
-                    ?.takeIf { it.isNotBlank() } ?: "UNKNOWN"
-            }
+            drm = MediaDrm(WIDEVINE_UUID)
+            runCatching { drm.getPropertyString("securityLevel") }.getOrNull()
+                ?.takeIf { it.isNotBlank() } ?: "UNKNOWN"
         } catch (t: Throwable) {
             "UNAVAILABLE_${t.javaClass.simpleName}"
+        } finally {
+            runCatching { drm?.release() }
         }
     }
 
