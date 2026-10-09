@@ -112,7 +112,7 @@ class TmeCmafFeedReader(
     }
 
     private fun parseEncryptionMethod(line: String): String? {
-        val method = Regex(\"\"\"(?:^|[, :])METHOD=([^,]+)\"\"\")
+        val method = Regex("""(?:^|[, :])METHOD=([^,]+)""")
             .find(line)?.groupValues?.get(1)?.trim()
             ?: return "UNKNOWN"
         return method.takeUnless { it.equals("NONE", ignoreCase = true) }
