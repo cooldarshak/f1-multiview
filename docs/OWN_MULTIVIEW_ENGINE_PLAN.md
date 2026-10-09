@@ -536,3 +536,11 @@ The current F1 path can resolve DASH as well as HLS, and the current factory is 
 
 Source reference: AndroidX Media3 tag `1.11.1`, `libraries/exoplayer_hls/.../HlsDataSourceFactory.java`, `DefaultHlsDataSourceFactory.java`, and `HlsMediaSource.java`. This was a source inspection, not device playback validation.
 
+## 2J. Bounded DataSource adapter prototype (2026-10-09)
+
+The public Media3 source confirms a viable division for a later production factory: HLS has a typed `HlsDataSourceFactory`, while DASH's `DashMediaSource.Factory` accepts a separate `DashChunkSource.Factory` and manifest `DataSource.Factory`. The DASH chunk factory's data source is used for chunk requests, separate from the manifest data source.
+
+A first isolated `BoundedMediaDataSource` adapter has been added with tests. It enforces a known request length, detects early EOF for known-length requests, preserves natural EOF for unknown-length requests, and fails closed if an unknown-length request reaches its byte budget. It is explicitly documented as requiring an upstream caller to classify the request as a media segment. It is not yet wired into production playback.
+
+The tests use a fake data source and do not prove the adapter is correctly placed in F1's HLS/DASH production source factories. The next gate is to test the exact factory routing while preserving current authorized headers, HLS playlist handling, and Widevine DRM provider. Production wiring remains blocked until both HLS and DASH routes are proven.
+
