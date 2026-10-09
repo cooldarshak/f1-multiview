@@ -182,7 +182,7 @@ class F1TvApiClient {
         for(apiVersion in apiVersions){
             try{
                 val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
-                logPlaybackResponseShape(apiVersion,platform,response)
+                AppLogger.i("F1Playback", "CONTENT_PLAY_RESPONSE platform=$platform apiVersion=$apiVersion httpStatus=${response.code}")
                 ensureSuccess(response,"content playback")
                 val parsed=parsePlaybackResponse(response,contentId,channelId,platform).copy(
                     requestedApiVersion=apiVersion,
