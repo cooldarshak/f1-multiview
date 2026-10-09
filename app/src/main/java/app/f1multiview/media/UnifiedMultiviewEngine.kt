@@ -289,7 +289,7 @@ class UnifiedMultiviewEngine(context: Context) {
                 AppLogger.e("TME", "Single-source tiled backend could not be prepared; refusing Media3 multi-player fallback")
                 return emptySet()
             }
-        } else if (resolvedTmeSession?.topology in setOf(
+        } else if (resolvedTmeSession != null && resolvedTmeSession.topology in setOf(
                 app.f1multiview.data.f1tv.TmeTopology.MULTI_SOURCE_TILED_CANDIDATE,
                 app.f1multiview.data.f1tv.TmeTopology.INDEPENDENT_FEED_SOURCES
             )) {
