@@ -80,12 +80,12 @@ class NativeTmePlaybackBackend(
 
     /**
      * Starts a one-shot, metadata-only probe of the first HLS/CMAF segment for each
-     * multi-URL feed. It never decrypts protected samples or enables the merger.
+     * unique source URL. It never decrypts protected samples or enables the merger.
      * Results are retained for the existing diagnostics screen/logging.
      */
     @Synchronized
     fun inspectInputs(session: TiledMultiviewSession, source: StreamSource) {
-        if (session.topology == TmeTopology.SINGLE_MOSAIC_SOURCE || session.feeds.size < 2) return
+        if (session.feeds.size < 2) return
         val key = (session.contentId?.toString() ?: "unknown") + ":" +
             session.feedIds.joinToString("|") + ":" + session.feeds.map { it.url.orEmpty() }.joinToString("|")
         if (preflightKey == key || preflightInFlight) return
@@ -93,9 +93,11 @@ class NativeTmePlaybackBackend(
         preflightInFlight = true
         Thread({
             try {
+                val reader = TmeCmafFeedReader(appContext, source.requestHeaders)
+                val evidenceByUrl = mutableMapOf<String, TmeCmafFeedEvidence>()
                 val evidence = session.feeds.mapIndexed { index, feed ->
-                    val url = feed.url
-                    if (url.isNullOrBlank()) {
+                    val url = feed.url?.takeIf(String::isNotBlank)
+                    if (url == null) {
                         TmeCmafFeedEvidence(
                             feedId = session.feedIds[index],
                             mimeType = null,
@@ -109,8 +111,9 @@ class NativeTmePlaybackBackend(
                             inspectionError = "Feed URL is missing"
                         )
                     } else {
-                        TmeCmafFeedReader(appContext, source.requestHeaders)
-                            .inspectFirstSegment(url, session.feedIds[index])
+                        evidenceByUrl.getOrPut(url) {
+                            reader.inspectFirstSegment(url, session.feedIds[index])
+                        }.copy(feedId = session.feedIds[index])
                     }
                 }
                 val report = TmeCmafPreflight.assess(session, evidence)
