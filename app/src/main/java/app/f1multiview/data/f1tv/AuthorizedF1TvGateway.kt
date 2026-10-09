@@ -472,7 +472,8 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             val result=api.contentPlay(request.contentId,request.channelId,platform)
             AppLogger.i(
                 "F1Playback",
-                "CONTENT_PLAY platform=${platform} apiVersion=${result.playApiVersion ?: "unknown"} " +
+                "CONTENT_PLAY platform=${platform} requestedApiVersion=${result.requestedApiVersion ?: "unknown"} " +
+                    "httpStatus=${result.httpStatus ?: -1} playApiVersion=${result.playApiVersion ?: "absent"} " +
                     "manifest=${if (result.manifestUrl.isBlank()) "none" else if (result.manifestUrl.contains(".mpd", true)) "dash" else "hls"} " +
                     "tme=${!result.tmeJson.isNullOrBlank()} channelViewMode=${result.channelViewMode ?: "none"}"
             )
