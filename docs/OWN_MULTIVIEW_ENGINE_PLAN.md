@@ -470,3 +470,10 @@ The extractor gate now uses an independently maintained AndroidX Media fragmente
 This gate proves only clear fragmented-MP4 container parsing with this fixture. It does not resolve an HLS/DASH manifest, fetch network segments, decrypt samples, create a Widevine session, configure secure decoders, or prove protected F1 multiview. Those remain separate gates. Robolectric is used to provide Android framework classes to the local JVM test; CI must confirm compatibility before this gate is considered passed.
 
 Fixture provenance and Apache-2.0 notice: `app/src/test/resources/media/NOTICE.txt`.
+
+
+## 2G. Bounded CMAF segment-reader gate
+
+The app-owned BoundedCmafSegmentReader wraps a resolved segment byte source with an explicit declared length and configured maximum size. It caps each upstream read at the remaining segment boundary, returns end-of-input only at the declared boundary, and raises an I/O error if the upstream source ends early. Invalid read counts and invalid destination ranges are rejected. A declared segment larger than the configured budget is rejected before reading any bytes.
+
+Unit tests cover boundary capping, repeated end-of-input, zero-length reads, empty segments, truncated upstream data, oversize declarations, and invalid target ranges. This is a bounded byte-reader primitive only: it does not fetch HTTP resources, resolve HLS/DASH playlists, authenticate requests, parse CMAF boxes, decrypt samples, or create Widevine sessions. Integration with an authorized segment data source is a later gate and must preserve the existing Media3 single-feed path.
