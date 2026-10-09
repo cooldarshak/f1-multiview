@@ -40,6 +40,16 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private val statusLines = linkedMapOf<String, String>()
     private var starting = false
     private var destroyed = false
+    private val diagnosticTicker = object : Runnable {
+        override fun run() {
+            if (destroyed || !::compositor.isInitialized) return
+            compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach {
+                AppLogger.i("SyntheticMultiviewMetrics", it)
+            }
+            renderStatus()
+            mainHandler.postDelayed(this, 5_000L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,7 +70,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             textSize = 12f
             setPadding(18, 14, 18, 14)
             setBackgroundColor(0xD9000000.toInt())
-            text = "SYNTHETIC MULTIVIEW PROTOTYPE\nGenerating two clear H.264 test clips…"
+            text = "SYNTHETIC MULTIVIEW PROTOTYPE\nGenerating three clear H.264 test clips…"
             isFocusable = true
             contentDescription = "Synthetic multiview diagnostics. Press Back to exit."
         }
@@ -152,9 +162,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
             add("Three MediaCodec decoders → three SurfaceTextures → one GLES compositor")
             compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach(::add)
-            val elapsedSeconds = ((SystemClock.elapsedRealtimeNanos() - prototypeStartedAtNs).coerceAtLeast(1L)) / 1_000_000_000.0
-            val renderFps = compositor.renderedFrameCount() / elapsedSeconds
-            add("Compositor render ticks: ${compositor.renderedFrameCount()} · avg ${String.format(java.util.Locale.US, "%.1f", renderFps)} fps")
+            add(compositor.drawDiagnostics())
             statusLines.values.forEach(::add)
             add("Press Back to exit")
         }
@@ -183,10 +191,13 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             compositor.onResume()
             // Re-deliver existing surfaces when EGL was retained across pause.
             compositor.setListener(this)
+            mainHandler.removeCallbacks(diagnosticTicker)
+            mainHandler.postDelayed(diagnosticTicker, 5_000L)
         }
     }
 
     override fun onPause() {
+        mainHandler.removeCallbacks(diagnosticTicker)
         stopDecodersAndWait()
         if (::compositor.isInitialized) compositor.onPause()
         super.onPause()

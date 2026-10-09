@@ -61,9 +61,11 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             if (it > 0L) "${it / 1_000_000L}ms" else "pending"
         }
         val maxGapMs = renderer.sourceMaxArrivalGapNs[index].get() / 1_000_000L
-        "feed${index + 1}: frames=$count firstFrame=$firstMs observedFps=$fps mediaTs=$mediaTimestampMs maxArrivalGap=${maxGapMs}ms"
+        val ageMs = if (lastNs == 0L) "never" else "${(android.os.SystemClock.elapsedRealtimeNanos() - lastNs).coerceAtLeast(0L) / 1_000_000L}ms"
+        "feed${index + 1}: frames=$count firstFrame=$firstMs observedFps=$fps lastFrameAge=$ageMs mediaTs=$mediaTimestampMs maxArrivalGap=${maxGapMs}ms"
     } + listOf(
-        "latestMediaTimestampSkew=${renderer.latestMediaTimestampSkewMs()}ms"
+        renderer.drawDiagnostics(),
+        "syntheticMediaTimestampSkew(notSyncVerdict)=${renderer.latestMediaTimestampSkewMs()}ms"
     )
 
     override fun onDetachedFromWindow() {
@@ -92,6 +94,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         private var width = 0
         private var height = 0
         val renderedFrameCount = AtomicLong(0L)
+        private val firstDrawAtNs = AtomicLong(0L)
+        private val lastDrawAtNs = AtomicLong(0L)
+        private val maxDrawGapNs = AtomicLong(0L)
 
         private val vertexShader = """
             attribute vec2 aPosition;
@@ -197,7 +202,24 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
             GLES20.glDisableVertexAttribArray(positionLocation)
             GLES20.glDisableVertexAttribArray(textureLocation)
+            val drawTimeNs = android.os.SystemClock.elapsedRealtimeNanos()
+            val previousDrawNs = lastDrawAtNs.getAndSet(drawTimeNs)
+            if (previousDrawNs > 0L) {
+                val gapNs = drawTimeNs - previousDrawNs
+                maxDrawGapNs.updateAndGet { previousMax -> maxOf(previousMax, gapNs) }
+            }
+            firstDrawAtNs.compareAndSet(0L, drawTimeNs)
             renderedFrameCount.incrementAndGet()
+        }
+
+        fun drawDiagnostics(): String {
+            val count = renderedFrameCount.get()
+            val first = firstDrawAtNs.get()
+            val last = lastDrawAtNs.get()
+            val rate = if (count > 1L && last > first) {
+                String.format(java.util.Locale.US, "%.1f", (count - 1L) * 1_000_000_000.0 / (last - first))
+            } else "warming"
+            return "GLES draw calls=$count drawCallRate=$rate/s maxDrawGap=${maxDrawGapNs.get() / 1_000_000L}ms (not display-present FPS)"
         }
 
         fun latestMediaTimestampSkewMs(): Long {
