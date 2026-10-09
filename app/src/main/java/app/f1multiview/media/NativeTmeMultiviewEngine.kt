@@ -151,7 +151,7 @@ class NativeTmeMultiviewEngine(
         )
         return mapOf(
             "backend" to "NATIVE_TME",
-            "available" to (session?.let(::canHandle) == true).toString(),
+            "available" to "false",
             "gpacLibraryPresent" to merger.available.toString(),
             "capabilityReason" to if (session == null)
                 "No TME session has been prepared"
@@ -162,9 +162,9 @@ class NativeTmeMultiviewEngine(
             "prepared" to (session != null).toString(),
             "configured" to configured.toString(),
             "logicalFeedCount" to (session?.feeds?.size ?: 0).toString(),
-            "physicalMerger" to if (session?.topology == TmeTopology.INDEPENDENT_FEED_SOURCES)
-                "NOT_COMPATIBLE_UNPROVEN"
-            else if (merger.available) "GPAC_HEVCMERGE_LIBRARY_ONLY" else "UNAVAILABLE",
+            "physicalMerger" to if (merger.available)
+                "GPAC_HEVCMERGE_LIBRARY_ONLY_NOT_ENABLED"
+            else "UNAVAILABLE",
             "inputTileStreams" to telemetry.inputTileStreams.toString(),
             "mergedVideoStreams" to telemetry.mergedVideoStreams.toString(),
             "mediaCodecInstances" to telemetry.mediaCodecInstances.toString(),
