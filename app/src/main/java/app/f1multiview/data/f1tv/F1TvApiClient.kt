@@ -187,6 +187,19 @@ class F1TvApiClient {
                     requestedApiVersion=apiVersion,
                     httpStatus=response.code
                 )
+                val manifestKind = when {
+                    parsed.manifestUrl.contains(".mpd", true) -> "DASH"
+                    parsed.manifestUrl.contains(".m3u8", true) -> "HLS"
+                    else -> "OTHER"
+                }
+                // Diagnostic fields only. Never log manifest/license URLs, cookies, or tokens.
+                AppLogger.i(
+                    "F1Playback",
+                    "AUTHORIZED_STREAM_RESOLVED contentId=$contentId platform=$platform apiVersion=$apiVersion " +
+                        "manifest=$manifestKind drmConfigured=${!parsed.licenseUrl.isNullOrBlank()} " +
+                        "drmType=${parsed.drmType ?: "unknown"} streamType=${parsed.streamType ?: "unknown"} " +
+                        "pipelineVersion=${parsed.pipelineVersion ?: -1} playTokenPresent=${!parsed.playToken.isNullOrBlank()}"
+                )
                 return parsed
             }catch(t:Throwable){
                 if(t is CancellationException) throw t
