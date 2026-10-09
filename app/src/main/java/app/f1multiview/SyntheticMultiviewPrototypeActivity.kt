@@ -163,7 +163,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         synchronized(pipelineLock) {
             val stuck = pipelines.filterNot { it.stopAndJoin(1_000L) }
             if (stuck.isNotEmpty()) {
-                val labels = stuck.joinToString(",") { it.toString() }
+                val labels = stuck.joinToString(",") { it.label }
                 AppLogger.e("SyntheticMultiview", "DECODER_STOP_TIMEOUT count=${stuck.size} decoders=$labels")
                 mainHandler.post {
                     statusLines["decoder-stop"] = "DECODER_STOP_TIMEOUT count=${stuck.size}; see app logs"
