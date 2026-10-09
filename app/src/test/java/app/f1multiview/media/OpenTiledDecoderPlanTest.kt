@@ -8,18 +8,12 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class OpenTiledDecoderPlanTest {
-    private fun session(
-        urls: List<String>,
-        columns: Int? = null,
-        rows: Int? = null
-    ) = TiledMultiviewSession(
+    private fun session(urls: List<String>) = TiledMultiviewSession(
         version = 1,
         channel = "multiview",
         contentId = 42,
         tileWidth = 960,
         tileHeight = 540,
-        tileCountHorizontal = columns,
-        tileCountVertical = rows,
         feeds = urls.mapIndexed { index, url ->
             TiledMultiviewFeed(
                 index = index,
@@ -30,39 +24,15 @@ class OpenTiledDecoderPlanTest {
                 audioEnglish = null,
                 audioSpanish = null,
                 subtitleEnglish = null,
-                subtitleSpanish = null,
-                tileIndex = columns?.let { index },
-                tileRow = columns?.let { index / it },
-                tileColumn = columns?.let { index % it }
+                subtitleSpanish = null
             )
         }
     )
 
-
-    private fun explicitGridSession() = TiledMultiviewSession(
-        version = 1,
-        channel = "multiview",
-        contentId = 43,
-        tileWidth = 960,
-        tileHeight = 540,
-        tileCountHorizontal = 2,
-        tileCountVertical = 1,
-        feeds = listOf(
-            TiledMultiviewFeed(0, 1, "world", "https://cdn/mosaic.m3u8", "world", null, null, null, null, tileIndex = 0, tileRow = 0, tileColumn = 0),
-            TiledMultiviewFeed(1, 2, "onboard", "https://cdn/mosaic.m3u8", "onboard", null, null, null, null, tileIndex = 1, tileRow = 0, tileColumn = 1)
-        )
-    )
-
-    @Test
-    fun explicitGridRequiresActualDecodedDimensionsToMatchMosaicCanvas() {
-        assertNotNull(OpenTiledDecoderPlan.from(explicitGridSession(), 1920, 540))
-        assertNull(OpenTiledDecoderPlan.from(explicitGridSession(), 960, 540))
-    }
-
     @Test
     fun singleMosaicProducesOnePhysicalDecoderAndManyLogicalMappings() {
         val plan = OpenTiledDecoderPlan.from(
-            session(listOf("https://cdn/mosaic.m3u8", "https://cdn/mosaic.m3u8", "https://cdn/mosaic.m3u8", "https://cdn/mosaic.m3u8"), columns = 2, rows = 2),
+            session(listOf("https://cdn/mosaic.m3u8", "https://cdn/mosaic.m3u8", "https://cdn/mosaic.m3u8", "https://cdn/mosaic.m3u8")),
             sourceVideoWidth = 1920,
             sourceVideoHeight = 1080
         )
@@ -86,7 +56,7 @@ class OpenTiledDecoderPlanTest {
     fun twentyFourLogicalFeedsStillUseOnePhysicalDecoder() {
         val urls = List(24) { "https://cdn/mosaic.mpd" }
         val plan = OpenTiledDecoderPlan.from(
-            session(urls, columns = 6, rows = 4),
+            session(urls),
             // 6 x 4 tiles of 960 x 540 exactly fill a 5760 x 2160 source.
             sourceVideoWidth = 5760,
             sourceVideoHeight = 2160
@@ -102,7 +72,7 @@ class OpenTiledDecoderPlanTest {
     @Test
     fun sourceGeometryProducesNormalizedTileRectangles() {
         val plan = OpenTiledDecoderPlan.from(
-            session(listOf("https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd"), columns = 2, rows = 2),
+            session(listOf("https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd", "https://cdn/mosaic.mpd")),
             sourceVideoWidth = 1920,
             sourceVideoHeight = 1080
         )
