@@ -50,7 +50,8 @@ class MultiviewPlaybackBackendTest {
         val backend = NativeTmePlaybackBackend(TestContext())
 
         assertFalse(backend.status.available)
-        assertTrue(backend.status.singlePlayer)
+        assertFalse(backend.status.singlePlayer)
+        assertTrue(backend.status.reason.contains("independent F1 feeds"))
         assertFalse(backend.canHandle(session))
     }
 
