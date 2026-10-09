@@ -165,9 +165,22 @@ class MultiviewSurfaceManager(private val context: Context) {
         binding.textureView?.let(binding.owner::clearVideoTextureView)
     }
 
+    /**
+     * Remove only views owned by this binding. The container is supplied by Compose and
+     * may contain children owned by another layer; removeAllViews() can silently destroy
+     * newer/replacement content during a stale rebind or release callback.
+     */
     private fun releaseBinding(binding: SurfaceBinding, unbindCoordinator: Boolean) {
         releaseVideoOutput(binding)
-        binding.container.removeAllViews()
+        binding.surfaceView?.let { view ->
+            if (view.parent === binding.container) binding.container.removeView(view)
+        }
+        binding.textureView?.let { view ->
+            if (view.parent === binding.container) binding.container.removeView(view)
+        }
+        binding.touchInterceptor?.let { view ->
+            if (view.parent === binding.container) binding.container.removeView(view)
+        }
         if (unbindCoordinator) {
             renderCoordinator.unbind(binding.feedId)
         }
