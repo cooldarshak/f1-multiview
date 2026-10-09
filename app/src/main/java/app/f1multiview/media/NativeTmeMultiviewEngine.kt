@@ -160,11 +160,20 @@ class NativeTmeMultiviewEngine(
         )
         return mapOf(
             "backend" to "NATIVE_TME",
-            "available" to merger.available.toString(),
+            "available" to (session?.let(::canHandle) == true).toString(),
+            "gpacLibraryPresent" to merger.available.toString(),
+            "capabilityReason" to if (session == null)
+                "No TME session has been prepared"
+            else if (session.topology != TmeTopology.SINGLE_MOSAIC_SOURCE)
+                "Independent feed URLs are not proven compatible spatial HEVC tiles"
+            else
+                "Single-source mosaic sessions belong to OpenTiledMultiviewBackend, not this independent-feed merger",
             "prepared" to (session != null).toString(),
             "configured" to configured.toString(),
             "logicalFeedCount" to (session?.feeds?.size ?: 0).toString(),
-            "physicalMerger" to if (merger.available) "GPAC_HEVCMERGE" else "UNAVAILABLE",
+            "physicalMerger" to if (session?.topology == TmeTopology.INDEPENDENT_FEED_SOURCES)
+                "NOT_COMPATIBLE_UNPROVEN"
+            else if (merger.available) "GPAC_HEVCMERGE_LIBRARY_ONLY" else "UNAVAILABLE",
             "inputTileStreams" to telemetry.inputTileStreams.toString(),
             "mergedVideoStreams" to telemetry.mergedVideoStreams.toString(),
             "mediaCodecInstances" to telemetry.mediaCodecInstances.toString(),
