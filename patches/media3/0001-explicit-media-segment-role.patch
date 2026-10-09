@@ -1,0 +1,40 @@
+diff --git a/libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java b/libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java
+index a8ca990c10..c1aea4dd82 100644
+--- a/libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java
++++ b/libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java
+@@ -798,7 +798,10 @@ public class DefaultDashChunkSource implements DashChunkSource {
+               representationHolder.selectedBaseUrl.url,
+               segmentUri,
+               flags,
+-              /* httpRequestHeaders= */ ImmutableMap.of());
++              /* httpRequestHeaders= */ ImmutableMap.of())
++              .buildUpon()
++              .setCustomData("f1-multiview:media-segment:v1")
++              .build();
+       if (cmcdDataFactory != null) {
+         cmcdDataFactory.setChunkDurationUs(endTimeUs - startTimeUs);
+         @Nullable
+@@ -855,7 +858,10 @@ public class DefaultDashChunkSource implements DashChunkSource {
+               representationHolder.selectedBaseUrl.url,
+               segmentUri,
+               flags,
+-              /* httpRequestHeaders= */ ImmutableMap.of());
++              /* httpRequestHeaders= */ ImmutableMap.of())
++              .buildUpon()
++              .setCustomData("f1-multiview:media-segment:v1")
++              .build();
+       if (cmcdDataFactory != null) {
+         cmcdDataFactory.setChunkDurationUs(endTimeUs - startTimeUs);
+         @Nullable
+diff --git a/libraries/exoplayer_hls/src/main/java/androidx/media3/exoplayer/hls/HlsMediaChunk.java b/libraries/exoplayer_hls/src/main/java/androidx/media3/exoplayer/hls/HlsMediaChunk.java
+index f6543df84a..c2b1154566 100644
+--- a/libraries/exoplayer_hls/src/main/java/androidx/media3/exoplayer/hls/HlsMediaChunk.java
++++ b/libraries/exoplayer_hls/src/main/java/androidx/media3/exoplayer/hls/HlsMediaChunk.java
+@@ -116,6 +116,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
+             .setPosition(mediaSegment.byteRangeOffset)
+             .setLength(mediaSegment.byteRangeLength)
+             .setFlags(segmentBaseHolder.isPreload ? FLAG_MIGHT_NOT_USE_FULL_NETWORK_SPEED : 0)
++            .setCustomData("f1-multiview:media-segment:v1")
+             .build();
+     if (cmcdDataFactory != null) {
+       CmcdData cmcdData = cmcdDataFactory.createCmcdData();
