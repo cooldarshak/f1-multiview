@@ -114,7 +114,7 @@ fun UgisInfoPanel(
                             Column(Modifier.weight(1f)) {
                                 Text("Synthetic Multiview Prototype", color = InfoWhite, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Debug-only test using two locally generated clear H.264 clips. It does not access F1 or DRM streams.",
+                                    "Debug-only test using three locally generated clear H.264 clips. It does not access F1 or DRM streams.",
                                     color = InfoMuted,
                                     fontSize = 10.sp
                                 )
