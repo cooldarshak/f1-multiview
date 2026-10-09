@@ -44,6 +44,22 @@ class MultiviewRenderCoordinatorTest {
         assertFalse(coordinator.isGpuComposable(stream.id))
     }
 
+
+    @Test
+    fun explicitResolvedDrmFlagForcesSecureSurfaceWithoutOtherMetadata() {
+        val coordinator = MultiviewRenderCoordinator()
+        val stream = feed("explicit-protected").copy(
+            drmLicenseUrl = null,
+            drmType = null,
+            streamType = null,
+            drmProtected = true
+        )
+        val slot = coordinator.bind(stream, "resolved", screenshotMode = true)
+        assertTrue(slot.protectedContent)
+        assertEquals(MultiviewRenderCoordinator.RenderPath.SURFACE_VIEW, slot.path)
+        assertFalse(coordinator.isGpuComposable(stream.id))
+    }
+
     @Test
     fun protectedClassificationDoesNotDowngradeWhenLaterResponseOmitsDrmMetadata() {
         val coordinator = MultiviewRenderCoordinator()
