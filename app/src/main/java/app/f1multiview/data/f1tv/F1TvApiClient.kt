@@ -55,7 +55,13 @@ class F1TvApiClient {
         if(apiConfigFetchedAt>0L && now-apiConfigFetchedAt<API_CONFIG_CACHE_MS) return@withLock
         var cacheAttempt = true
         try {
-            val response=execute("$BASE/config","GET",null,emptyMap())
+            val configHeaders=mapOf(
+                "Accept" to "application/json, text/plain, */*",
+                "User-Agent" to BROWSER_UA,
+                "Origin" to BASE,
+                "Referer" to BASE+"/"
+            )
+            val response=execute("$BASE/config","GET",null,configHeaders)
             if(!response.isSuccessful){
                 AppLogger.w("F1Playback","F1_API_CONFIG_UNAVAILABLE httpStatus=${response.code}")
             } else {
