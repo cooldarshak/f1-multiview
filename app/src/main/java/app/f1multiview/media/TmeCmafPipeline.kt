@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.view.Surface
+import app.f1multiview.core.playback.TiledMultiviewSession
 import java.io.File
 import java.net.URI
 import java.net.URL
@@ -360,7 +361,8 @@ class TmeCmafCoordinator(
     private val decoder: TmeNativeDecoder,
     private val requestHeaders: Map<String, String> = emptyMap(),
     private val outputWidth: Int? = null,
-    private val outputHeight: Int? = null
+    private val outputHeight: Int? = null,
+    private val preflightSession: TiledMultiviewSession
 ) {
     @Volatile private var running = false
     private var worker: Thread? = null
@@ -378,6 +380,24 @@ class TmeCmafCoordinator(
         worker = Thread({
             try {
                 val readers = sources.associateWith { TmeCmafFeedReader(context, requestHeaders) }
+
+                // This is the final runtime gate immediately before the native merger.
+                // The earlier capability check is synchronous and cannot inspect network
+                // media. Never extract protected samples or configure hevcmerge unless a
+                // future preflight implementation explicitly establishes merge eligibility.
+                val preflightEvidence = sources.map { tileSource ->
+                    readers.getValue(tileSource).inspectFirstSegment(tileSource.url, tileSource.feedId)
+                }
+                val preflight = TmeCmafPreflight.assess(preflightSession, preflightEvidence)
+                AppLogger.i(
+                    "TME",
+                    "CMAF_RUNTIME_PREFLIGHT status=${preflight.status} eligible=${preflight.nativeMergeEligible} " +
+                        "topology=${preflightSession.topology} summary=${preflight.summary}"
+                )
+                check(preflight.nativeMergeEligible) {
+                    "Native CMAF merge refused by preflight: ${preflight.status}: ${preflight.summary}"
+                }
+
                 // Media sequence numbers are monotonic for the live playlist. Retain only
                 // the last committed sequence instead of an ever-growing set for the
                 // duration of a race.
