@@ -248,3 +248,99 @@ Do not claim success until the correct branch builds, unit tests pass, the signe
 - Resize, layouts, audio selection, and TV remote navigation continue to work.
 - Unsupported codec combinations or insufficient decoder capacity produce clear diagnostics rather than endless loading.
 - No DRM bypass, invented F1 endpoint, or proprietary Tiledmedia runtime dependency.
+
+
+## 2C. Cross-industry multiview research (Firecrawl + public engineering sources, 2026-10-09)
+
+This section intentionally broadens beyond F1 projects. It distinguishes publicly documented product behavior from implementation evidence. It does not treat marketing claims or product features as proof of a compatible Android implementation.
+
+### Strongest new implementation references
+
+**Qualcomm GStreamer video-wall sample — practical multi-decode/composition pipeline**
+- Technical guide: https://docs.qualcomm.com/doc/80-80022-55/topic/gst-concurrent-videoplay-composition.html
+- Engineering overview: https://www.qualcomm.com/developer/blog/2024/07/qualcomm-linux-sample-apps-building-blocks-ai-inference
+- Qualcomm documents a runnable command-line sample that reads multiple H.264 MP4 files (or network sources), demuxes/parses them, decodes each channel with a hardware decoder element, composes decoded frames using `qtivcomposer`, and displays the result. The overview says the sample can compose four or eight channels.
+- Why it matters: it is a concrete, non-F1 example of the same decode-many -> compose-one-screen problem, including the use of platform-specific hardware decode and composition blocks.
+- Limitation: the described sample targets Qualcomm's Linux multimedia stack (V4L2/Wayland/Qualcomm plugins), not Android's public MediaCodec/EGL APIs. `qtivcomposer` is not a portable Android component. Reuse the pipeline shape and benchmarking method, not assumptions that its binaries will run in our app.
+- Prototype lesson: each feed needs bounded buffering and independent decode status; composition must be treated as a first-class stage, and decoder capacity must be measured on the actual target SoC.
+
+**Google Grafika — two simultaneous Android video surfaces**
+- https://github.com/google/grafika (Apache-2.0; archived/experimental)
+- Explicitly demonstrates decoding two video streams side by side to TextureViews and contains MediaCodec, SurfaceTexture, EGL and presentation-timing examples.
+- Why it matters: closest small public Android-native reference for the low-level primitives required by a custom proof of concept.
+- Limitation: it is a sample collection, not a production engine; it does not establish stable live HLS/DASH ingest, multi-feed synchronization, Widevine protected composition, or performance on current target devices.
+
+**media-kit / libmpv Android rendering path**
+- https://github.com/media-kit/media-kit (MIT)
+- Its documented Android implementation renders libmpv to a Surface backed by an Android SurfaceTexture, with MediaCodec hardware decoding configured through mpv.
+- Why it matters: a viable research avenue for an established playback core that can render into a texture/surface owned by a host app; potentially useful for an isolated performance comparison.
+- Limitation: it does not by itself prove multi-feed single-session composition, synchronization, or protected DRM integration. libmpv is a playback engine, not a magic one-decoder merger. Check transitive dependencies, build burden, and license notices before adoption.
+
+**GStreamer OpenGL compositor**
+- Element docs: https://gstreamer.freedesktop.org/documentation/opengl/glvideomixer.html
+- Android build/deployment guide: https://gstreamer.freedesktop.org/documentation/installing/for-android-development.html
+- The GL mixer composites multiple input streams into one output scene. Qualcomm's sample confirms a similar approach with vendor-specific hardware decoder/compositor plugins on its platform.
+- Why it matters: GStreamer has an actual multi-input graph model and multiple possible decode/composition elements, rather than requiring us to invent all media plumbing.
+- Limitation: an Android package must include compatible plugins and codec elements; whether decoded frames remain GPU-resident, hardware decode is selected, and secure surfaces work must be demonstrated on-device. Plugin names and hardware acceleration differ by SoC.
+
+**Android Media3 SurfaceControl demo and MediaCodec/SurfaceTexture references**
+- Media3 SurfaceControl demo: https://github.com/androidx/media/tree/release/demos/surface
+- Android MediaCodec: https://developer.android.com/reference/android/media/MediaCodec
+- SurfaceTexture architecture: https://source.android.com/docs/core/graphics/arch-st
+- These provide public Android primitives and samples for surface ownership and rendering, but not a ready-made independent-feed multiview engine. A single SurfaceControl surface is not equivalent to combining arbitrary independently encoded streams into one decoder.
+
+### Commercial and broadcast implementations: useful constraints, not code to copy
+
+**AWS Elemental MediaPackage Dynamic Multiview / JioHotstar**
+- AWS announcement (September 2026): https://aws.amazon.com/about-aws/whats-new/2026/09/aws-elemental-dynamic-multiview-video
+- AWS technical overview: https://docs.aws.amazon.com/mediapackage/latest/userguide/dynamic-multiview.html
+- How it works: https://docs.aws.amazon.com/medialive/latest/ug/dynamic-multiview-how-it-works.html
+- Public documentation describes a server-side system that assembles matching segments from independently encoded sources into a viewer-selected multiview output on demand, delivered as one standard HLS or DASH stream. The described method works in the compressed domain without decoding/re-encoding the layout, so the client sees one video track/decoder and one DRM key. AWS says JioHotstar is using it for quad-view IPL coverage.
+- Why it matters: it is real-world evidence that the user experience can be delivered efficiently by changing the streaming packaging/production architecture, not just the client app.
+- Critical limitation for our project: this is an AWS server-side product, not an Android library we can embed. Our app does not control F1's origin/packaging pipeline and cannot create this output merely by changing the Android player. It becomes relevant only if the authorized content provider supplies a compatible precomposed stream or we later operate a lawful server-side pipeline for sources we are authorized to process. Do not confuse this architecture with client-side decoding/compositing.
+
+**Sky Sports “Your Multiview”**
+- Official product information: https://www.skysports.com/football/news/13442249/your-multiview-on-sky-sports-how-to-watch-up-to-four-live-football-games-or-sports-events-at-same-time
+- Official usage video: https://www.skysports.com/more-sports/video/13575471/how-to-watch-your-multiview
+- Public materials establish the product behavior: up to four live events, adjustable layout, audio choice and promotion of one event to full screen across Sky's supported TV platforms.
+- Why it matters: validates requirements for tile assignment, focus switching, audio routing and layouts across mixed sports.
+- Limitation: the public product page does not document the internal decoder, compositor, or packaging architecture. We must not guess whether it uses client-side players, a precomposed stream, or a platform-specific pipeline.
+
+**Disney / Netflix / Amazon / Hotstar**
+- Searches for public engineering write-ups did not establish a reusable public source tree for the exact on-device problem of synchronizing and composing several independent protected live streams into one Android view. Public Netflix engineering material found in this pass is about large-scale live streaming and service-side delivery, not an Android multiview compositor.
+- Keep researching their patents, engineering blogs, conference talks, and public SDKs where relevant, but only promote a claim to “implementation evidence” when the source actually describes the media path. A brand using streaming technology is not evidence that its private app architecture is available to reuse.
+- The AWS/JioHotstar case above is currently the strongest public, named example found of a commercial streaming platform deploying dynamic multiview at scale, but it is a server-side packaging design and does not solve our current client-only constraint.
+
+**NexPlayer Multiview public repo — commercial SDK documentation, not reusable engine source**
+- https://github.com/NexPlayer/NexPlayer_Multiview
+- This is public documentation for a proprietary commercial player SDK rather than an open implementation we can transplant. Use only its public input/timestamp constraints as already noted above; do not add the SDK as a dependency.
+
+### Additional general-purpose video sources
+
+**ChromeOS VideoDecodeEncodeDemo**
+- https://github.com/chromeos/video-decode-encode-demo
+- A proof-of-concept for multi-stream decode/encode and SurfaceTexture/OpenGL coordination. Its limitations and target environment must be kept explicit.
+
+**Google Grafika**
+- https://github.com/google/grafika
+- Apache-2.0 reference samples for Android MediaCodec and GLES rendering. Archived; learn from examples, don't depend on it as a maintained framework.
+
+**media-kit**
+- https://github.com/media-kit/media-kit
+- MIT-licensed playback framework with an Android SurfaceTexture rendering path. Worth a controlled comparison only if it can be hosted per feed without creating the same decoder-contention problem and if a separate compositor can consume its frames safely.
+
+### Updated architectural decision
+
+1. **Prototype first: native Android custom rendering with clear synthetic clips.** Use MediaCodec -> SurfaceTexture -> EGL/OpenGL ES and render two feeds into one app-owned output surface. Grafika is a reference for primitives, not the finished solution. This most directly proves whether our target hardware can sustain the required independent feed count and gives us a baseline without depending on proprietary SDKs.
+2. **Prototype in parallel only after the first harness exists: GStreamer/GPAC.** Compare actual first-frame time, dropped frames, CPU/GPU/memory, thermal load, synchronization error, build size, dependency/licensing burden, and lifecycle stability. Qualcomm's sample validates the general graph pattern but not Android portability.
+3. **Do not spend the next milestone integrating AWS server-side multiview or NexPlayer.** They are useful architectural evidence, but neither is an embeddable, self-contained open Android engine that we can substitute into the current app.
+4. **Keep client engine and source packaging separate.** If the authorized F1 feeds are independent camera streams, the client prototype must decode each feed as required and compose them. A single logical session/compositor does not promise one physical decoder. A one-decoder path is possible only if the inputs are supplied in a format that actually represents a single decodable picture/stream (for example a precomposed stream or a compatible spatially tiled encoding).
+5. **Preserve protected playback as a separate acceptance gate.** A successful clear synthetic prototype proves rendering/synchronization only. It does not prove Widevine compatibility; protected surfaces, codec secure-decoder requirements and output constraints must be tested without bypassing DRM.
+6. **Do not make any build or claim runtime success without explicit user approval and the agreed evidence checks.**
+
+### Immediate next work
+- Inspect the existing Gradle/NDK and native-surface lifecycle on the active branch.
+- Add a minimal isolated two-feed synthetic harness without altering existing production UI or removing resize behavior.
+- Reuse only license-compatible examples and document any code copied or adapted.
+- Measure whether two streams can be decoded and composited smoothly on target hardware before selecting a framework.
+- Then inspect the actual authorized F1 feed formats and decide whether the same client pipeline can support them; do not return to TME discovery as a prerequisite.
