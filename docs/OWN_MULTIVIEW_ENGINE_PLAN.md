@@ -512,3 +512,27 @@ Separately, `Media3DecoderManager` still contains a map of per-feed `ExoPlayer` 
 
 No production source code was changed by this audit. These findings are a source-level audit, not a runtime validation.
 
+## 2I. Media3 1.11.1 public extension-point investigation (2026-10-09)
+
+### HLS result
+
+The pinned Media3 1.11.1 source exposes public, `@UnstableApi` extension points:
+
+- `HlsDataSourceFactory.createDataSource(dataType)` receives the resource category.
+- `HlsMediaSource.Factory(HlsDataSourceFactory)` can receive a custom factory and supports a separately configured DRM-session-manager provider.
+- HLS's typed data-source boundary can distinguish media chunks from playlists and encryption/DRM resources without guessing from URL suffixes. This is a viable candidate boundary for a media-segment-only adapter.
+
+However, the current production factory is `DefaultMediaSourceFactory`, which internally chooses its default HLS data-source factory. It does not currently inject a custom `HlsDataSourceFactory` into that selected source. Adopting the typed HLS hook would require explicitly constructing the HLS media-source factory in the HLS path and preserving the current DRM provider, request headers, playlist behavior, and existing F1 HLS adapter. That source-factory routing change has not been made.
+
+### Length semantics
+
+The current bounded reader needs a declared length and treats upstream EOF before that length as truncation. Media3 data-source opening may return an unknown length. Therefore a segment adapter cannot assume every open has a trustworthy fixed length. For known-length resources, the wrapper can enforce the exact boundary and flag early EOF. For unknown-length media resources, the implementation needs a separate explicit max-byte policy and must preserve ordinary EOF semantics while distinguishing a configured-limit hit. It must not reuse the current reader unchanged for unknown-length opens.
+
+### DASH result and current decision
+
+The current F1 path can resolve DASH as well as HLS, and the current factory is shared across both. A HLS-only typed hook would not cover DASH media segments. Before production integration, inspect the public `DashMediaSource.Factory` / `DashChunkSource.Factory` constructor path in the pinned version and prove that segment data sources can be wrapped independently of manifest, license, initialization, and other requests while retaining the same authorized upstream configuration.
+
+**Decision: no production integration yet.** There is a viable typed hook for HLS, but no complete HLS-and-DASH design has been demonstrated. The next code change should be a separately tested bounded `DataSource` adapter with explicit known/unknown-length behavior, then a focused HLS factory wiring test. Do not change the production source factory until the DASH boundary is also proven and regression tests show that authorized single-feed playback remains on the same headers and DRM path.
+
+Source reference: AndroidX Media3 tag `1.11.1`, `libraries/exoplayer_hls/.../HlsDataSourceFactory.java`, `DefaultHlsDataSourceFactory.java`, and `HlsMediaSource.java`. This was a source inspection, not device playback validation.
+
