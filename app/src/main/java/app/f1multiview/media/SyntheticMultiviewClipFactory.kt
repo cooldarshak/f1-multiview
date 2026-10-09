@@ -30,8 +30,8 @@ internal object SyntheticMultiviewClipFactory {
         val directory = File(context.cacheDir, "synthetic-multiview").apply {
             if (!exists() && !mkdirs()) error("Unable to create synthetic clip directory")
         }
-        val left = File(directory, "synthetic-left.mp4")
-        val right = File(directory, "synthetic-right.mp4")
+        val left = File(directory, "synthetic-left-v2-color.mp4")
+        val right = File(directory, "synthetic-right-v2-color.mp4")
         if (!isUsable(left)) encodeClip(left, 0)
         if (!isUsable(right)) encodeClip(right, 1)
         check(isUsable(left) && isUsable(right)) { "Synthetic clip generation produced an invalid file" }
