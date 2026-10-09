@@ -3,6 +3,7 @@ package app.f1multiview.data.f1tv
 import android.util.Base64
 import android.webkit.CookieManager
 import app.f1multiview.core.network.HttpClient
+import app.f1multiview.media.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -112,18 +113,78 @@ class F1TvApiClient {
     }
     suspend fun contentPlay(contentId:String,channelId:String?,platform:String):PlaybackResponse{
         val query="?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
-        // The current reference client uses 2.0 CONTENT/PLAY.
-        // Keep 3.0 as a fallback for older content/pipelines.
+        // A successful 2.0 response is not proof that TME was negotiated. Probe the
+        // configured legacy 3.0 CONTENT/PLAY version when 2.0 returns ordinary playback
+        // without TME, while retaining the first authorized playable response if neither
+        // version supplies TME. No alternate endpoint or DRM behavior is introduced.
         val apiVersions=listOf("2.0","3.0")
         var last:Throwable?=null
+        var firstPlayable:PlaybackResponse?=null
         for(apiVersion in apiVersions){
             try{
                 val response=execute(BASE+"/"+apiVersion+"/R/"+LANG+"/"+platform+"/ALL/CONTENT/PLAY"+query,"GET",null,playHeaders())
+                logPlaybackResponseShape(apiVersion,platform,response)
                 ensureSuccess(response,"content playback")
-                return parsePlaybackResponse(response,contentId,channelId,platform)
-            }catch(t:Throwable){last=t}
+                val parsed=parsePlaybackResponse(response,contentId,channelId,platform).copy(
+                    requestedApiVersion=apiVersion,
+                    httpStatus=response.code
+                )
+                if(firstPlayable==null && parsed.manifestUrl.isNotBlank()) firstPlayable=parsed
+                if(!parsed.tmeJson.isNullOrBlank()){
+                    AppLogger.i("F1Playback","CONTENT_PLAY_VERSION_SELECTED platform=$platform requestedApiVersion=$apiVersion reason=TME_PRESENT")
+                    return parsed
+                }
+                if(firstPlayable==null) firstPlayable=parsed
+                AppLogger.i("F1Playback","CONTENT_PLAY_VERSION_NO_TME platform=$platform requestedApiVersion=$apiVersion httpStatus=${response.code}; probing next configured API version")
+            }catch(t:Throwable){
+                last=t
+                AppLogger.w("F1Playback","CONTENT_PLAY_VERSION_FAILED platform=$platform requestedApiVersion=$apiVersion reason=${t.javaClass.simpleName}")
+            }
         }
-        throw last?:F1TvException("F1 TV playback failed")
+        return firstPlayable ?: throw (last?:F1TvException("F1 TV playback failed"))
+    }
+
+    /** Logs response shape only; never logs response values, credentials, URLs, or body. */
+    private fun logPlaybackResponseShape(apiVersion:String,platform:String,response:HttpResponse){
+        val root=runCatching{JSONObject(response.body)}.getOrNull()
+        val result=root?.optJSONObject("resultObj")
+        val topKeys=root?.let{jsonKeys(it)}?:emptyList()
+        val resultKeys=result?.let{jsonKeys(it)}?:emptyList()
+        val relevant=(topKeys+resultKeys).distinct().filter{
+            it.contains("tme",true) || it.contains("tiled",true) ||
+                it.contains("multichannel",true) || it.contains("channelViewMode",true) ||
+                it.contains("playApiVersion",true)
+        }
+        val sources=listOfNotNull(root,result)
+        val availability=sources.flatMap{obj->
+            jsonKeys(obj).filter{it.equals("isTmeAvailable",true)}.map{key->
+                val value=obj.opt(key)
+                val safeValue=if(value is Boolean) value.toString() else "not_boolean"
+                "$key:${jsonType(value)}:$safeValue"
+            }
+        }.ifEmpty{listOf("absent")}
+        AppLogger.i("F1Playback",
+            "CONTENT_PLAY_RESPONSE_SHAPE requestedApiVersion=$apiVersion platform=$platform httpStatus=${response.code} " +
+                "json=${if(root==null) "invalid_or_non_object" else "object"} topLevelKeys=$topKeys resultObjKeys=$resultKeys " +
+                "tmeRelatedFields=$relevant isTmeAvailable=$availability"
+        )
+    }
+
+    private fun jsonKeys(obj:JSONObject):List<String>{
+        val keys=obj.keys()
+        val out=mutableListOf<String>()
+        while(keys.hasNext()) out+=keys.next()
+        return out.sorted()
+    }
+
+    private fun jsonType(value:Any?):String=when(value){
+        null,JSONObject.NULL -> "null"
+        is JSONObject -> "object"
+        is org.json.JSONArray -> "array"
+        is String -> "string"
+        is Boolean -> "boolean"
+        is Number -> "number"
+        else -> value.javaClass.simpleName
     }
     private fun playHeaders(): Map<String,String> = buildMap {
         putAll(authHeaders());put("Origin",BASE);put("Referer",BASE+"/");put("x-f1-device-info",deviceInfo())
@@ -136,15 +197,19 @@ class F1TvApiClient {
         val resultObj=root.optJSONObject("resultObj")
         val sources=listOf(root,resultObj).filterNotNull()
         val tmeElement=sources.asSequence()
-            .mapNotNull { it.opt("tmeJson") ?: it.opt("tme") ?: it.opt("TME") }
+            .flatMap { obj -> sequenceOf("tmeJson","tme","TME").mapNotNull { key ->
+                if(!obj.has(key)) null else obj.opt(key)
+            } }
             .firstOrNull { value ->
                 when(value){
+                    null, JSONObject.NULL -> false
                     is org.json.JSONObject -> value.length()>0
                     is org.json.JSONArray -> value.length()>0
-                    else -> value.toString().isNotBlank()
+                    is String -> value.isNotBlank() && !value.equals("null",true)
+                    else -> value.toString().isNotBlank() && !value.toString().equals("null",true)
                 }
             }
-        val tmeJson=tmeElement?.let { if (it is org.json.JSONObject || it is org.json.JSONArray) it.toString() else it.toString() }
+        val tmeJson=tmeElement?.toString()
         val manifest=sources.asSequence().mapNotNull { firstString(it,"url","manifestUrl","manifestURL","playUrl") }.firstOrNull()
         if (manifest.isNullOrBlank() && tmeJson.isNullOrBlank()) throw F1TvException("CONTENT/PLAY returned neither a manifest URL nor TME JSON")
         val license=sources.asSequence().mapNotNull { firstString(it,"laURL","laUrl","licenseUrl","licenseURL") }.firstOrNull()
@@ -244,6 +309,6 @@ class F1TvApiClient {
     }
     private fun firstString(obj:JSONObject,vararg keys:String):String?=keys.firstNotNullOfOrNull{key->obj.optString(key).takeIf{it.isNotBlank()}}
 }
-data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val tmeJson:String?=null,val channelViewMode:String?=null)
+data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val tmeJson:String?=null,val channelViewMode:String?=null,val requestedApiVersion:String?=null,val httpStatus:Int?=null)
 data class HttpResponse(val code:Int,val isSuccessful:Boolean,val body:String)
 class F1TvException(message:String):Exception(message)
