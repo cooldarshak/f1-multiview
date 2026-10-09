@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
  *
  * This activity is reachable only from the debug Settings panel. It does not use F1 endpoints,
  * credentials, Media3 players, or DRM-protected content. It generates two short local H.264
- * clips, decodes each with a distinct MediaCodec, and composites all decoder Surfaces through
+ * clips, decodes each with a distinct MediaCodec, and composites both decoder Surfaces through
  * one GLES view.
  */
 class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedCompositorView.Listener {
