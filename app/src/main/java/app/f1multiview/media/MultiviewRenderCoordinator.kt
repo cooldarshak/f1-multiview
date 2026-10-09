@@ -30,10 +30,13 @@ class MultiviewRenderCoordinator {
      * feed response. Classify protection conservatively from all available public
      * playback metadata; a missing URL alone must never make a Widevine feed appear clear.
      */
-    fun isProtected(stream: StreamSource): Boolean =
-        !stream.drmLicenseUrl.isNullOrBlank() ||
+    fun isProtected(stream: StreamSource): Boolean {
+        val currentProtected = slots[stream.id]?.protectedContent == true
+        return currentProtected ||
+            !stream.drmLicenseUrl.isNullOrBlank() ||
             stream.drmType?.contains("widevine", ignoreCase = true) == true ||
             stream.streamType?.contains("DASHWV", ignoreCase = true) == true
+    }
 
     fun pathFor(stream: StreamSource, screenshotMode: Boolean): RenderPath =
         if (isProtected(stream) || !screenshotMode) {
