@@ -122,7 +122,22 @@ An important engineering constraint remains independent of any vendor: arbitrary
 - Preserve resizing, TV remote controls, logging, and existing UI.
 - Do not trigger a build without explicit approval.
 
-### Phase 1 — audit the current implementation (next)
+### Phase 1 — audit the current implementation (research/code audit in progress)
+- Trace the complete path from selected F1 feed -> playback response -> feed descriptor -> aligned sample queue -> native merger -> decoder/output surface.
+- Identify every TME-specific type, gate, and assumption; classify each as reusable generic behavior, GPAC-specific behavior, or proprietary/TME-only plumbing.
+- Establish the exact input codec/container and whether real feeds are compatible with the current HEVC merger. Do not infer this from HTTP 200 or a manifest URL alone.
+- Add focused tests for missing TME metadata, incompatible codecs, timestamp mismatch, merger output, and visible failure states.
+
+#### Confirmed code-audit findings
+1. `UnifiedMultiviewEngine.updateViewport()` sets `media3MultiviewBlocked` when more than one visible video exists and no parsed/typed TME session is available; it releases the decoder manager and returns an empty set. This is the immediate reason ordinary independent feeds cannot enter a multiview playback path when F1 responses have no TME metadata.
+2. `OpenTiledMultiviewEngine` is already vendor-independent in its implementation, but its entry contract still requires a `TmePlayback` whose topology is `SINGLE_MOSAIC_SOURCE`, a single source URL, and tile geometry. It handles a pre-packaged mosaic; it does not combine independent onboard URLs.
+3. The current JNI GPAC graph explicitly loads `hevcmerge:mrows=true:strict=true`, declares each input as HEVC, and collects compressed output samples. It does not decode independent camera pictures or render a general mosaic.
+4. `scripts/build-gpac-android.sh` explicitly disables GPAC `compositor`, `vout`, and `aout`; therefore the currently built GPAC configuration cannot provide the proposed independent-stream compositor without a separate build/configuration and Android output-surface proof.
+5. The current default backend is `Media3MultiPlayerFallbackBackend`, while the code intentionally blocks that backend for more than one visible video. Simply removing the gate would therefore violate the one-logical-engine requirement and risk returning to the multi-ExoPlayer behavior the project is meant to replace.
+6. Research of F1AppleTV and Race Control confirms that existing F1 clients provide valuable layout, feed lifecycle, and synchronization patterns, but both use separate per-feed players in their current implementations. They are references for product behavior and test cases, not evidence of single-decoder composition.
+7. The first implementation milestone must be a vendor-neutral engine contract and clear synthetic two-feed rendering proof. Only after that should the F1 feed resolver be wired into it; the actual F1 codec/container/timestamp characteristics still need to be measured rather than assumed.
+
+
 - Trace the complete path from selected F1 feed -> playback response -> feed descriptor -> aligned sample queue -> native merger -> decoder/output surface.
 - Identify every TME-specific type, gate, and assumption; classify each as reusable generic behavior, GPAC-specific behavior, or proprietary/TME-only plumbing.
 - Establish the exact input codec/container and whether real feeds are compatible with the current HEVC merger. Do not infer this from HTTP 200 or a manifest URL alone.
