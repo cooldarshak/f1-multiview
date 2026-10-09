@@ -25,8 +25,18 @@ class MultiviewRenderCoordinator {
 
     private val slots = linkedMapOf<String, RenderSlot>()
 
+    /**
+     * F1 stream responses are not consistent about returning a license URL on every
+     * feed response. Classify protection conservatively from all available public
+     * playback metadata; a missing URL alone must never make a Widevine feed appear clear.
+     */
+    fun isProtected(stream: StreamSource): Boolean =
+        !stream.drmLicenseUrl.isNullOrBlank() ||
+            stream.drmType?.contains("widevine", ignoreCase = true) == true ||
+            stream.streamType?.contains("DASHWV", ignoreCase = true) == true
+
     fun pathFor(stream: StreamSource, screenshotMode: Boolean): RenderPath =
-        if (stream.drmLicenseUrl != null || !screenshotMode) {
+        if (isProtected(stream) || !screenshotMode) {
             RenderPath.SURFACE_VIEW
         } else {
             RenderPath.GPU_TEXTURE
@@ -42,7 +52,7 @@ class MultiviewRenderCoordinator {
         return RenderSlot(
             feedId = stream.id,
             path = path,
-            protectedContent = stream.drmLicenseUrl != null,
+            protectedContent = isProtected(stream),
             source = source,
             zOrder = zOrder
         ).also { slots[stream.id] = it }
