@@ -32,6 +32,42 @@ class F1TvApiClientTest {
 
 
     @Test
+    fun prefersTmeResponseOverEarlierNormalPlaybackResponse() {
+        val normal = PlaybackResponse(
+            manifestUrl = "https://example.com/normal.mpd",
+            licenseUrl = null,
+            drmToken = null,
+            entitlementToken = null,
+            playToken = null,
+            streamType = "DASH",
+            requestedApiVersion = "3.0"
+        )
+        val tme = normal.copy(
+            tmeJson = """{"feeds":[{"url":"https://example/a"},{"url":"https://example/b"}]}""",
+            requestedApiVersion = "2.0"
+        )
+
+        assertEquals(tme, F1TvApiClient.preferTmeResponse(normal, tme))
+    }
+
+    @Test
+    fun preservesFirstNormalPlaybackResponseWhenNoCandidateHasTme() {
+        val first = PlaybackResponse(
+            manifestUrl = "https://example.com/first.mpd",
+            licenseUrl = null,
+            drmToken = null,
+            entitlementToken = null,
+            playToken = null,
+            streamType = "DASH",
+            requestedApiVersion = "3.0"
+        )
+        val second = first.copy(manifestUrl = "https://example.com/second.mpd", requestedApiVersion = "2.0")
+
+        assertEquals(first, F1TvApiClient.preferTmeResponse(null, first))
+        assertEquals(first, F1TvApiClient.preferTmeResponse(first, second))
+    }
+
+    @Test
     fun parsesProductionStyleTopLevelTmeJson() {
         val response = HttpResponse(
             200,
