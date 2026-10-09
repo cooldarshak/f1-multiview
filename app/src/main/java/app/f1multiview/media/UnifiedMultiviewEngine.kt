@@ -12,9 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
  * App-owned playback coordinator. Media3 remains available for a single authorized feed;
  * independent multi-feed rendering is not routed through multiple ExoPlayers.
  *
- * Until the clear synthetic three-feed prototype has passed device validation and the
- * own decoder/compositor path has been integrated with authorized protected media, this
- * coordinator fails visibly closed for more than one visible video feed.
+ * Until the clear synthetic three-feed prototype has passed device validation and an app-owned
+ * authorized F1 demux/DRM/decoder pipeline has been integrated, this coordinator fails visibly
+ * closed for more than one visible video feed. Protected feeds may require independent secure
+ * SurfaceView layers composed by Android; they must not be sampled into the clear GLES compositor.
  */
 class UnifiedMultiviewEngine(context: Context) {
     private val appContext = context.applicationContext
@@ -106,10 +107,10 @@ class UnifiedMultiviewEngine(context: Context) {
                 )
             }
             _multiviewStatus.value =
-                "PROTECTED F1 MULTIVIEW BLOCKED: authorized feed metadata is being checked, but the current compositor cannot combine Widevine secure SurfaceView outputs. No independent ExoPlayer fallback was created."
+                "PROTECTED F1 MULTIVIEW BLOCKED: secure SurfaceView layering is only a candidate; the own authorized F1 demux/DRM/decoder pipeline and concurrent protected playback are not yet validated. No independent ExoPlayer fallback was created."
             AppLogger.e(
                 "OwnMultiviewEngine",
-                "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=secure-surface-composition-not-supported"
+                "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=own-authorized-f1-protected-pipeline-not-integrated secureSurfaceLayering=unverified"
             )
             _decoderGeneration.value += 1L
             return emptySet()
