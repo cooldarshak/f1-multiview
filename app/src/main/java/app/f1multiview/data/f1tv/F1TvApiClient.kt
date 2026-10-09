@@ -158,6 +158,7 @@ class F1TvApiClient {
                 if (container != null) return container
                 last=F1TvException("CONTENT/VIDEO returned no container")
             } catch (t:Throwable) {
+                if(t is CancellationException) throw t
                 last=t
             }
         }
@@ -181,6 +182,7 @@ class F1TvApiClient {
                     httpStatus=response.code
                 )
             }catch(t:Throwable){
+                if(t is CancellationException) throw t
                 last=t
                 AppLogger.w("F1Playback","CONTENT_PLAY_VERSION_FAILED platform=$platform requestedApiVersion=$apiVersion reason=${t.javaClass.simpleName}")
             }
