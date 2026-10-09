@@ -17,6 +17,9 @@ import app.f1multiview.media.AppLogger
 import app.f1multiview.media.IndependentFeedCompositorView
 import app.f1multiview.media.SyntheticFeedDecoder
 import app.f1multiview.media.SyntheticMultiviewClipFactory
+import app.f1multiview.media.FeedDescriptor
+import app.f1multiview.media.FeedViewport
+import app.f1multiview.media.ViewportLayout
 import java.util.concurrent.Executors
 
 /**
@@ -141,14 +144,31 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             val files = requireNotNull(clips).files
             val surfaces = requireNotNull(currentSurfaces)
             val labels = listOf("LEFT", "RIGHT")
-            // Give every decoder one common epoch slightly in the future so setup time does not
-            // create a different playback clock for each feed.
+            val feedDescriptors = files.mapIndexed { index, file ->
+                FeedDescriptor(
+                    id = labels[index],
+                    mediaUri = file.absolutePath,
+                    mimeType = "video/avc",
+                    width = 320,
+                    height = 180,
+                    isLive = false,
+                    timelineGroup = "synthetic-shared-clock"
+                )
+            }
+            compositor.setViewportLayout(
+                ViewportLayout(
+                    id = "synthetic-side-by-side",
+                    viewports = listOf(
+                        FeedViewport("LEFT", 0f, 0f, 0.5f, 1f, zIndex = 0),
+                        FeedViewport("RIGHT", 0.5f, 0f, 0.5f, 1f, zIndex = 1)
+                    )
+                )
+            )
+            // Give both decoders one common epoch so setup time does not create separate clocks.
             playbackStartedAtNs = SystemClock.elapsedRealtimeNanos()
             val sharedPlaybackAnchorNs = System.nanoTime() + 500_000_000L
-            files.zip(surfaces).forEachIndexed { index, (file, surface) ->
-                pipelines += SyntheticFeedDecoder(
-                    labels[index], file, surface, sharedPlaybackAnchorNs, ::onDecoderStatus
-                )
+            feedDescriptors.zip(surfaces).forEach { (feed, surface) ->
+                pipelines += SyntheticFeedDecoder(feed, surface, sharedPlaybackAnchorNs, ::onDecoderStatus)
             }
             pipelines.toList().forEach(SyntheticFeedDecoder::start)
             starting = false
