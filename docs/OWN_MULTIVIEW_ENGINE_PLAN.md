@@ -351,3 +351,28 @@ This stage is instrumentation and compatibility assessment, not proof of multi-f
 The next validation must collect the safe diagnostics from a real authorized session on the
 target phone and Android TV, then determine a DRM-compliant rendering path before enabling
 multiple protected feeds. No build was triggered as part of this source change.
+
+
+## 2C. Surface lifecycle audit and protected-output feasibility (2026-10-09)
+
+### Surface lifecycle defect found and corrected in source
+
+Device logs showed stale detach callbacks arriving after a logical feed had been rebound to a different container. The identity check correctly refuses to detach the newer binding, but the cleanup path had a second defect: releaseBinding called container.removeAllViews() even though the container is owned by Compose and this manager owns only the rendering view and touch interceptor. A rebind/release could therefore remove views it did not create. The cleanup now removes only the binding's own SurfaceView/TextureView and touch-interceptor children, and only when each child is still parented by that binding's container. This preserves unrelated and replacement children. The identity-mismatch warning remains meaningful; it is not suppressed.
+
+Regression requirement: verify stale detach leaves the newer binding intact; release removes only the exact owned children; repeated detach is idempotent; resize/layout containers and unrelated Compose children remain untouched. These require Android view lifecycle tests (or instrumentation on a device), not just pure JVM tests.
+
+### Protected F1 video: constraints and viable direction
+
+The current synthetic EGL/GLES compositor accepts frames through SurfaceTexture. That is valid for clear synthetic H.264, but is not a valid assumption for Widevine L1 protected content. Protected video must remain on an approved secure output path; do not route protected pixels through an ordinary TextureView/SurfaceTexture, CPU readback, screenshots, or an unprotected EGL texture. The device log's widevineSecurityLevel=L1 and four secure decoder candidates only describe platform capability declarations; they do not establish concurrent protected decoder capacity, the F1 license policy, or secure composition support.
+
+Public Android APIs expose two distinct concepts:
+- View-system composition of secure SurfaceViews: each protected feed may use its own secure SurfaceView, with the Android system compositor arranging those surfaces in the normal view hierarchy. This is the first path to investigate for resizable tiles because it avoids sampling protected pixels in the app's GLES compositor. It still requires device/API-specific validation of overlapping surfaces, clipping, transforms, z-order, HDR, secure flags, and concurrent decoder capacity.
+- Application GLES composition: requires frames to be available as textures in a protected graphics pipeline, including protected EGL/context/surface configuration and platform support for the required protected texture path. A normal SurfaceTexture/GLES pipeline is not proof of that capability and must not be used for Widevine L1 frames.
+
+A viable next prototype should test a minimal Android view hierarchy with two authorized DRM outputs on separate secure SurfaceViews while preserving per-tile sizing and focus/touch overlays. Keep the app's own feed registry, shared timeline/synchronization and viewport model; do not introduce a production fallback to N independent ExoPlayers. Media3 currently owns the authorized DASH/Widevine session. Before replacing its decoder/output path with app-owned MediaCodec, prove that the authorized DRM session, encrypted sample path, key/session lifecycle, secure decoder configuration and output-surface contract can be preserved through documented APIs. Do not assume Media3 can hand encrypted samples or a live DRM session to a custom decoder.
+
+If the provider's DRM/session integration or the target device cannot support simultaneous secure outputs, document the exact observed failure (API level, device/codec, secure output creation/attachment result, concurrent-session/license result, and logs) and retain the visible block. Do not infer a universal Android limitation from the current GLES limitation.
+
+### Validation status
+
+The surface cleanup source change is committed as a6aefc96eb220531f94885937d82af738d7d31b2. Cloud validation must complete against the updated branch head. No claim is made yet that the stale-detach scenario is runtime-tested or that protected multiview works. The next source/device gate is an Android lifecycle regression test plus a two-secure-SurfaceView feasibility spike; resizing and layout controls remain in scope.
