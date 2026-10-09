@@ -35,10 +35,6 @@ class F1TvApiClient {
             return (listOfNotNull(preferred)+fallbackVersions).distinct()
         }
 
-        /** Prefer a TME-bearing response while retaining normal playback as the last resort. */
-        internal fun preferTmeResponse(current:PlaybackResponse?,candidate:PlaybackResponse):PlaybackResponse =
-            if(current==null || (current.tmeJson.isNullOrBlank() && !candidate.tmeJson.isNullOrBlank())) candidate else current
-
         private fun normalizeApiVersion(value:String?):String? =
             value?.trim()?.takeIf{API_VERSION_PATTERN.matches(it)}
     }
@@ -192,12 +188,7 @@ class F1TvApiClient {
                     requestedApiVersion=apiVersion,
                     httpStatus=response.code
                 )
-                if(!parsed.tmeJson.isNullOrBlank()){
-                    AppLogger.i("F1Playback","CONTENT_PLAY_TME_FOUND platform=$platform requestedApiVersion=$apiVersion")
-                    return parsed
-                }
-                bestResponse=preferTmeResponse(bestResponse,parsed)
-                AppLogger.w("F1Playback","CONTENT_PLAY_NO_TME platform=$platform requestedApiVersion=$apiVersion; trying remaining API versions")
+                return parsed
             }catch(t:Throwable){
                 if(t is CancellationException) throw t
                 last=t
@@ -207,104 +198,18 @@ class F1TvApiClient {
         return bestResponse ?: throw (last?:F1TvException("F1 TV playback failed"))
     }
 
-    /** Logs response shape only; never logs response values, credentials, URLs, or body. */
-    private fun logPlaybackResponseShape(apiVersion:String,platform:String,response:HttpResponse){
-        val root=runCatching{JSONObject(response.body)}.getOrNull()
-        val result=root?.optJSONObject("resultObj")
-        val topKeys=root?.let{jsonKeys(it)}?:emptyList()
-        val resultKeys=result?.let{jsonKeys(it)}?:emptyList()
-        // The response includes nested resultObj.settings, but the old diagnostics
-        // inspected only root/resultObj. Walk the full JSON tree so nested TME
-        // fields can be confirmed without logging response values.
-        val objects=root?.let(::jsonObjectsDepthFirst).orEmpty()
-        val relevant=objects.flatMap{(path,obj)->
-            jsonKeys(obj).filter{key->
-                key.contains("tme",true) || key.contains("tiled",true) ||
-                    key.contains("multichannel",true) || key.contains("channelViewMode",true) ||
-                    key.contains("playApiVersion",true)
-            }.map{key->"$path.$key:${jsonType(obj.opt(key))}"}
-        }.distinct().sorted()
-        val availability=objects.flatMap{(path,obj)->
-            jsonKeys(obj).filter{it.equals("isTmeAvailable",true)}.map{key->
-                val value=obj.opt(key)
-                val safeValue=if(value is Boolean) value.toString() else "not_boolean"
-                "$path.$key:${jsonType(value)}:$safeValue"
-            }
-        }.ifEmpty{listOf("absent")}
-        AppLogger.i("F1Playback",
-            "CONTENT_PLAY_RESPONSE_SHAPE requestedApiVersion=$apiVersion platform=$platform httpStatus=${response.code} " +
-                "json=${if(root==null) "invalid_or_non_object" else "object"} topLevelKeys=$topKeys resultObjKeys=$resultKeys " +
-                "tmeRelatedFields=$relevant isTmeAvailable=$availability"
-        )
-    }
-
-    private fun jsonKeys(obj:JSONObject):List<String>{
-        val keys=obj.keys()
-        val out=mutableListOf<String>()
-        while(keys.hasNext()) out+=keys.next()
-        return out.sorted()
-    }
-
-    private fun jsonObjectsDepthFirst(root:JSONObject):List<Pair<String,JSONObject>>{
-        val out=mutableListOf<Pair<String,JSONObject>>()
-        fun visit(value:Any?,path:String){
-            when(value){
-                is JSONObject -> {
-                    out.add(path to value)
-                    val keys=value.keys()
-                    while(keys.hasNext()){
-                        val key=keys.next()
-                        val childPath=if(path=="\$") key else "$path.$key"
-                        visit(value.opt(key),childPath)
-                    }
-                }
-                is org.json.JSONArray -> for(index in 0 until value.length()){
-                    visit(value.opt(index),"$path[$index]")
-                }
-            }
-        }
-        visit(root,"\$")
-        return out
-    }
-
-    private fun jsonType(value:Any?):String=when(value){
-        null,JSONObject.NULL -> "null"
-        is JSONObject -> "object"
-        is org.json.JSONArray -> "array"
-        is String -> "string"
-        is Boolean -> "boolean"
-        is Number -> "number"
-        else -> value.javaClass.simpleName
-    }
     private fun playHeaders(): Map<String,String> = buildMap {
-        putAll(authHeaders());put("Origin",BASE);put("Referer",BASE+"/");put("x-f1-device-info",deviceInfo())
+        putAll(authHeaders())
+        put("Origin", BASE)
+        put("Referer", BASE + "/")
+        put("x-f1-device-info", deviceInfo())
     }
     internal fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
         val root=JSONObject(response.body)
-        // F1's production ContentPlayResponse exposes tmeJson and playback fields
-        // directly on the response object. Some older/alternate responses wrap
-        // them under resultObj, so keep that as a compatibility fallback.
         val resultObj=root.optJSONObject("resultObj")
         val sources=listOf(root,resultObj).filterNotNull()
-        // TME fields may be nested in API variants. Search the full object tree
-        // rather than assuming the payload is only at root/resultObj.
-        val tmeSources=jsonObjectsDepthFirst(root).map{it.second}
-        val tmeElement=tmeSources.asSequence()
-            .flatMap { obj -> sequenceOf("tmeJson","tme","TME").mapNotNull { key ->
-                if(!obj.has(key)) null else obj.opt(key)
-            } }
-            .firstOrNull { value ->
-                when(value){
-                    null, JSONObject.NULL -> false
-                    is org.json.JSONObject -> value.length()>0
-                    is org.json.JSONArray -> value.length()>0
-                    is String -> value.isNotBlank() && !value.equals("null",true)
-                    else -> value.toString().isNotBlank() && !value.toString().equals("null",true)
-                }
-            }
-        val tmeJson=tmeElement?.toString()
         val manifest=sources.asSequence().mapNotNull { firstString(it,"url","manifestUrl","manifestURL","playUrl") }.firstOrNull()
-        if (manifest.isNullOrBlank() && tmeJson.isNullOrBlank()) throw F1TvException("CONTENT/PLAY returned neither a manifest URL nor TME JSON")
+        if (manifest.isNullOrBlank()) throw F1TvException("CONTENT/PLAY returned no manifest URL")
         val license=sources.asSequence().mapNotNull { firstString(it,"laURL","laUrl","licenseUrl","licenseURL") }.firstOrNull()
         val drmToken=sources.asSequence().mapNotNull { firstString(it,"drmToken") }.firstOrNull()
         val playEntitlement=sources.asSequence().mapNotNull { firstString(it,"entitlementToken") }.firstOrNull()
@@ -314,8 +219,7 @@ class F1TvApiClient {
         val playApiVersion=sources.asSequence().mapNotNull { firstString(it,"playApiVersion","playAPIVersion") }.firstOrNull()
         val platform=sources.asSequence().mapNotNull { firstString(it,"platform") }.firstOrNull()?:requestedPlatform
         val drmType=sources.asSequence().mapNotNull { firstString(it,"drmType") }.firstOrNull()
-        val channelViewMode=tmeSources.asSequence().mapNotNull { firstString(it,"channelViewMode","channelViewModeOverride") }.firstOrNull()
-        return PlaybackResponse(manifest.orEmpty(),license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType,tmeJson,channelViewMode)
+        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
         val response=execute(BASE+"/2.0/R/"+LANG+"/WEB_DASH/ALL/PAGE/"+pageId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"archive page "+pageId)
@@ -402,6 +306,6 @@ class F1TvApiClient {
     }
     private fun firstString(obj:JSONObject,vararg keys:String):String?=keys.firstNotNullOfOrNull{key->obj.optString(key).takeIf{it.isNotBlank()}}
 }
-data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val tmeJson:String?=null,val channelViewMode:String?=null,val requestedApiVersion:String?=null,val httpStatus:Int?=null)
+data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val requestedApiVersion:String?=null,val httpStatus:Int?=null)
 data class HttpResponse(val code:Int,val isSuccessful:Boolean,val body:String)
 class F1TvException(message:String):Exception(message)
