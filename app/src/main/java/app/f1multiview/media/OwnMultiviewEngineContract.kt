@@ -3,7 +3,7 @@ package app.f1multiview.media
 /**
  * Provider-neutral contract for our own multiview pipeline.
  *
- * These types deliberately contain no TME/Tiledmedia metadata. A FeedDescriptor describes
+ * These types are provider-neutral. A FeedDescriptor describes
  * one authorized input; it does not imply that the feed is already a spatial tile or that
  * it can be decoded by the same codec instance as another feed.
  */
