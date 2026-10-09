@@ -12,6 +12,8 @@ import java.nio.FloatBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+private const val SYNTHETIC_FEED_COUNT = 2
+
 /**
  * Experimental client-side compositor for independent decoded feeds.
  *
@@ -51,8 +53,10 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     fun inputFrameCounts(): List<Long> = renderer.sourceFrameCount.map { it.get() }
 
-    /** Measured input-frame updates, first-frame latency, and observed update rate. */
-    fun inputFrameDiagnostics(startedAtNs: Long): List<String> = (0..2).map { index ->
+    fun coalescedFrameNotifications(): List<Long> = renderer.sourceCoalescedNotifications.map { it.get() }
+
+    /** Measured input-frame updates, first-frame latency, update gaps, and PTS skew. Coalesced notifications are a surface-update diagnostic, not an authoritative decoder-drop count. */
+    fun inputFrameDiagnostics(startedAtNs: Long): List<String> = (0 until SYNTHETIC_FEED_COUNT).map { index ->
         val count = renderer.sourceFrameCount[index].get()
         val firstNs = renderer.sourceFirstFrameAtNs[index].get()
         val lastNs = renderer.sourceLastFrameAtNs[index].get()
@@ -65,7 +69,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         }
         val maxGapMs = renderer.sourceMaxArrivalGapNs[index].get() / 1_000_000L
         val ageMs = if (lastNs == 0L) "never" else "${(android.os.SystemClock.elapsedRealtimeNanos() - lastNs).coerceAtLeast(0L) / 1_000_000L}ms"
-        "feed${index + 1}: textureUpdates=$count firstFrame=$firstMs textureUpdatesPerSecond=$fps lastUpdateAge=$ageMs surfaceTs=$surfaceTimestampMs maxUpdateGap=${maxGapMs}ms"
+        "feed${index + 1}: textureUpdates=$count firstFrame=$firstMs textureUpdatesPerSecond=$fps lastUpdateAge=$ageMs surfaceTs=$surfaceTimestampMs maxUpdateGap=${maxGapMs}ms coalescedNotifications=${renderer.sourceCoalescedNotifications[index].get()}"
     } + listOf(
         renderer.drawDiagnostics(),
         "surfaceTimestampSkew(notSyncVerdict)=${renderer.latestSurfaceTimestampSkewMs()}ms"
@@ -77,16 +81,17 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     }
 
     private inner class Renderer : GLSurfaceView.Renderer {
-        private val frameAvailable = Array(3) { AtomicBoolean(false) }
-        val sourceFrameCount = Array(3) { AtomicLong(0L) }
-        val sourceFirstFrameAtNs = Array(3) { AtomicLong(0L) }
-        val sourceLastFrameAtNs = Array(3) { AtomicLong(0L) }
-        val sourceSurfaceTimestampNs = Array(3) { AtomicLong(0L) }
-        val sourceMaxArrivalGapNs = Array(3) { AtomicLong(0L) }
-        private val textureIds = IntArray(3)
-        private val inputTextures = arrayOfNulls<SurfaceTexture>(3)
-        private val inputSurfaces = arrayOfNulls<Surface>(3)
-        private val transformMatrices = Array(3) { FloatArray(16) }
+        private val frameAvailable = Array(SYNTHETIC_FEED_COUNT) { AtomicBoolean(false) }
+        val sourceFrameCount = Array(SYNTHETIC_FEED_COUNT) { AtomicLong(0L) }
+        val sourceFirstFrameAtNs = Array(SYNTHETIC_FEED_COUNT) { AtomicLong(0L) }
+        val sourceLastFrameAtNs = Array(SYNTHETIC_FEED_COUNT) { AtomicLong(0L) }
+        val sourceSurfaceTimestampNs = Array(SYNTHETIC_FEED_COUNT) { AtomicLong(0L) }
+        val sourceMaxArrivalGapNs = Array(SYNTHETIC_FEED_COUNT) { AtomicLong(0L) }
+        val sourceCoalescedNotifications = Array(SYNTHETIC_FEED_COUNT) { AtomicLong(0L) }
+        private val textureIds = IntArray(SYNTHETIC_FEED_COUNT)
+        private val inputTextures = arrayOfNulls<SurfaceTexture>(SYNTHETIC_FEED_COUNT)
+        private val inputSurfaces = arrayOfNulls<Surface>(SYNTHETIC_FEED_COUNT)
+        private val transformMatrices = Array(SYNTHETIC_FEED_COUNT) { FloatArray(16) }
         private val vertexData = floatBuffer(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
         private val textureData = floatBuffer(floatArrayOf(0f, 1f, 1f, 1f, 0f, 0f, 1f, 0f))
         private var program = 0
@@ -134,8 +139,8 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             textureLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
             matrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
             samplerLocation = GLES20.glGetUniformLocation(program, "uTexture")
-            GLES20.glGenTextures(3, textureIds, 0)
-            for (index in 0..2) {
+            GLES20.glGenTextures(SYNTHETIC_FEED_COUNT, textureIds, 0)
+            for (index in 0 until SYNTHETIC_FEED_COUNT) {
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureIds[index])
                 GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
                 GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
@@ -144,7 +149,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                 val texture = SurfaceTexture(textureIds[index])
                 texture.setDefaultBufferSize(320, 180)
                 texture.setOnFrameAvailableListener {
-                    frameAvailable[index].set(true)
+                    if (frameAvailable[index].getAndSet(true)) {
+                        sourceCoalescedNotifications[index].incrementAndGet()
+                    }
                 }
                 inputTextures[index] = texture
                 inputSurfaces[index] = Surface(texture)
@@ -163,7 +170,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         }
 
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
-            for (index in 0..2) {
+            for (index in 0 until SYNTHETIC_FEED_COUNT) {
                 if (frameAvailable[index].compareAndSet(true, false)) {
                     runCatching {
                         inputTextures[index]?.updateTexImage()
@@ -193,9 +200,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glVertexAttribPointer(textureLocation, 2, GLES20.GL_FLOAT, false, 0, textureData)
             GLES20.glUniform1i(samplerLocation, 0)
 
-            for (index in 0..2) {
-                val viewportWidth = if (index == 2) width - (width / 3) * 2 else width / 3
-                val viewportX = (width / 3) * index
+            for (index in 0 until SYNTHETIC_FEED_COUNT) {
+                val viewportWidth = if (index == 1) width - width / 2 else width / 2
+                val viewportX = (width / 2) * index
                 GLES20.glViewport(viewportX, 0, viewportWidth.coerceAtLeast(1), height)
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureIds[index])
@@ -246,7 +253,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             if (hadInputs) callback?.onInputSurfacesReleased()
             inputSurfaces.forEach { surface -> runCatching { surface?.release() } }
             inputTextures.forEach { texture -> runCatching { texture?.release() } }
-            for (index in 0..2) {
+            for (index in 0 until SYNTHETIC_FEED_COUNT) {
                 inputSurfaces[index] = null
                 inputTextures[index] = null
                 frameAvailable[index].set(false)
