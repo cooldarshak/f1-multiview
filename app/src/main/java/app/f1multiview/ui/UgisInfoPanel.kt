@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import app.f1multiview.SyntheticMultiviewPrototypeActivity
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -99,6 +101,30 @@ fun UgisInfoPanel(
                 }
             }
             if(section=="settings"){
+                if (BuildConfig.DEBUG) {
+                    Surface(
+                        color = InfoSurface,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Synthetic Multiview Prototype", color = InfoWhite, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Debug-only test using two locally generated clear H.264 clips. It does not access F1 or DRM streams.",
+                                    color = InfoMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            InfoButton(false, "RUN TEST") {
+                                context.startActivity(Intent(context, SyntheticMultiviewPrototypeActivity::class.java))
+                            }
+                        }
+                    }
+                }
                 var screenshotMode by remember { mutableStateOf(DebugPresentationSettings.isScreenshotModeEnabled(context)) }
                 var loggingEnabled by remember { mutableStateOf(AppLogger.isEnabled(context)) }
                 val logEntries by AppLogger.entries.collectAsState()
