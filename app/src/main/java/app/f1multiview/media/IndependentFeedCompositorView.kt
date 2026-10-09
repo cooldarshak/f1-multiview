@@ -170,6 +170,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
         fun releaseInputs(callback: Listener?) {
             val hadInputs = inputSurfaces.any { it != null } || inputTextures.any { it != null }
+            // Notify the owner before releasing output Surfaces so it can stop MediaCodec
+            // instances first. Surface lifetime must outlive every decoder targeting it.
+            if (hadInputs) callback?.onInputSurfacesReleased()
             inputSurfaces.forEach { surface -> runCatching { surface?.release() } }
             inputTextures.forEach { texture -> runCatching { texture?.release() } }
             for (index in 0..1) {
@@ -177,7 +180,6 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                 inputTextures[index] = null
                 frameAvailable[index].set(false)
             }
-            if (hadInputs) callback?.onInputSurfacesReleased()
         }
 
         private fun linkProgram(vertexSource: String, fragmentSource: String): Int {
@@ -219,9 +221,4 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                 .apply { put(values); position(0) }
     }
 
-    private fun floatBuffer(values: FloatArray): FloatBuffer =
-        ByteBuffer.allocateDirect(values.size * 4)
-            .order(ByteOrder.nativeOrder())
-            .asFloatBuffer()
-            .apply { put(values); position(0) }
 }
