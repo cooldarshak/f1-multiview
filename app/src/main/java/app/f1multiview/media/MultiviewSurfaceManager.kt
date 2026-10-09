@@ -96,7 +96,7 @@ class MultiviewSurfaceManager(private val context: Context) {
                 HdrSurfaceHints.applyHlg(surface, source)
             }
             bindings[feedId] = SurfaceBinding(
-                feedId = feedId, source = source, protectedContent = protectedContent,
+                feedId = feedId, generation = generation, source = source, protectedContent = protectedContent,
                 container = container, owner = player, onTap = onTap,
                 surfaceView = surface, touchInterceptor = touchInterceptor
             )
