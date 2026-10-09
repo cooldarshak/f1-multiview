@@ -29,6 +29,34 @@ class MultiviewRenderCoordinatorTest {
         })
     }
 
+
+    @Test
+    fun widevineStreamTypeWithoutLicenseUrlIsStillProtected() {
+        val coordinator = MultiviewRenderCoordinator()
+        val stream = feed("widevine-no-url").copy(
+            drmLicenseUrl = null,
+            drmType = "unknown",
+            streamType = "SDR_HD_DASHWV_SINGLE"
+        )
+        val slot = coordinator.bind(stream, "multiview", screenshotMode = true)
+        assertEquals(MultiviewRenderCoordinator.RenderPath.SURFACE_VIEW, slot.path)
+        assertTrue(slot.protectedContent)
+        assertFalse(coordinator.isGpuComposable(stream.id))
+    }
+
+    @Test
+    fun widevineDrmTypeWithoutLicenseUrlIsStillProtected() {
+        val coordinator = MultiviewRenderCoordinator()
+        val stream = feed("widevine-drm-type").copy(
+            drmLicenseUrl = null,
+            drmType = "widevine",
+            streamType = "SDR_HD_DASH_SINGLE"
+        )
+        val slot = coordinator.bind(stream, "multiview", screenshotMode = true)
+        assertTrue(slot.protectedContent)
+        assertEquals(MultiviewRenderCoordinator.RenderPath.SURFACE_VIEW, slot.path)
+    }
+
     @Test
     fun unprotectedScreenshotModeCanUseGpuTexture() {
         val coordinator = MultiviewRenderCoordinator()
