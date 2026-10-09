@@ -167,7 +167,11 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
 
     override fun onResume() {
         super.onResume()
-        if (::compositor.isInitialized) compositor.onResume()
+        if (::compositor.isInitialized) {
+            compositor.onResume()
+            // Re-deliver existing surfaces when EGL was retained across pause.
+            compositor.setListener(this)
+        }
     }
 
     override fun onPause() {
