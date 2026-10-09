@@ -110,11 +110,11 @@ This research extends beyond GitHub repository discovery. Findings below are bas
 - Repository: https://github.com/google/grafika
 - Its documented examples include two-video side-by-side playback, SurfaceTexture, MediaCodec, EGL, and presentation timing. It is archived and explicitly says it is an experimental collection rather than a stable, production-ready library. Use its relevant examples as learning/reference material; don't import it as a finished engine.
 
-**GPAC compositor**
+**Optional open-source graph compositor (deferred)**
 - Current docs: https://wiki.gpac.io/Filters/compositor/
 - The compositor can consume multiple URL types and has a `mosaic://` multi-view input syntax. It can produce frames in filter mode and can use OpenGL for 3D/display-driver paths.
-- This makes GPAC a real prototype candidate for independent feeds, separate from `hevcmerge`. It still needs a proof of Android integration: DASH/HLS input support, decoder path, EGL/output-surface handoff, timestamps/live buffering, and protected output compatibility.
-- Our existing GPAC Android build disables compositor/vout/aout, so this is a new build configuration and integration effort, not something already available in the current native library.
+- GPAC's public compositor is a possible future comparison only if the custom Android baseline exposes a concrete limitation. It is not part of the current app or the first proof milestone. Any evaluation must independently validate Android input, decoder, EGL/output-surface, timing, and protected-playback behavior.
+- The previous GPAC Android build wiring has been removed. Do not restore it without a separate, evidence-based decision and license/build review.
 
 **GStreamer glvideomixer**
 - Documentation: https://gstreamer.freedesktop.org/documentation/opengl/glvideomixer.html
@@ -143,8 +143,8 @@ This research extends beyond GitHub repository discovery. Findings below are bas
 | Candidate | What it can prove | Main risk / unknown | Decision |
 | --- | --- | --- | --- |
 | Custom MediaCodec + SurfaceTexture + OpenGL ES | Full control of decode scheduling, frame timestamps, one app-owned compositor, diagnostics and viewport resizing | Highest implementation burden; codec limits, lifecycle, live demux and secure surfaces are difficult | Required reference implementation / fallback if frameworks fail |
-| GPAC multi-input graph + compositor | One media graph/session with standard media inputs and a compositor | Android build/output surface, hardware decode and protected playback are not proven | Prototype first alongside the custom path |
-| GStreamer + glvideomixer | Mature multi-input media graph and GL compositor | Native package size/dependencies, device-specific decoder elements, low-copy behavior and DRM surface integration | Third candidate if GPAC integration fails or GStreamer offers a measurable advantage |
+| GPAC multi-input graph + compositor | Optional public open-source comparison | Android output surface, hardware decode and protected playback are not proven | Defer until the custom baseline is measured |
+| GStreamer + glvideomixer | Optional public open-source comparison | Native package size, decoder elements, low-copy behavior and DRM surface integration are not proven | Defer until the custom baseline is measured |
 | HEVC compressed-domain merge | Potentially one encoded output and one decode for compatible spatial tiles | Independent onboard cameras are not spatial tiles of one picture; source compatibility not established | Use only for inputs that objectively satisfy the HEVC tiled-stream contract |
 | N separate ExoPlayers/MediaPlayers | Fastest way to show separate sources, useful for a baseline comparison only | Decoder contention, synchronization and jank; violates the intended architecture if used as the production fallback | Not an acceptable production workaround |
 
@@ -153,7 +153,7 @@ This research extends beyond GitHub repository discovery. Findings below are bas
 2. Build a benchmark that records per-codec dimensions/rate, number of active hardware decoders, first-frame time, compositor frame time, dropped frames, queue depth, drift, memory, CPU/GPU and thermal behavior.
 3. Include a viewport-aware quality policy: a small tile should not automatically request the same rendition as the main feed if the authorized stream catalog offers lower-resolution variants. Do not assume a rendition exists; inspect the actual manifest.
 4. Live sync needs a target-latency model in addition to PTS drift correction. Streams can have different live edges or encoder offsets even when each player's local position looks valid. Derive alignment from trustworthy timestamps or calibrated content events, not wall-clock guessing.
-5. Use a controlled bake-off with two known-clear synthetic feeds before F1 integration: (a) GPAC compositor graph, (b) custom MediaCodec/SurfaceTexture/OpenGL, and optionally (c) GStreamer. Choose on evidence. A successful library build alone is not sufficient.
+5. First measure the custom three-feed MediaCodec/SurfaceTexture/OpenGL baseline. Only if results reveal a concrete need, compare a license-compatible open-source graph compositor against the same synthetic inputs and metrics. A successful library build alone is not sufficient.
 
 ## 3. Target architecture
 
