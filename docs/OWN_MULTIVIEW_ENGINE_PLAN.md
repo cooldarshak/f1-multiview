@@ -447,3 +447,17 @@ This audit does **not** establish that Media3 exposes a supported, stable public
 ### Next implementation gate
 
 Before production multiview can be enabled, prototype the app-owned source pipeline against clear synthetic CMAF inputs first, then add the authorized DRM boundary only where public APIs support it. Keep the current single-feed Media3 playback path intact during that work. Do not route multiple visible feeds through the existing per-feed ExoPlayer manager, and do not use a secure-surface layout experiment as proof of actual protected frame presentation.
+
+
+## 2E. App-owned CMAF extraction gate (2026-10-09)
+
+The next source gate adds the pinned Media3 1.11.1 `media3-extractor` artifact and a narrow `CmafExtractorPrototype` entry point using the public `FragmentedMp4Extractor`. This is an app-owned extraction stage, not a new playback engine yet.
+
+Scope and explicit non-claims:
+- It can parse fragmented-MP4 container bytes when supplied as a valid initialization/media-fragment sequence through Media3's extractor interfaces.
+- It does **not** fetch or parse an HLS/DASH manifest, resolve F1 authorization headers, request a Widevine license, own a DRM session, or prove encrypted sample handling.
+- It does **not** configure MediaCodec, present protected output, or replace the existing authorized single-feed Media3 pipeline.
+- The extractor is stateful: use a separate instance per input pipeline; do not share one instance between feeds.
+- The API is marked unstable by Media3, so version upgrades require revalidation.
+
+The next validation must feed an actual fragmented-MP4 fixture through `ExtractorInput` and capture `ExtractorOutput`/track sample metadata. A locally generated ordinary MP4 is not accepted as proof of fragmented-CMAF support. Only after that test passes should the prototype connect a bounded segment reader, then assess encrypted sample metadata and Widevine boundaries separately. Protected multi-feed remains blocked; no independent-ExoPlayer fallback is enabled.
