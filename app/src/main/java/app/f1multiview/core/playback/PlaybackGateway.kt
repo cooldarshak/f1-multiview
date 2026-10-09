@@ -21,21 +21,8 @@ data class PlaybackSession(
     val ascendonToken: String? = null,
     val entitlementToken: String? = null,
     val drmType: String? = null,
-    val playToken: String? = null,
-    /** Raw TME payload returned by F1 CONTENT/PLAY when the content uses Tiledmedia Multiview. */
-    val tmeJson: String? = null,
-    /** F1/TME channel view mode when supplied by CONTENT/PLAY. */
-    val channelViewMode: String? = null
-) {
-    /**
-     * Parsed TME is deliberately exposed as a first-class playback capability.
-     *
-     * Callers can inspect the topology and let the multiview engine choose the
-     * open single-player tiled backend or the independent-feed fallback.
-     */
-    val tiledMultiview: TiledMultiviewSession?
-        get() = tmeJson?.let(TiledMultiviewSessionParser::parse)
-}
+    val playToken: String? = null
+)
 data class VodSeason(val year: Int, val pageId: Int)
 data class VodEvent(
     val pageId: Int,
