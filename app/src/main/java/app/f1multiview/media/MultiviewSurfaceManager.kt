@@ -168,8 +168,12 @@ class MultiviewSurfaceManager(private val context: Context) {
             return
         }
         val releasedGeneration = container.getTag(BINDING_GENERATION_TAG) as? Long
-        if (binding.container !== container || binding.owner !== player ||
-            releasedGeneration == null || releasedGeneration != binding.generation) {
+        val currentIdentity = SurfaceBindingLease.Identity(
+            generation = binding.generation,
+            container = binding.container,
+            owner = binding.owner
+        )
+        if (!SurfaceBindingLease.matches(currentIdentity, releasedGeneration, container, player)) {
             AppLogger.w(
                 "Surface",
                 "detach stale binding ignored feed=$feedId releasedGeneration=$releasedGeneration " +
