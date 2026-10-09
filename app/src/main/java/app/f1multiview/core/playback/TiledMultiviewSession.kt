@@ -57,17 +57,6 @@ data class TiledMultiviewSession(
             if (urls.any { it == null }) return TmeTopology.UNKNOWN
             val distinctUrls = urls.filterNotNull().distinct()
             if (distinctUrls.size == 1 && hasTileGeometry) return TmeTopology.SINGLE_MOSAIC_SOURCE
-
-            val columns = tileCountHorizontal
-            val rows = tileCountVertical
-            val tileIndices = feeds.map { it.tileIndex }
-            val hasValidTileGrid = hasTileGeometry &&
-                columns != null && columns > 0 &&
-                rows != null && rows > 0 &&
-                tileIndices.all { it != null && it >= 0 && it < columns * rows } &&
-                tileIndices.filterNotNull().distinct().size == feeds.size
-            if (hasValidTileGrid) return TmeTopology.MULTI_SOURCE_TILED_CANDIDATE
-
             return TmeTopology.INDEPENDENT_FEED_SOURCES
         }
 }
