@@ -23,6 +23,21 @@ class TmeCmafPreflightTest {
         )
     )
 
+
+    private fun singleSourceSession() = TiledMultiviewSession(
+        version = 1,
+        channel = "F1",
+        contentId = 8,
+        tileWidth = 960,
+        tileHeight = 540,
+        tileCountHorizontal = 2,
+        tileCountVertical = 1,
+        feeds = listOf(
+            TiledMultiviewFeed(0, 1, "world", "https://example/mosaic.m3u8", "world", null, null, null, null, tileIndex = 0, tileRow = 0, tileColumn = 0),
+            TiledMultiviewFeed(1, 2, "onboard", "https://example/mosaic.m3u8", "onboard", null, null, null, null, tileIndex = 1, tileRow = 0, tileColumn = 1)
+        )
+    )
+
     private fun evidence(
         feedId: String,
         encrypted: Boolean = false,
@@ -122,6 +137,31 @@ class TmeCmafPreflightTest {
         )
 
         assertEquals(TmeCmafPreflightStatus.HEVC_PPS_TILES_DISABLED, report.status)
+        assertFalse(report.nativeMergeEligible)
+    }
+
+    @Test
+    fun sharedUrlIsConfirmedAsMosaicOnlyWhenTrackDimensionsMatchWholeGrid() {
+        val report = TmeCmafPreflight.assess(
+            singleSourceSession(),
+            listOf(
+                evidence("world", width = 1920, height = 540),
+                evidence("onboard", width = 1920, height = 540)
+            )
+        )
+
+        assertEquals(TmeCmafPreflightStatus.SINGLE_MOSAIC_SOURCE, report.status)
+        assertFalse(report.nativeMergeEligible)
+    }
+
+    @Test
+    fun sharedUrlWithSingleTileDimensionsIsNotAssumedToBeMosaic() {
+        val report = TmeCmafPreflight.assess(
+            singleSourceSession(),
+            listOf(evidence("world"), evidence("onboard"))
+        )
+
+        assertEquals(TmeCmafPreflightStatus.SINGLE_SOURCE_NOT_MOSAIC, report.status)
         assertFalse(report.nativeMergeEligible)
     }
 
