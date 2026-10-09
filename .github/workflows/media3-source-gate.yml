@@ -52,4 +52,4 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon :media3-exoplayer-hls:compileDebugJavaWithJavac :media3-exoplayer-dash:compileDebugJavaWithJavac
+          ./gradlew --no-daemon :lib-exoplayer-hls:compileDebugJavaWithJavac :lib-exoplayer-dash:compileDebugJavaWithJavac
