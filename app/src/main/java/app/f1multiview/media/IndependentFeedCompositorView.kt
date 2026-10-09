@@ -12,7 +12,7 @@ import java.nio.FloatBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
-private const val SYNTHETIC_FEED_COUNT = 2
+private const val SYNTHETIC_FEED_COUNT = 3
 
 /**
  * Experimental client-side compositor for independent decoded feeds.
@@ -35,11 +35,12 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     @Volatile private var viewportLayout = ViewportLayout(
         id = "side-by-side",
         viewports = listOf(
-            FeedViewport("LEFT", 0f, 0f, 0.5f, 1f, zIndex = 0),
-            FeedViewport("RIGHT", 0.5f, 0f, 0.5f, 1f, zIndex = 1)
+            FeedViewport("LEFT", 0f, 0f, 1f / 3f, 1f, zIndex = 0),
+            FeedViewport("CENTER", 1f / 3f, 0f, 1f / 3f, 1f, zIndex = 1),
+            FeedViewport("RIGHT", 2f / 3f, 0f, 1f / 3f, 1f, zIndex = 2)
         )
     )
-    private val syntheticFeedIds = listOf("LEFT", "RIGHT")
+    private val syntheticFeedIds = listOf("LEFT", "CENTER", "RIGHT")
 
     init {
         setEGLContextClientVersion(2)
@@ -241,6 +242,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
                 maxDrawGapNs.updateAndGet { previousMax -> maxOf(previousMax, gapNs) }
             }
             firstDrawAtNs.compareAndSet(0L, drawTimeNs)
+            lastDrawAtNs.set(drawTimeNs)
             renderedFrameCount.incrementAndGet()
         }
 
