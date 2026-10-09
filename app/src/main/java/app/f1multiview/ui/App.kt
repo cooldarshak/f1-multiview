@@ -1101,17 +1101,7 @@ private fun PitWall(
         CanonicalMultiviewLayout(
             ui, selected, engine, errors, if (isTv) tvResizeMode else false, {},
             modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
-        ) else {
-            CanonicalMultiviewLayout(
-                ui,
-                selected,
-                engine,
-                errors,
-                if (isTv) tvResizeMode else false,
-                {},
-                modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
-            )
-        }
+        )
     }
 }
 
