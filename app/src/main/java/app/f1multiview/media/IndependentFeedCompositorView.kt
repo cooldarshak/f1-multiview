@@ -46,11 +46,10 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     fun renderedFrameCount(): Long = renderer.renderedFrameCount.get()
 
-    fun inputFrameCounts(): Pair<Long, Long> =
-        renderer.sourceFrameCount[0].get() to renderer.sourceFrameCount[1].get()
+    fun inputFrameCounts(): List<Long> = renderer.sourceFrameCount.map { it.get() }
 
     /** Measured input-frame updates, first-frame latency, and observed update rate. */
-    fun inputFrameDiagnostics(startedAtNs: Long): List<String> = (0..1).map { index ->
+    fun inputFrameDiagnostics(startedAtNs: Long): List<String> = (0..2).map { index ->
         val count = renderer.sourceFrameCount[index].get()
         val firstNs = renderer.sourceFirstFrameAtNs[index].get()
         val lastNs = renderer.sourceLastFrameAtNs[index].get()
@@ -73,16 +72,16 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     }
 
     private inner class Renderer : GLSurfaceView.Renderer {
-        private val frameAvailable = Array(2) { AtomicBoolean(false) }
-        val sourceFrameCount = Array(2) { AtomicLong(0L) }
+        private val frameAvailable = Array(3) { AtomicBoolean(false) }
+        val sourceFrameCount = Array(3) { AtomicLong(0L) }
         val sourceFirstFrameAtNs = Array(2) { AtomicLong(0L) }
         val sourceLastFrameAtNs = Array(2) { AtomicLong(0L) }
         val sourceMediaTimestampNs = Array(2) { AtomicLong(0L) }
         val sourceMaxArrivalGapNs = Array(2) { AtomicLong(0L) }
-        private val textureIds = IntArray(2)
-        private val inputTextures = arrayOfNulls<SurfaceTexture>(2)
-        private val inputSurfaces = arrayOfNulls<Surface>(2)
-        private val transformMatrices = Array(2) { FloatArray(16) }
+        private val textureIds = IntArray(3)
+        private val inputTextures = arrayOfNulls<SurfaceTexture>(3)
+        private val inputSurfaces = arrayOfNulls<Surface>(3)
+        private val transformMatrices = Array(3) { FloatArray(16) }
         private val vertexData = floatBuffer(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
         private val textureData = floatBuffer(floatArrayOf(0f, 1f, 1f, 1f, 0f, 0f, 1f, 0f))
         private var program = 0
@@ -127,8 +126,8 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             textureLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
             matrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
             samplerLocation = GLES20.glGetUniformLocation(program, "uTexture")
-            GLES20.glGenTextures(2, textureIds, 0)
-            for (index in 0..1) {
+            GLES20.glGenTextures(3, textureIds, 0)
+            for (index in 0..2) {
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureIds[index])
                 GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
                 GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
@@ -187,8 +186,8 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glUniform1i(samplerLocation, 0)
 
             for (index in 0..1) {
-                val viewportX = if (index == 0) 0 else width / 2
-                val viewportWidth = if (index == 0) width / 2 else width - width / 2
+                val viewportWidth = if (index == 2) width - (width / 3) * 2 else width / 3
+                val viewportX = (width / 3) * index
                 GLES20.glViewport(viewportX, 0, viewportWidth.coerceAtLeast(1), height)
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureIds[index])
