@@ -9,6 +9,7 @@ import java.net.URI
 import java.net.URL
 import java.net.HttpURLConnection
 import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
@@ -34,7 +35,11 @@ internal data class HlsSegment(
     val durationUs: Long,
     val startTimeUs: Long
 )
-internal data class HlsPlaylist(val initUri: String?, val segments: List<HlsSegment>)
+internal data class HlsPlaylist(
+    val initUri: String?,
+    val segments: List<HlsSegment>,
+    val encryptionMethod: String? = null
+)
 
 class TmeCmafFeedReader(
     private val context: Context,
@@ -43,8 +48,13 @@ class TmeCmafFeedReader(
     private val initCache = mutableMapOf<String, ByteArray>()
 
     internal fun load(url: String): HlsPlaylist {
-        val text = get(url).toString(Charsets.UTF_8)
+        val text = get(url).toString(Charsets.UTF_8).trimStart('\uFEFF')
         val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
+        require(lines.firstOrNull() == "#EXTM3U") {
+            "Unsupported manifest: expected an HLS playlist (DASH/MPD is not supported by this CMAF reader)"
+        }
+        val sessionEncryptionMethod = lines.firstOrNull { it.startsWith("#EXT-X-SESSION-KEY:") }
+            ?.let(::parseEncryptionMethod)
 
         if (lines.any { it.startsWith("#EXT-X-STREAM-INF:") }) {
             var bestBandwidth = -1L
@@ -60,12 +70,14 @@ class TmeCmafFeedReader(
                 }
             }
             require(!best.isNullOrBlank()) { "HLS master has no media variant" }
-            return load(best!!)
+            val child = load(best!!)
+            return child.copy(encryptionMethod = child.encryptionMethod ?: sessionEncryptionMethod)
         }
 
         var mediaSequence = 0L
         var nextSequence = 0L
         var initUri: String? = null
+        var encryptionMethod: String? = sessionEncryptionMethod
         var durationUs: Long? = null
         var playlistTimeUs = 0L
         val segments = mutableListOf<HlsSegment>()
@@ -94,7 +106,119 @@ class TmeCmafFeedReader(
                 }
             }
         }
-        return HlsPlaylist(initUri, segments)
+        return HlsPlaylist(initUri, segments, encryptionMethod)
+    }
+
+    private fun parseEncryptionMethod(line: String): String? {
+        val method = Regex(\"\"\"(?:^|[, :])METHOD=([^,]+)\"\"\")
+            .find(line)?.groupValues?.get(1)?.trim()
+            ?: return "UNKNOWN"
+        return method.takeUnless { it.equals("NONE", ignoreCase = true) }
+    }
+
+    /**
+     * Inspects one authorized feed without copying or decrypting compressed sample data.
+     * It reads manifest/init/fragment metadata only. Protected feeds are reported and
+     * rejected before the clear-content extraction path can touch sample payloads.
+     */
+    internal fun inspectFirstSegment(url: String, feedId: String): TmeCmafFeedEvidence {
+        return runCatching {
+            val playlist = load(url)
+            val segment = playlist.segments.firstOrNull()
+                ?: error("HLS playlist has no media segment")
+            if (!playlist.encryptionMethod.isNullOrBlank()) {
+                return TmeCmafFeedEvidence(
+                    feedId = feedId,
+                    mimeType = null,
+                    width = null,
+                    height = null,
+                    codecConfigFingerprint = null,
+                    encrypted = true,
+                    sampleCount = 0,
+                    firstSampleTimeUs = null,
+                    firstSampleIsSync = null,
+                    encryptionMethod = playlist.encryptionMethod
+                )
+            }
+
+            val init = playlist.initUri?.let { initCache.getOrPut(it) { get(it) } } ?: ByteArray(0)
+            val media = get(segment.uri)
+            val file = File.createTempFile("f1tme-probe-", ".mp4", context.cacheDir)
+            try {
+                file.outputStream().use { out ->
+                    if (init.isNotEmpty()) out.write(init)
+                    out.write(media)
+                }
+                val extractor = MediaExtractor()
+                try {
+                    extractor.setDataSource(file.absolutePath)
+                    val track = (0 until extractor.trackCount).firstOrNull {
+                        extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)
+                            ?.startsWith("video/") == true
+                    } ?: error("CMAF fragment has no video track")
+                    val format = extractor.getTrackFormat(track)
+                    val mime = format.getString(MediaFormat.KEY_MIME)
+                    val csd = format.getByteBuffer("csd-0")
+                    val configBytes = csd?.duplicate()?.let { buffer ->
+                        ByteArray(buffer.remaining()).also(buffer::get)
+                    }
+                    val fingerprint = configBytes?.let {
+                        MessageDigest.getInstance("SHA-256").digest(it)
+                            .joinToString("") { byte -> "%02x".format(byte) }
+                    }
+                    val width = format.getInteger(MediaFormat.KEY_WIDTH, -1).takeIf { it > 0 }
+                    val height = format.getInteger(MediaFormat.KEY_HEIGHT, -1).takeIf { it > 0 }
+                    extractor.selectTrack(track)
+                    var sampleCount = 0
+                    var firstTimeUs: Long? = null
+                    var firstSync: Boolean? = null
+                    var encryptedSampleSeen = false
+                    while (sampleCount < 32 && extractor.sampleTime >= 0L) {
+                        if (firstTimeUs == null) {
+                            firstTimeUs = extractor.sampleTime
+                            firstSync = extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
+                        }
+                        if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED != 0) {
+                            encryptedSampleSeen = true
+                            break
+                        }
+                        sampleCount++
+                        if (!extractor.advance()) break
+                    }
+                    TmeCmafFeedEvidence(
+                        feedId = feedId,
+                        mimeType = mime,
+                        width = width,
+                        height = height,
+                        codecConfigFingerprint = fingerprint,
+                        encrypted = encryptedSampleSeen ||
+                            format.getInteger("is-encrypted", 0) != 0 ||
+                            format.getInteger("encrypted", 0) != 0,
+                        sampleCount = sampleCount,
+                        firstSampleTimeUs = firstTimeUs,
+                        firstSampleIsSync = firstSync,
+                        encryptionMethod = null
+                    )
+                } finally {
+                    extractor.release()
+                }
+            } finally {
+                file.delete()
+            }
+        }.getOrElse { error ->
+            TmeCmafFeedEvidence(
+                feedId = feedId,
+                mimeType = null,
+                width = null,
+                height = null,
+                codecConfigFingerprint = null,
+                encrypted = false,
+                sampleCount = 0,
+                firstSampleTimeUs = null,
+                firstSampleIsSync = null,
+                inspectionError = error.message?.take(180) ?: error.javaClass.simpleName
+            )
+        }
     }
 
     internal fun extract(
@@ -184,7 +308,7 @@ class TmeCmafFeedReader(
             c.connectTimeout = 10_000
             c.readTimeout = 15_000
             requestHeaders.forEach { (key, value) -> c.setRequestProperty(key, value) }
-            check(c.responseCode in 200..299) { "HTTP " + c.responseCode + " for " + url }
+            check(c.responseCode in 200..299) { "HTTP " + c.responseCode + " while fetching CMAF resource" }
             return c.inputStream.use { it.readBytes() }
         } finally {
             c.disconnect()
