@@ -32,7 +32,7 @@ class MultiviewRenderCoordinator {
      */
     fun isProtected(stream: StreamSource): Boolean {
         val currentProtected = slots[stream.id]?.protectedContent == true
-        return currentProtected ||
+        return currentProtected || stream.drmProtected ||
             !stream.drmLicenseUrl.isNullOrBlank() ||
             stream.drmType?.contains("widevine", ignoreCase = true) == true ||
             stream.streamType?.contains("DASHWV", ignoreCase = true) == true
