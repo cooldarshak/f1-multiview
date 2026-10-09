@@ -56,7 +56,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     private inner class Renderer : GLSurfaceView.Renderer {
         private val frameAvailable = Array(2) { AtomicBoolean(false) }
-        private val sourceFrameCount = Array(2) { AtomicLong(0L) }
+        val sourceFrameCount = Array(2) { AtomicLong(0L) }
         private val textureIds = IntArray(2)
         private val inputTextures = arrayOfNulls<SurfaceTexture>(2)
         private val inputSurfaces = arrayOfNulls<Surface>(2)
