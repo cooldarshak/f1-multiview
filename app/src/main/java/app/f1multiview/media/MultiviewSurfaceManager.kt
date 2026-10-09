@@ -12,6 +12,7 @@ import androidx.media3.common.C
 class MultiviewSurfaceManager(private val context: Context) {
     data class SurfaceBinding(
         val feedId: String,
+        val generation: Long,
         val source: String,
         val protectedContent: Boolean,
         val container: FrameLayout,
@@ -24,6 +25,11 @@ class MultiviewSurfaceManager(private val context: Context) {
 
     private val bindings = linkedMapOf<String, SurfaceBinding>()
     private val renderCoordinator = MultiviewRenderCoordinator()
+    private val nextGeneration = java.util.concurrent.atomic.AtomicLong(1L)
+
+    companion object {
+        private val BINDING_GENERATION_TAG = View.generateViewId()
+    }
 
     /**
      * Compose owns the root FrameLayout. This manager owns only the rendering child inside it.
@@ -45,6 +51,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             current.protectedContent == desiredProtected) {
             renderCoordinator.update(feedId, source)
             val updated = current.copy(onTap = onTap, source = source)
+            container.setTag(BINDING_GENERATION_TAG, current.generation)
             bindings[feedId] = updated
             attachExisting(updated, player, source)
             AppLogger.d("Surface", "bind reused feed=$feedId container=${System.identityHashCode(container)}")
@@ -55,6 +62,10 @@ class MultiviewSurfaceManager(private val context: Context) {
             releaseBinding(it, unbindCoordinator = false)
             bindings.remove(feedId)
         }
+        val generation = nextGeneration.getAndIncrement()
+        // Each concrete AndroidView container keeps its own generation. A stale release
+        // from an old container cannot match the replacement binding for this feed.
+        container.setTag(BINDING_GENERATION_TAG, generation)
         val params = FrameLayout.LayoutParams(-1, -1)
         val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
         val protectedContent = renderSlot.protectedContent
@@ -67,7 +78,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             val touchInterceptor = createTouchInterceptor(onTap)
             container.addView(touchInterceptor, params)
             bindings[feedId] = SurfaceBinding(
-                feedId = feedId, source = source, protectedContent = protectedContent,
+                feedId = feedId, generation = generation, source = source, protectedContent = protectedContent,
                 container = container, owner = player, onTap = onTap,
                 textureView = texture, touchInterceptor = touchInterceptor
             )
@@ -156,8 +167,15 @@ class MultiviewSurfaceManager(private val context: Context) {
             AppLogger.w("Surface", "detach ignored: no binding feed=$feedId")
             return
         }
-        if (binding.container !== container || binding.owner !== player) {
-            AppLogger.w("Surface", "detach identity mismatch feed=$feedId currentContainer=${System.identityHashCode(binding.container)} currentOwner=${binding.owner.id}")
+        val releasedGeneration = container.getTag(BINDING_GENERATION_TAG) as? Long
+        if (binding.container !== container || binding.owner !== player ||
+            releasedGeneration == null || releasedGeneration != binding.generation) {
+            AppLogger.w(
+                "Surface",
+                "detach stale binding ignored feed=$feedId releasedGeneration=$releasedGeneration " +
+                    "currentGeneration=${binding.generation} currentContainer=${System.identityHashCode(binding.container)} " +
+                    "releasedContainer=${System.identityHashCode(container)} currentOwner=${binding.owner.id}"
+            )
             return
         }
         bindings.remove(feedId)
