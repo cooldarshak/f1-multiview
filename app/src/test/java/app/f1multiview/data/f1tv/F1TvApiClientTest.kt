@@ -7,6 +7,31 @@ import org.junit.Test
 class F1TvApiClientTest {
 
     @Test
+    fun prioritizesServerConfiguredPlaybackApiVersion() {
+        assertEquals(
+            listOf("3.0", "2.0"),
+            F1TvApiClient.apiVersionCandidates("3.0", listOf("2.0", "3.0"))
+        )
+    }
+
+    @Test
+    fun rejectsInvalidConfiguredApiVersionAndUsesLegacyFallbacks() {
+        assertEquals(
+            listOf("2.0", "3.0"),
+            F1TvApiClient.apiVersionCandidates("../3.0", listOf("2.0", "3.0"))
+        )
+    }
+
+    @Test
+    fun preservesConfiguredVideoApiVersionAndLegacyFallback() {
+        assertEquals(
+            listOf("4.0", "3.0"),
+            F1TvApiClient.apiVersionCandidates("4.0", listOf("4.0", "3.0"))
+        )
+    }
+
+
+    @Test
     fun parsesProductionStyleTopLevelTmeJson() {
         val response = HttpResponse(
             200,
