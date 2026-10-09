@@ -13,8 +13,8 @@ class SyntheticMultiviewRuntimeGateTest {
             maxUpdateGapMs = gapMs, error = error
         )
 
-    private fun draw(calls: Long = 400, fps: Double? = 14.9, maxGapMs: Long = 90) =
-        SyntheticMultiviewRuntimeGate.DrawMetrics(calls, fps, maxGapMs)
+    private fun draw(frames: Long = 400, fps: Double? = 14.9, maxGapMs: Long = 90) =
+        SyntheticMultiviewRuntimeGate.DrawMetrics(frames, fps, maxGapMs)
 
     @Test fun remainsWarmingUntilEnoughRuntimeHasBeenObserved() {
         val verdict = SyntheticMultiviewRuntimeGate.evaluate(14_999L,

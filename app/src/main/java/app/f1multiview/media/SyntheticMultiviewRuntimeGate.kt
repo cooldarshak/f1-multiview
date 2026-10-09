@@ -25,7 +25,7 @@ internal object SyntheticMultiviewRuntimeGate {
     )
 
     data class DrawMetrics(
-        val drawCalls: Long,
+        val drawFrames: Long,
         val drawRateFps: Double?,
         val maxDrawGapMs: Long
     )
@@ -60,7 +60,7 @@ internal object SyntheticMultiviewRuntimeGate {
             if (feed.lastUpdateAgeMs == null || feed.lastUpdateAgeMs > 1_500L) failures += "$id texture is stale (age=${feed.lastUpdateAgeMs}ms)"
             if (feed.maxUpdateGapMs > 2_000L) failures += "$id texture update gap exceeded 2000ms (${feed.maxUpdateGapMs}ms)"
         }
-        if (compositor.drawCalls < 60L) failures += "GLES draw count below 60 (${compositor.drawCalls})"
+        if (compositor.drawFrames < 60L) failures += "GLES draw frames below 60 (${compositor.drawFrames})"
         if (compositor.drawRateFps == null || compositor.drawRateFps < 8.0) {
             failures += "GLES draw cadence below 8 FPS (${compositor.drawRateFps ?: "unavailable"})"
         }

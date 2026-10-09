@@ -20,10 +20,10 @@ After at least 15 seconds of playback, the harness requires:
 - Each decoder configured and queued at least 30 output frames.
 - Each corresponding SurfaceTexture observed at least 30 updates and a first frame.
 - Each input's most recent update is no older than 1.5 seconds and its maximum observed update gap is at most 2 seconds.
-- The compositor recorded at least 60 draw calls, at least 8 draw calls/second, and no draw gap above 2 seconds.
+- The compositor recorded at least 60 draw frames, at least 8 draw calls/second, and no draw gap above 2 seconds.
 - No feed has reported a decoder or pipeline error.
 
-These are initial diagnostic thresholds, not a universal performance guarantee. A FAIL exposes the failed criterion; errors must not be hidden to manufacture PASS. GLES draw rate is not display-present FPS, and SurfaceTexture updates are not an authoritative decoder-drop metric.
+These are initial diagnostic thresholds, not a universal performance guarantee. A FAIL exposes the failed criterion; errors must not be hidden to manufacture PASS. GLES draw-frame rate is not display-present FPS, and SurfaceTexture updates are not an authoritative decoder-drop metric.
 
 ## Lifecycle behavior
 

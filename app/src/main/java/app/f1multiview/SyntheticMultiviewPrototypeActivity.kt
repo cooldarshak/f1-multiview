@@ -17,6 +17,7 @@ import app.f1multiview.media.AppLogger
 import app.f1multiview.media.IndependentFeedCompositorView
 import app.f1multiview.media.SyntheticFeedDecoder
 import app.f1multiview.media.SyntheticMultiviewClipFactory
+import app.f1multiview.media.SyntheticMultiviewRuntimeGate
 import app.f1multiview.media.FeedDescriptor
 import app.f1multiview.media.FeedViewport
 import app.f1multiview.media.ViewportLayout
@@ -145,6 +146,18 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             starting = true
             val files = requireNotNull(clips).files
             val surfaces = requireNotNull(currentSurfaces)
+            if (!compositor.resetRuntimeMetrics()) {
+                starting = false
+                statusLines["runtime-reset"] = "RUNTIME METRICS RESET FAILED; decoder start refused"
+                AppLogger.e("SyntheticMultiviewGate", "RUNTIME_METRICS_RESET_FAILED; refusing to start a run with stale counters")
+                renderStatus()
+                return
+            }
+            statusLines.remove("runtime-reset")
+            statusLines.remove("decoder-stop")
+            statusLines.remove("LEFT")
+            statusLines.remove("CENTER")
+            statusLines.remove("RIGHT")
             val labels = listOf("LEFT", "CENTER", "RIGHT")
             val feedDescriptors = files.mapIndexed { index, file ->
                 FeedDescriptor(

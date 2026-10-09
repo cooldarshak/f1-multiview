@@ -9,6 +9,8 @@ import android.view.Surface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -96,10 +98,27 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             (count - 1L) * 1_000_000_000.0 / (lastNs - firstNs)
         } else null
         return SyntheticMultiviewRuntimeGate.DrawMetrics(
-            drawCalls = count,
+            drawFrames = count,
             drawRateFps = rate,
             maxDrawGapMs = renderer.maxDrawGapNsSnapshot() / 1_000_000L
         )
+    }
+
+    /** Reset all per-run counters on the GL thread before starting fresh decoder workers. */
+    fun resetRuntimeMetrics(timeoutMs: Long = 2_000L): Boolean {
+        val completed = CountDownLatch(1)
+        return try {
+            queueEvent {
+                renderer.resetRuntimeMetrics()
+                completed.countDown()
+            }
+            completed.await(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
     }
 
     /** Measured input-frame updates, first-frame latency, update gaps, and PTS skew. Coalesced notifications are a surface-update diagnostic, not an authoritative decoder-drop count. */
@@ -279,6 +298,20 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         fun lastDrawAtNsSnapshot(): Long = lastDrawAtNs.get()
         fun maxDrawGapNsSnapshot(): Long = maxDrawGapNs.get()
 
+        fun resetRuntimeMetrics() {
+            frameAvailable.forEach { it.set(false) }
+            sourceFrameCount.forEach { it.set(0L) }
+            sourceFirstFrameAtNs.forEach { it.set(0L) }
+            sourceLastFrameAtNs.forEach { it.set(0L) }
+            sourceSurfaceTimestampNs.forEach { it.set(0L) }
+            sourceMaxArrivalGapNs.forEach { it.set(0L) }
+            sourceCoalescedNotifications.forEach { it.set(0L) }
+            renderedFrameCount.set(0L)
+            firstDrawAtNs.set(0L)
+            lastDrawAtNs.set(0L)
+            maxDrawGapNs.set(0L)
+        }
+
         fun drawDiagnostics(): String {
             val count = renderedFrameCount.get()
             val first = firstDrawAtNs.get()
@@ -286,7 +319,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             val rate = if (count > 1L && last > first) {
                 String.format(java.util.Locale.US, "%.1f", (count - 1L) * 1_000_000_000.0 / (last - first))
             } else "warming"
-            return "GLES draw calls=$count drawCallRate=$rate/s maxDrawGap=${maxDrawGapNs.get() / 1_000_000L}ms (not display-present FPS)"
+            return "GLES draw frames=$count drawFrameRate=$rate/s maxDrawGap=${maxDrawGapNs.get() / 1_000_000L}ms (not display-present FPS)"
         }
 
         fun latestSurfaceTimestampSkewMs(): Long {
