@@ -408,3 +408,28 @@ JVM regression coverage was added for the pipeline-version false positive, missi
 ### Follow-up: stale playback is cleared when protected metadata becomes incomplete
 
 The fail-closed Media3 load path also clears any existing player/decoder lease for that feed before returning the missing-license error. This matters when a previously resolved feed is refreshed: refusing the new source must not leave an older player attached and running under a stale logical feed identity. The error is then recorded after cleanup so it remains visible. This behavior is source-level hardened; the pending validation workflow must verify compilation and tests.
+
+
+## Protected multi-feed architecture audit (2026-10-09)
+
+### Corrected rendering boundary
+
+The current diagnostic string `UNSUPPORTED_BY_CURRENT_GLES_COMPOSITOR` was too broad as a statement about Android protected multiview. A protected Widevine decoder output cannot be copied into an ordinary clear `SurfaceTexture`/GLES texture path. However, the UI does not necessarily need to sample protected pixels into one GLES texture: separate secure `SurfaceView` outputs can be laid out as independent tiles and the Android system compositor can layer those surfaces. This is a candidate topology, not a verified device capability or guarantee of provider authorization.
+
+The compatibility report now labels this `SECURE_SURFACEVIEW_LAYERING_CANDIDATE_NOT_RUNTIME_VERIFIED`. That label means only that the architecture merits a controlled test. The existing engine still blocks multi-feed playback; the label must not be interpreted as concurrent protected playback being supported.
+
+### Required own-engine boundary
+
+The next production path must retain the authorized F1 manifest, entitlement, license-request headers and Widevine session behavior while owning the multi-feed orchestration. It must not instantiate one independent ExoPlayer per feed as a fallback. The implementation investigation should separate:
+
+1. **Source and demux:** determine whether the authorized F1 DASH/CMAF representations can be consumed through reusable public Media3 components without using ExoPlayer as the per-feed production player.
+2. **DRM session and secure decoder:** establish whether the authorized license flow can be connected to app-owned decoder pipelines using supported Android/Media3 APIs, with protected output surfaces and no protected-pixel readback.
+3. **System surface composition:** prove that two distinct secure SurfaceViews can remain visible simultaneously in the desired tiled layout, including resizing, z-order, focus/touch handling, detach/rebind and rotation.
+4. **Timeline and recovery:** establish comparable media timestamps/live-edge alignment across feeds, then test the existing master/follower correction policy without artificial startup delays.
+5. **Resource capacity:** record actual concurrent secure decoder/session outcomes, selected codec/profile, first-frame time, frame cadence, buffering, memory and thermal behavior. Declared secure decoder candidates are not proof of concurrent capacity.
+
+If public APIs cannot support the authorized F1 license/demux boundary without per-feed ExoPlayer instances, do not disguise that limitation or relax the rule. Record the exact API/SDK limitation and propose a separately reviewed architecture decision before implementing a different production topology.
+
+### Validation gate
+
+No feature enablement until a controlled authorized two-feed run shows (a) both protected outputs created, valid and attached concurrently, (b) successful visible frame presentation from both feeds, (c) no license/session denial, and (d) stable resize/rebind/detach behavior. Repeat on Android TV. Source checks and CI are necessary but cannot establish this runtime proof.
