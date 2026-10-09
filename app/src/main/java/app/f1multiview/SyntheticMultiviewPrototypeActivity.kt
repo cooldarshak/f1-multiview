@@ -150,6 +150,8 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
             add("Two MediaCodec decoders → two SurfaceTextures → one GLES compositor")
+            val inputFrames = compositor.inputFrameCounts()
+            add("SurfaceTexture updates: LEFT ${inputFrames.first} · RIGHT ${inputFrames.second}")
             add("Compositor render ticks: ${compositor.renderedFrameCount()}")
             statusLines.values.forEach(::add)
             add("Press Back to exit")
