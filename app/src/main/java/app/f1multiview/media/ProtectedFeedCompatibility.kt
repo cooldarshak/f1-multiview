@@ -40,8 +40,7 @@ internal object ProtectedFeedCompatibility {
             url.isBlank() -> "MISSING"
             else -> "OTHER"
         }
-        val drmConfigured = !stream.drmLicenseUrl.isNullOrBlank() ||
-            stream.drmType?.contains("widevine", ignoreCase = true) == true
+        val drmConfigured = DrmProtectionPolicy.requiresProtectedOutput(stream)
         return Report(
             manifestKind = manifestKind,
             drmConfigured = drmConfigured,

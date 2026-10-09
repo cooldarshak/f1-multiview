@@ -523,8 +523,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                     playToken,
                     drmProtected = !license.isNullOrBlank() ||
                         result.drmType?.contains("widevine", true) == true ||
-                        result.streamType?.contains("DASHWV", true) == true ||
-                        (result.pipelineVersion ?: -1) >= 3
+                        result.streamType?.contains("DASHWV", true) == true
                 )
             } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure

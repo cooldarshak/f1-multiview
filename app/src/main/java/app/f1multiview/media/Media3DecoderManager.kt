@@ -256,6 +256,12 @@ class Media3DecoderManager(context: Context) {
 
     fun load(stream: StreamSource, forceReload: Boolean = false): Boolean {
         val url = stream.url ?: return false
+        if (DrmProtectionPolicy.missingLicenseEndpoint(stream)) {
+            val message = "Protected feed has no authorized Widevine license endpoint; refusing playback rather than constructing a clear MediaItem"
+            _errors.value = _errors.value + (stream.id to message)
+            AppLogger.e("Media3DecoderManager", "PROTECTED_PLAYBACK_BLOCKED feed=${stream.id} reason=missing-license-endpoint")
+            return false
+        }
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
         if (playAllRequested) desiredPlaying.add(stream.id)

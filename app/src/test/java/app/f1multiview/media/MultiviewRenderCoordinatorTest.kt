@@ -61,6 +61,26 @@ class MultiviewRenderCoordinatorTest {
     }
 
     @Test
+    fun pipelineVersionAloneDoesNotClassifyFeedAsProtected() {
+        val stream = feed("pipeline-only").copy(drmProtected = false, drmLicenseUrl = null, drmType = null, streamType = null)
+        assertFalse(DrmProtectionPolicy.requiresProtectedOutput(stream))
+    }
+
+    @Test
+    fun explicitProtectionWithoutLicenseIsBlockedByPolicy() {
+        val stream = feed("missing-license").copy(drmProtected = true, drmLicenseUrl = null, drmType = null, streamType = null)
+        assertTrue(DrmProtectionPolicy.requiresProtectedOutput(stream))
+        assertTrue(DrmProtectionPolicy.missingLicenseEndpoint(stream))
+    }
+
+    @Test
+    fun licenseEndpointRequiresProtectedOutputEvenIfDrmTypeMissing() {
+        val stream = feed("license-signal", "https://license.test").copy(drmType = null, streamType = null, drmProtected = false)
+        assertTrue(DrmProtectionPolicy.requiresProtectedOutput(stream))
+        assertFalse(DrmProtectionPolicy.missingLicenseEndpoint(stream))
+    }
+
+    @Test
     fun protectedClassificationDoesNotDowngradeWhenLaterResponseOmitsDrmMetadata() {
         val coordinator = MultiviewRenderCoordinator()
         val protected = feed("same-feed", "https://license.test").copy(streamType = "SDR_HD_DASHWV_SINGLE")

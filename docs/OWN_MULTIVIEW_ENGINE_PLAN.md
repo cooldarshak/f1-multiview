@@ -376,3 +376,12 @@ If the provider's DRM/session integration or the target device cannot support si
 ### Validation status
 
 The surface cleanup source change is committed as a6aefc96eb220531f94885937d82af738d7d31b2. Cloud validation must complete against the updated branch head. No claim is made yet that the stale-detach scenario is runtime-tested or that protected multiview works. The next source/device gate is an Android lifecycle regression test plus a two-secure-SurfaceView feasibility spike; resizing and layout controls remain in scope.
+
+
+## 2D. Protection policy hardening before the real-stream multi-feed gate (2026-10-09)
+
+A source audit found that pipeline version >= 3 was being used as a proxy for Widevine protection. Pipeline version is not itself a DRM declaration, so that heuristic has been removed. Protection is now derived from the explicit resolved DRM flag, an authorized license endpoint, Widevine DRM type, or F1 DASHWV stream type. A previously protected logical slot remains protected when later metadata is incomplete.
+
+The Media3 load boundary now refuses to start a stream when it is explicitly classified as protected but has no resolved license endpoint. This prevents accidentally building a non-DRM MediaItem for a feed the resolver says is protected. It reports an explicit per-feed error and does not silently downgrade to clear playback. A license URL still triggers protected classification even when other metadata fields are absent.
+
+JVM regression coverage was added for the pipeline-version false positive, missing-license fail-closed behavior, and license-endpoint-only classification. This remains a safety/metadata correctness step; it does not enable concurrent protected feeds or prove secure-surface composition.
