@@ -185,7 +185,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glVertexAttribPointer(textureLocation, 2, GLES20.GL_FLOAT, false, 0, textureData)
             GLES20.glUniform1i(samplerLocation, 0)
 
-            for (index in 0..1) {
+            for (index in 0..2) {
                 val viewportWidth = if (index == 2) width - (width / 3) * 2 else width / 3
                 val viewportX = (width / 3) * index
                 GLES20.glViewport(viewportX, 0, viewportWidth.coerceAtLeast(1), height)
@@ -221,7 +221,7 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             if (hadInputs) callback?.onInputSurfacesReleased()
             inputSurfaces.forEach { surface -> runCatching { surface?.release() } }
             inputTextures.forEach { texture -> runCatching { texture?.release() } }
-            for (index in 0..1) {
+            for (index in 0..2) {
                 inputSurfaces[index] = null
                 inputTextures[index] = null
                 frameAvailable[index].set(false)
