@@ -29,6 +29,27 @@ class OpenTiledDecoderPlanTest {
         }
     )
 
+
+    private fun explicitGridSession() = TiledMultiviewSession(
+        version = 1,
+        channel = "multiview",
+        contentId = 43,
+        tileWidth = 960,
+        tileHeight = 540,
+        tileCountHorizontal = 2,
+        tileCountVertical = 1,
+        feeds = listOf(
+            TiledMultiviewFeed(0, 1, "world", "https://cdn/mosaic.m3u8", "world", null, null, null, null, tileIndex = 0, tileRow = 0, tileColumn = 0),
+            TiledMultiviewFeed(1, 2, "onboard", "https://cdn/mosaic.m3u8", "onboard", null, null, null, null, tileIndex = 1, tileRow = 0, tileColumn = 1)
+        )
+    )
+
+    @Test
+    fun explicitGridRequiresActualDecodedDimensionsToMatchMosaicCanvas() {
+        assertNotNull(OpenTiledDecoderPlan.from(explicitGridSession(), 1920, 540))
+        assertNull(OpenTiledDecoderPlan.from(explicitGridSession(), 960, 540))
+    }
+
     @Test
     fun singleMosaicProducesOnePhysicalDecoderAndManyLogicalMappings() {
         val plan = OpenTiledDecoderPlan.from(
