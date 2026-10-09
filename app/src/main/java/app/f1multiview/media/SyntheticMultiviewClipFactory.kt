@@ -172,8 +172,13 @@ internal object SyntheticMultiviewClipFactory {
                 yBuffer.put(row * yPlane.rowStride + column * yPlane.pixelStride, value.toByte())
             }
         }
-        fillChromaPlane(planes[1], WIDTH / 2, HEIGHT / 2, 128)
-        fillChromaPlane(planes[2], WIDTH / 2, HEIGHT / 2, 128)
+        // Keep the feeds visually unmistakable in the compositor: left is warm/red,
+        // right is cool/blue. Neutral chroma made a successful render look like a blank
+        // grey screen and made it difficult to spot a swapped or missing viewport.
+        val u = if (variant == 0) 90 else 240
+        val v = if (variant == 0) 240 else 110
+        fillChromaPlane(planes[1], WIDTH / 2, HEIGHT / 2, u)
+        fillChromaPlane(planes[2], WIDTH / 2, HEIGHT / 2, v)
         return imageDataSize()
     }
 
