@@ -26,7 +26,7 @@ import java.util.concurrent.Executors
  * Isolated proof harness for independent clear video feeds.
  *
  * This activity is reachable only from the debug Settings panel. It does not use F1 endpoints,
- * credentials, Media3 players, or DRM-protected content. It generates three short local H.264
+ * credentials, Media3 players, or DRM-protected content. It generates two short local H.264
  * clips, decodes each with a distinct MediaCodec, and composites all decoder Surfaces through
  * one GLES view.
  */
