@@ -32,6 +32,14 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     private val renderer = Renderer()
     @Volatile private var listener: Listener? = null
+    @Volatile private var viewportLayout = ViewportLayout(
+        id = "side-by-side",
+        viewports = listOf(
+            FeedViewport("LEFT", 0f, 0f, 0.5f, 1f, zIndex = 0),
+            FeedViewport("RIGHT", 0.5f, 0f, 0.5f, 1f, zIndex = 1)
+        )
+    )
+    private val syntheticFeedIds = listOf("LEFT", "RIGHT")
 
     init {
         setEGLContextClientVersion(2)
@@ -44,6 +52,15 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
     fun setListener(value: Listener?) {
         listener = value
         queueEvent { renderer.notifyListener(value) }
+    }
+
+    /** Apply provider-neutral normalized viewports; UI controls remain outside the renderer. */
+    fun setViewportLayout(layout: ViewportLayout) {
+        require(layout.viewports.all { it.feedId in syntheticFeedIds }) {
+            "Prototype layout references an unknown synthetic feed"
+        }
+        viewportLayout = layout
+        requestRender()
     }
 
     fun renderedFrameCount(): Long = renderer.renderedFrameCount.get()
@@ -200,10 +217,15 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glVertexAttribPointer(textureLocation, 2, GLES20.GL_FLOAT, false, 0, textureData)
             GLES20.glUniform1i(samplerLocation, 0)
 
-            for (index in 0 until SYNTHETIC_FEED_COUNT) {
-                val viewportWidth = if (index == 1) width - width / 2 else width / 2
-                val viewportX = (width / 2) * index
-                GLES20.glViewport(viewportX, 0, viewportWidth.coerceAtLeast(1), height)
+            viewportLayout.viewports.sortedBy { it.zIndex }.forEach { viewport ->
+                val index = syntheticFeedIds.indexOf(viewport.feedId)
+                if (index < 0) return@forEach
+                val viewportX = (viewport.x * width).toInt()
+                val viewportTop = (viewport.y * height).toInt()
+                val viewportWidth = (viewport.width * width).toInt().coerceAtLeast(1)
+                val viewportHeight = (viewport.height * height).toInt().coerceAtLeast(1)
+                val viewportY = height - viewportTop - viewportHeight
+                GLES20.glViewport(viewportX, viewportY, viewportWidth, viewportHeight)
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureIds[index])
                 GLES20.glUniformMatrix4fv(matrixLocation, 1, false, transformMatrices[index], 0)
