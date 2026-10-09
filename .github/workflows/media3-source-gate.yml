@@ -1,0 +1,55 @@
+name: Pinned Media3 source gate
+
+on:
+  push:
+    branches:
+      - feature/tiledmedia-multiview-rearchitecture
+  pull_request:
+    branches:
+      - feature/tiledmedia-multiview-rearchitecture
+
+jobs:
+  compile-pinned-media3:
+    name: Compile pinned upstream HLS and DASH source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Media3 source
+        uses: actions/checkout@v4
+        with:
+          repository: androidx/media
+          ref: 8c6678b657ede1e7883fc164ef73ed483c7796c3
+          path: media3-source
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install required Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Verify pinned source revision
+        working-directory: media3-source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "8c6678b657ede1e7883fc164ef73ed483c7796c3"
+
+      - name: Compile upstream HLS and DASH modules
+        working-directory: media3-source
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :exoplayer_hls:compileDebugJavaWithJavac :exoplayer_dash:compileDebugJavaWithJavac
