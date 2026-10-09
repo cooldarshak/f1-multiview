@@ -202,9 +202,9 @@ class F1TvApiClient {
         val result=root?.optJSONObject("resultObj")
         val topKeys=root?.let{jsonKeys(it)}?:emptyList()
         val resultKeys=result?.let{jsonKeys(it)}?:emptyList()
-        // F1's response wraps resultObj.settings one level below the fields
-        // inspected by the old diagnostics. Walk the complete JSON tree so nested
-        // TME flags/payloads are visible without logging any response values.
+        // The response includes nested resultObj.settings, but the old diagnostics
+        // inspected only root/resultObj. Walk the full JSON tree so nested TME
+        // fields can be confirmed without logging response values.
         val objects=root?.let(::jsonObjectsDepthFirst).orEmpty()
         val relevant=objects.flatMap{(path,obj)->
             jsonKeys(obj).filter{key->
@@ -239,7 +239,7 @@ class F1TvApiClient {
         fun visit(value:Any?,path:String){
             when(value){
                 is JSONObject -> {
-                    out += path to value
+                    out.add(path to value)
                     val keys=value.keys()
                     while(keys.hasNext()){
                         val key=keys.next()
@@ -275,8 +275,8 @@ class F1TvApiClient {
         // them under resultObj, so keep that as a compatibility fallback.
         val resultObj=root.optJSONObject("resultObj")
         val sources=listOf(root,resultObj).filterNotNull()
-        // TME fields are usually on ContentPlayResponse, but API variants can
-        // nest them inside resultObj.settings. Search nested objects as well.
+        // TME fields may be nested in API variants. Search the full object tree
+        // rather than assuming the payload is only at root/resultObj.
         val tmeSources=jsonObjectsDepthFirst(root).map{it.second}
         val tmeElement=tmeSources.asSequence()
             .flatMap { obj -> sequenceOf("tmeJson","tme","TME").mapNotNull { key ->
