@@ -128,7 +128,7 @@ class UnifiedMultiviewEngine(context: Context) {
                     evicted?.let { suspend(it.id) }
                 }
                 val loaded = load(stream)
-                if (!loaded) evicted?.let(::load)
+                if (!loaded) evicted?.let { restore -> load(restore) }
             }
             if (autoplay && decoderManager.hasDecoder(stream.id)) play(stream.id)
         }
