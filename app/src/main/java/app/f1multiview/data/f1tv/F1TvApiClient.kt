@@ -53,6 +53,7 @@ class F1TvApiClient {
     private suspend fun ensureApiConfig() = apiConfigMutex.withLock {
         val now=System.currentTimeMillis()
         if(apiConfigFetchedAt>0L && now-apiConfigFetchedAt<API_CONFIG_CACHE_MS) return@withLock
+        var cacheAttempt = true
         try {
             val response=execute("$BASE/config","GET",null,emptyMap())
             if(!response.isSuccessful){
@@ -66,10 +67,13 @@ class F1TvApiClient {
                 AppLogger.i("F1Playback","F1_API_CONFIG httpStatus=${response.code} playApiVersion=${play ?: "absent"} videoApiVersion=${video ?: "absent"}")
             }
         } catch(t:Throwable) {
-            if(t is CancellationException) throw t
+            if(t is CancellationException) {
+                cacheAttempt = false
+                throw t
+            }
             AppLogger.w("F1Playback","F1_API_CONFIG_UNAVAILABLE reason=${t.javaClass.simpleName}")
         } finally {
-            apiConfigFetchedAt=System.currentTimeMillis()
+            if(cacheAttempt) apiConfigFetchedAt=System.currentTimeMillis()
         }
     }
     @Volatile private var subscriptionToken:String?=null
