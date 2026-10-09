@@ -2,7 +2,6 @@ package app.f1multiview.media
 
 import android.net.Uri
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DataSource.Factory
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import java.io.IOException
@@ -16,7 +15,7 @@ internal class MediaSegmentRoleDataSource(
     private val upstream: DataSource,
     private val maxBytes: Long
 ) : DataSource {
-    class Factory(private val upstreamFactory: Factory) : Factory {
+    class Factory(private val upstreamFactory: DataSource.Factory) : DataSource.Factory {
         override fun createDataSource(): DataSource =
             MediaSegmentRoleDataSource(upstreamFactory.createDataSource(), DEFAULT_MAX_BYTES)
     }
