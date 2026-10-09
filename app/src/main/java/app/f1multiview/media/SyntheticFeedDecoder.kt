@@ -24,6 +24,11 @@ internal class SyntheticFeedDecoder(
 
     private val stopRequested = AtomicBoolean(false)
     private val outputFramesQueued = AtomicLong(0L)
+    private val lateFrameDeadlines = AtomicLong(0L)
+    @Volatile private var codecName: String = "pending"
+    @Volatile private var codecDroppedFrames: Long? = null
+
+    fun metricsLine(): String = "$feedLabel codec=$codecName outputFramesQueued=${outputFramesQueued.get()} lateByOneFrameOrMore=${lateFrameDeadlines.get()} codecDroppedFrames=${codecDroppedFrames?.toString() ?: "not-exposed-by-codec"}"
     @Volatile private var worker: Thread? = null
 
     fun start() {
@@ -68,7 +73,7 @@ internal class SyntheticFeedDecoder(
             decoder = MediaCodec.createDecoderByType(mime)
             decoder.configure(format, outputSurface, null, 0)
             decoder.start()
-            val codecName = decoder.name
+            codecName = decoder.name
             onStatus("$feedLabel decoder=$codecName configured durationUs=$clipDurationUs")
             decodeLoop(extractor, decoder, clipDurationUs)
         } catch (failure: Throwable) {
@@ -142,10 +147,13 @@ internal class SyntheticFeedDecoder(
                             val timelineUs = loopIndex * clipDurationUs + info.presentationTimeUs.coerceAtLeast(0L)
                             val renderAtNs = sharedPlaybackAnchorNs + timelineUs * 1_000L
                             if (awaitPresentationTime(renderAtNs)) {
+                                val lateByNs = System.nanoTime() - renderAtNs
+                                if (lateByNs >= 66_666_667L) lateFrameDeadlines.incrementAndGet()
                                 decoder.releaseOutputBuffer(outputIndex, renderAtNs)
                                 val count = outputFramesQueued.incrementAndGet()
                                 if (count == 1L || count % 30L == 0L) {
-                                    onStatus("$feedLabel outputFramesQueued=$count")
+                                    codecDroppedFrames = readCodecDroppedFrames(decoder)
+                                    onStatus(metricsLine())
                                 }
                             } else {
                                 decoder.releaseOutputBuffer(outputIndex, false)
@@ -165,6 +173,14 @@ internal class SyntheticFeedDecoder(
             }
         }
     }
+
+    private fun readCodecDroppedFrames(codec: MediaCodec): Long? = runCatching {
+        val metrics = codec.metrics
+        metrics.keySet().asSequence()
+            .filter { it.contains("dropped", ignoreCase = true) }
+            .mapNotNull { key -> (metrics.get(key) as? Number)?.toLong() }
+            .maxOrNull()
+    }.getOrNull()
 
     /**
      * SurfaceTexture consumes queued buffers; assigning a timestamp alone is not a reliable
