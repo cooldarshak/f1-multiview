@@ -21,8 +21,8 @@ import java.util.concurrent.Executors
  * Isolated proof harness for independent clear video feeds.
  *
  * This activity is reachable only from the debug Settings panel. It does not use F1 endpoints,
- * credentials, Media3 players, or DRM-protected content. It generates two short local H.264
- * clips, decodes each with a distinct MediaCodec, and composites both decoder Surfaces through
+ * credentials, Media3 players, or DRM-protected content. It generates three short local H.264
+ * clips, decodes each with a distinct MediaCodec, and composites all decoder Surfaces through
  * one GLES view.
  */
 class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedCompositorView.Listener {
@@ -136,13 +136,18 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             val files = requireNotNull(clips).files
             val surfaces = requireNotNull(currentSurfaces)
             val labels = listOf("LEFT", "CENTER", "RIGHT")
+            // Give every decoder one common epoch slightly in the future so setup time does not
+            // create a different playback clock for each feed.
+            val sharedPlaybackAnchorNs = System.nanoTime() + 500_000_000L
             files.zip(surfaces).forEachIndexed { index, (file, surface) ->
-                pipelines += SyntheticFeedDecoder(labels[index], file, surface, ::onDecoderStatus)
+                pipelines += SyntheticFeedDecoder(
+                    labels[index], file, surface, sharedPlaybackAnchorNs, ::onDecoderStatus
+                )
             }
             pipelines.toList().forEach(SyntheticFeedDecoder::start)
             starting = false
         }
-        statusLines["pipeline"] = "Three independent MediaCodec decoder pipelines started"
+        statusLines["pipeline"] = "Three MediaCodec decoders started on one shared playback timeline"
         renderStatus()
         AppLogger.i("SyntheticMultiview", "prototype started with three clear local H.264 feeds")
     }
