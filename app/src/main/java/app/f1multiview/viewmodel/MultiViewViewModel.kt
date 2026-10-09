@@ -12,7 +12,6 @@ import app.f1multiview.data.ResultRow
 import app.f1multiview.data.SavedSetupStore
 import app.f1multiview.data.ContinueWatchingStore
 import app.f1multiview.data.f1tv.AuthorizedF1TvGateway
-import app.f1multiview.data.f1tv.TmePlaybackParser
 import app.f1multiview.data.timing.LiveTimingClient
 import app.f1multiview.data.timing.ReplayTimingClient
 import app.f1multiview.data.timing.TrackMapClient
@@ -46,10 +45,7 @@ data class UiState(
     val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
-    val pendingResume: ContinueWatchingEntry? = null,
-    val tiledMultiviewSession: TiledMultiviewSession? = null,
-    val selectedTiledFeedIds: List<String> = emptyList(),
-    val tmeDiscoveryPending: Boolean = false
+    val pendingResume: ContinueWatchingEntry? = null
 )
 class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
@@ -95,7 +91,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                         LayoutPreset.SINGLE->1
                         LayoutPreset.SPLIT_2->2
                         LayoutPreset.GRID_4->4
-                        LayoutPreset.GRID_6->if (setup.streamIds.any { it in availableIds } && openTiledCapable()) 24 else 4
+                        LayoutPreset.GRID_6->4
                     }
                     val mainId=savedMain ?: restored.firstOrNull()
                     val selected=(listOfNotNull(mainId)+restored.filterNot { it==mainId }).distinct().take(maxFeeds)
@@ -232,7 +228,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
              vodSessions = sessions.sortedBy { it.startTime },
              session = session,
              streams = emptyList(),
-             tiledMultiviewSession = null, selectedTiledFeedIds = emptyList(),
+             
              selectedStreamIds = emptyList(),
              mainStreamId = null,
              providerError = null,
@@ -241,111 +237,44 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadStreams(session)
          loadReplayTiming(session)
      }
-    fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),tiledMultiviewSession=null,providerError=null);loadStreams(session)}
-    private suspend fun loadStreams(session:Session, autoSelectFeeds:Boolean = false){
+    fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
+    private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
         provider.streams(session.id).fold(
-            {sources->
-                val visible=sources
-                val mainSource=visible.firstOrNull { it.kind == StreamKind.WORLD } ?: visible.firstOrNull()
-                val playableSources = visible.filter {
-                    it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
-                }
-                val selected = if (autoSelectFeeds) {
-                    listOfNotNull(mainSource?.id) +
-                        playableSources.filter { it.id != mainSource?.id }.take(3).map { it.id }
-                } else {
-                    listOfNotNull(mainSource?.id)
-                }
+            { sources ->
+                val mainSource = sources.firstOrNull { it.kind == StreamKind.WORLD } ?: sources.firstOrNull()
+                val playableSources = sources.filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+                val selected = if (autoSelectFeeds) listOfNotNull(mainSource?.id) + playableSources.filter { it.id != mainSource?.id }.take(3).map { it.id } else listOfNotNull(mainSource?.id)
                 val selectedDistinct = selected.distinct().take(4)
-                _ui.value=_ui.value.copy(
-                    streams=visible,
-                    selectedStreamIds=selectedDistinct,
-                    mainStreamId=mainSource?.id,
-                    providerError=null,
-                    tmeDiscoveryPending = mainSource != null && mainSource.tmeJson.isNullOrBlank() && mainSource.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
-                )
-                // TME discovery is session-level. A catalogue entry may already have a manifest
-                // URL while omitting the TME payload; resolving only when url == null therefore
-                // silently sends multiview into the per-feed Media3 path.
-                val mainNeedsTmeDiscovery = mainSource != null &&
-                    mainSource.tmeJson.isNullOrBlank() &&
-                    mainSource.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+                _ui.value = _ui.value.copy(streams=sources, selectedStreamIds=selectedDistinct, mainStreamId=mainSource?.id, providerError=null)
                 val sourcesToResolve = buildList {
-                    if (mainNeedsTmeDiscovery) add(mainSource!!)
-                    if (autoSelectFeeds) {
-                        visible.filter {
-                            it.id in selectedDistinct &&
-                                it.id != mainSource?.id &&
-                                it.url == null &&
-                                it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
-                        }.forEach(::add)
-                    } else {
-                        mainSource?.takeIf { it.url == null }?.let(::add)
-                    }
+                    mainSource?.takeIf { it.url == null }?.let(::add)
+                    if (autoSelectFeeds) sources.filter { it.id in selectedDistinct && it.id != mainSource?.id && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }.forEach(::add)
                 }.distinctBy { it.id }
-                AppLogger.i(
-                    "Playback",
-                    "TME_DISCOVERY main=${mainSource?.id} resolveMain=$mainNeedsTmeDiscovery " +
-                        "selected=${selectedDistinct.joinToString(",")} existingTme=${mainSource?.tmeJson?.isNullOrBlank() == false}"
-                )
-                for (source in sourcesToResolve) {
-                    resolveSource(source)
-                }
+                for (source in sourcesToResolve) resolveSource(source)
             },
-            {_ui.value=_ui.value.copy(providerError=it.message?:"Unable to load streams")}
+            { failure -> _ui.value = _ui.value.copy(providerError=failure.message ?: "Unable to load streams") }
         )
     }
-    private suspend fun resolveSource(source:StreamSource){
-        val isReference = source.id == _ui.value.mainStreamId
-        val contentId=source.contentId
-        if (contentId == null) {
-            if (isReference) _ui.value = _ui.value.copy(tmeDiscoveryPending = false)
-            return
-        }
-        provider.resolve(PlaybackRequest(contentId,source.channelId,_ui.value.quality)).onSuccess{playback->
-            // TME describes the multiview playback session, not an arbitrary
-            // secondary feed. Only the current reference/main feed may establish or
-            // replace the session-level TME contract.
-            _ui.value=_ui.value.copy(
-                tiledMultiviewSession = if (isReference) playback.tiledMultiview
-                    else _ui.value.tiledMultiviewSession,
-                selectedTiledFeedIds = if (isReference) {
-                    val tiled = playback.tiledMultiview
-                    if (tiled != null) {
-                        val mainStream = _ui.value.streams.firstOrNull { it.id == _ui.value.mainStreamId }
-                        val channel = mainStream?.channelId?.trim().takeIf { !it.isNullOrBlank() }
-                        val mainIndex = channel?.let { ch ->
-                            tiled.feeds.indexOfFirst { it.channelId?.toString() == ch }
-                        } ?: -1
-                        listOfNotNull(
-                            if (mainIndex >= 0) tiled.feedIds.getOrNull(mainIndex) else tiled.feedIds.firstOrNull()
-                        )
-                    } else {
-                        _ui.value.selectedTiledFeedIds
-                    }
-                } else _ui.value.selectedTiledFeedIds,
-                streams=_ui.value.streams.map{
-                    if(it.id==source.id) it.copy(
-                        url=playback.manifestUrl,
-                        drmLicenseUrl=playback.licenseUrl,
-                        requestHeaders=playback.streamHeaders,
-                        drmRequestHeaders=playback.licenseHeaders,
-                        playApiVersion=playback.playApiVersion,
-                        platform=playback.platform,
-                        streamType=playback.streamType,
-                        ascendonToken=playback.ascendonToken,
-                        entitlementToken=playback.entitlementToken,
-                        drmType=playback.drmType,
-                        playToken=playback.playToken,
-                        tmeJson=playback.tmeJson
-                    ) else it
-                },
-                providerError=null
-            )
-        }.onFailure{
-            _ui.value=_ui.value.copy(providerError=it.message?:"Playback resolution failed", tmeDiscoveryPending = if (isReference) false else _ui.value.tmeDiscoveryPending)
-        }
-        if (isReference) _ui.value = _ui.value.copy(tmeDiscoveryPending = false)
+
+    private suspend fun resolveSource(source: StreamSource) {
+        if (source.contentId == null) return
+        provider.resolve(PlaybackRequest(source.contentId, source.channelId, _ui.value.quality))
+            .onSuccess { playback ->
+                _ui.value = _ui.value.copy(
+                    streams = _ui.value.streams.map { stream ->
+                        if (stream.id == source.id) stream.copy(
+                            url=playback.manifestUrl, drmLicenseUrl=playback.licenseUrl,
+                            requestHeaders=playback.streamHeaders, drmRequestHeaders=playback.licenseHeaders,
+                            playApiVersion=playback.playApiVersion, platform=playback.platform,
+                            streamType=playback.streamType, ascendonToken=playback.ascendonToken,
+                            entitlementToken=playback.entitlementToken, drmType=playback.drmType,
+                            playToken=playback.playToken
+                        ) else stream
+                    },
+                    providerError=null
+                )
+            }
+            .onFailure { failure -> _ui.value = _ui.value.copy(providerError=failure.message ?: "Playback resolution failed") }
     }
     fun applyPreset(name:String){
         val streams=_ui.value.streams
@@ -369,12 +298,6 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         LayoutPreset.SPLIT_2 -> 2
         LayoutPreset.GRID_4 -> 4
         LayoutPreset.GRID_6 -> 4
-    }
-
-    private fun openTiledCapable(): Boolean {
-        val mainId = _ui.value.mainStreamId ?: return false
-        val source = _ui.value.streams.firstOrNull { it.id == mainId } ?: return false
-        return source.tmeJson?.let(TmePlaybackParser::parse)?.isTiledSource == true
     }
 
     fun setLayout(layout:LayoutPreset){
@@ -428,105 +351,6 @@ fun toggleStream(id:String)=viewModelScope.launch{
         resolveSource(source)
     }
 }
-    fun streamIdForTiledFeed(feedId: String): String? {
-        val session = _ui.value.tiledMultiviewSession ?: return null
-        val index = session.feedIds.indexOf(feedId)
-        if (index < 0) return null
-        val channel = session.feeds.getOrNull(index)?.channelId?.toString()
-        return _ui.value.streams.firstOrNull { it.channelId?.trim() == channel }?.id
-    }
-
-    private fun tiledFeedIdForStream(streamId: String): String? {
-        val session = _ui.value.tiledMultiviewSession ?: return null
-        val source = _ui.value.streams.firstOrNull { it.id == streamId } ?: return null
-        val channel = source.channelId?.trim().takeIf { !it.isNullOrBlank() }
-        if (channel != null) {
-            val index = session.feeds.indexOfFirst { it.channelId?.toString() == channel }
-            if (index >= 0) return session.feedIds.getOrNull(index)
-        }
-        return source.id.takeIf { it in session.feedIds }
-    }
-
-    fun toggleTiledStream(streamId: String) {
-        val tileId = tiledFeedIdForStream(streamId) ?: return
-        val session = _ui.value.tiledMultiviewSession ?: return
-        val validIds = session.feedIds.take(24)
-        if (tileId !in validIds) return
-        val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
-        if (tileId in current) {
-            if (current.size <= 1) return
-            _ui.value = _ui.value.copy(
-                selectedTiledFeedIds = current.filterNot { it == tileId },
-                providerError = null
-            )
-        } else {
-            ensureTiledFeedSelected(tileId)
-        }
-        persist()
-    }
-
-    fun ensureTiledStreamSelected(streamId: String) {
-        tiledFeedIdForStream(streamId)?.let(::ensureTiledFeedSelected)
-    }
-
-    fun ensureTiledFeedSelected(feedId: String) {
-        val session = _ui.value.tiledMultiviewSession ?: return
-        val validIds = session.feedIds.take(24)
-        if (feedId !in validIds) return
-        val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
-        if (feedId in current) return
-
-        // Feed selection is intentionally independent from layout selection.
-        // If the user chose 4-up, adding a feed must fill the next logical slot;
-        // it must never silently downgrade the user's layout to 2-up.
-        val capacity = when (_ui.value.layout) {
-            LayoutPreset.SINGLE -> 1
-            LayoutPreset.SPLIT_2 -> 2
-            LayoutPreset.GRID_4 -> 4
-            LayoutPreset.GRID_6 -> 6
-        }
-        val next = (current + feedId).distinct()
-        val selected = if (next.size <= capacity) {
-            next
-        } else {
-            // Keep the main/reference feed stable. When the selected layout is full,
-            // replace the last non-main tile rather than changing layout or creating
-            // another decoder/player.
-            val main = _ui.value.mainStreamId?.let(::tiledFeedIdForStream)
-            val replacementIndex = next.indexOfLast { it != main }
-                .takeIf { it >= 0 } ?: (capacity - 1)
-            current.toMutableList().apply {
-                if (replacementIndex in indices) this[replacementIndex] = feedId
-                else add(feedId)
-            }.distinct().take(capacity)
-        }
-        _ui.value = _ui.value.copy(
-            selectedTiledFeedIds = selected,
-            providerError = null
-        )
-        persist()
-    }
-
-    fun toggleTiledFeed(feedId: String) {
-        val session = _ui.value.tiledMultiviewSession ?: return
-        val validIds = session.feedIds
-        if (feedId !in validIds) return
-        val current = _ui.value.selectedTiledFeedIds.filter { it in validIds }.distinct()
-        val next = if (feedId in current) {
-            current.filterNot { it == feedId }
-        } else {
-            if (current.size >= 24) {
-                _ui.value = _ui.value.copy(providerError = "The tiled source has reached its 24-feed logical limit.")
-                return
-            }
-            current + feedId
-        }
-        _ui.value = _ui.value.copy(
-            selectedTiledFeedIds = next,
-            providerError = null
-        )
-    }
-
     fun activateTracker(){
     _ui.value=_ui.value.copy(selectedPanel="tracker")
     loadTrackMapGeometry()
