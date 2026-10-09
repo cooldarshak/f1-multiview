@@ -26,8 +26,8 @@ import java.util.concurrent.Executors
  * Isolated proof harness for independent clear video feeds.
  *
  * This activity is reachable only from the debug Settings panel. It does not use F1 endpoints,
- * credentials, Media3 players, or DRM-protected content. It generates two short local H.264
- * clips, decodes each with a distinct MediaCodec, and composites both decoder Surfaces through
+ * credentials, Media3 players, or DRM-protected content. It generates three short local H.264
+ * clips, decodes each with a distinct MediaCodec, and composites all three decoder Surfaces through
  * one GLES view.
  */
 class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedCompositorView.Listener {
@@ -78,7 +78,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             textSize = 12f
             setPadding(18, 14, 18, 14)
             setBackgroundColor(0xD9000000.toInt())
-            text = "SYNTHETIC MULTIVIEW PROTOTYPE\nGenerating two clear H.264 test clips…"
+            text = "SYNTHETIC MULTIVIEW PROTOTYPE\nGenerating three clear H.264 test clips…"
             isFocusable = true
             contentDescription = "Synthetic multiview diagnostics. Press Back to exit."
         }
@@ -101,7 +101,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
                 mainHandler.post {
                     if (destroyed) return@post
                     clips = generated
-                    statusLines["source"] = "Generated two local H.264 clips: ${generated.files.joinToString(" / ") { it.length().toString() }} bytes"
+                    statusLines["source"] = "Generated three local H.264 clips: ${generated.files.joinToString(" / ") { it.length().toString() }} bytes"
                     renderStatus()
                     startIfReady()
                 }
@@ -137,13 +137,13 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     }
 
     private fun startIfReady() {
-        if (destroyed || starting || clips == null || currentSurfaces?.size != 2) return
+        if (destroyed || starting || clips == null || currentSurfaces?.size != 3) return
         synchronized(pipelineLock) {
             if (pipelines.isNotEmpty()) return
             starting = true
             val files = requireNotNull(clips).files
             val surfaces = requireNotNull(currentSurfaces)
-            val labels = listOf("LEFT", "RIGHT")
+            val labels = listOf("LEFT", "CENTER", "RIGHT")
             val feedDescriptors = files.mapIndexed { index, file ->
                 FeedDescriptor(
                     id = labels[index],
@@ -159,8 +159,9 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
                 ViewportLayout(
                     id = "synthetic-side-by-side",
                     viewports = listOf(
-                        FeedViewport("LEFT", 0f, 0f, 0.5f, 1f, zIndex = 0),
-                        FeedViewport("RIGHT", 0.5f, 0f, 0.5f, 1f, zIndex = 1)
+                        FeedViewport("LEFT", 0f, 0f, 1f / 3f, 1f, zIndex = 0),
+                        FeedViewport("CENTER", 1f / 3f, 0f, 1f / 3f, 1f, zIndex = 1),
+                        FeedViewport("RIGHT", 2f / 3f, 0f, 1f / 3f, 1f, zIndex = 2)
                     )
                 )
             )
@@ -173,7 +174,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
             pipelines.toList().forEach(SyntheticFeedDecoder::start)
             starting = false
         }
-        statusLines["pipeline"] = "Two MediaCodec decoders started on one shared playback timeline"
+        statusLines["pipeline"] = "Three MediaCodec decoders started on one shared playback timeline"
         renderStatus()
         AppLogger.i("SyntheticMultiview", "prototype started with two clear local H.264 feeds")
     }
@@ -191,7 +192,7 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
     private fun renderStatus() {
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
-            add("Two MediaCodec decoders → two SurfaceTextures → one GLES compositor")
+            add("Three MediaCodec decoders → three SurfaceTextures → one GLES compositor")
             compositor.inputFrameDiagnostics(diagnosticEpochNs()).forEach(::add)
             add(compositor.drawDiagnostics())
             add(resourceDiagnostics())
