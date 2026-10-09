@@ -86,6 +86,8 @@ class TmeCmafFeedReader(
             when {
                 line.startsWith("#EXT-X-MEDIA-SEQUENCE:") ->
                     mediaSequence = line.substringAfter(':').toLong()
+                line.startsWith("#EXT-X-KEY:") ->
+                    encryptionMethod = parseEncryptionMethod(line)
                 line.startsWith("#EXT-X-MAP:") ->
                     Regex("""URI="([^"]+)"""").find(line)?.groupValues?.get(1)?.let {
                         initUri = resolve(url, it)
@@ -160,7 +162,7 @@ class TmeCmafFeedReader(
                     val mime = format.getString(MediaFormat.KEY_MIME)
                     val csd = format.getByteBuffer("csd-0")
                     val configBytes = csd?.duplicate()?.let { buffer ->
-                        ByteArray(buffer.remaining()).also(buffer::get)
+                        ByteArray(buffer.remaining()).also { buffer.get(it) }
                     }
                     val fingerprint = configBytes?.let {
                         MessageDigest.getInstance("SHA-256").digest(it)
