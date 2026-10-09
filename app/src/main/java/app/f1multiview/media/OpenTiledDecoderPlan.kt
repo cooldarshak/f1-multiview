@@ -51,7 +51,6 @@ data class OpenTiledDecoderPlan(
             val tileWidth = session.tileWidth ?: return null
             val tileHeight = session.tileHeight ?: return null
 
-            val urls = session.feeds.mapNotNull { it.url?.takeIf(String::isNotBlank) }.distinct()
             val authoritativePlacement = session.feeds.all {
                 it.tileRow != null && it.tileColumn != null
             }
