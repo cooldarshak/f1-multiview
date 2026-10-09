@@ -64,6 +64,10 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
         private val vertexData = floatBuffer(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
         private val textureData = floatBuffer(floatArrayOf(0f, 1f, 1f, 1f, 0f, 0f, 1f, 0f))
         private var program = 0
+        private var positionLocation = -1
+        private var textureLocation = -1
+        private var matrixLocation = -1
+        private var samplerLocation = -1
         private var width = 0
         private var height = 0
         val renderedFrameCount = AtomicLong(0L)
@@ -97,6 +101,10 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glClearColor(0.02f, 0.02f, 0.03f, 1f)
             program = linkProgram(vertexShader, fragmentShader)
             GLES20.glUseProgram(program)
+            positionLocation = GLES20.glGetAttribLocation(program, "aPosition")
+            textureLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
+            matrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
+            samplerLocation = GLES20.glGetUniformLocation(program, "uTexture")
             GLES20.glGenTextures(2, textureIds, 0)
             for (index in 0..1) {
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureIds[index])
@@ -138,10 +146,6 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
             if (width <= 0 || height <= 0 || program == 0) return
 
-            val positionLocation = GLES20.glGetAttribLocation(program, "aPosition")
-            val textureLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
-            val matrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
-            val samplerLocation = GLES20.glGetUniformLocation(program, "uTexture")
             vertexData.position(0)
             textureData.position(0)
             GLES20.glEnableVertexAttribArray(positionLocation)
