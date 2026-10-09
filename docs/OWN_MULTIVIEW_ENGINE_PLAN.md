@@ -97,6 +97,72 @@ The first provider-neutral foundation has been committed to the active branch:
 
 These files are an initial contract/policy layer, **not yet a functioning video compositor**. They are not wired into the existing playback path; no build or test run has been triggered. The next implementation milestone is a clear synthetic two-feed MediaCodec-to-SurfaceTexture/OpenGL prototype with measurable first-frame, drift, and frame-drop diagnostics. Only after that proof should the new engine replace the TME-dependent gate.
 
+## 2B. Broader web research (Firecrawl + public technical documentation)
+
+This research extends beyond GitHub repository discovery. Findings below are based on the linked public documentation and project READMEs, not on any proprietary multiview SDK.
+
+### Native Android media/rendering references
+
+**Android MediaCodec API**
+- Official reference: https://developer.android.com/reference/android/media/MediaCodec
+- Android documents MediaCodec as an asynchronous codec pipeline that consumes and produces buffers/surfaces. It gives us the low-level primitives, but does not promise that a given handset can decode any arbitrary number of concurrent high-resolution streams.
+- Android's codec performance-point documentation explicitly cautions that performance points assume a single active codec; concurrent codecs need a more conservative aggregate pixel-rate assessment. Query the device's advertised codec capabilities and validate by measurement on target hardware; do not hard-code a decoder count.
+- Source: https://developer.android.com/reference/android/media/MediaCodecInfo.VideoCapabilities.PerformancePoint
+
+**SurfaceTexture and protected rendering**
+- Official architecture guide: https://source.android.com/docs/core/graphics/arch-st
+- SurfaceTexture connects a producer Surface to a GLES external texture and exposes frame-available notifications and timestamp/transform information. This is the main public Android primitive for a custom decoded-frame compositor.
+- Protected playback has specific protected EGL/Surface constraints; our protected path must be independently validated and must never copy protected pixels into CPU-readable memory.
+
+**Google Grafika — Apache-2.0, archived sample**
+- Repository: https://github.com/google/grafika
+- Its documented examples include two-video side-by-side playback, SurfaceTexture, MediaCodec, EGL, and presentation timing. It is archived and explicitly says it is an experimental collection rather than a stable, production-ready library. Use its relevant examples as learning/reference material; don't import it as a finished engine.
+
+**GPAC compositor**
+- Current docs: https://wiki.gpac.io/Filters/compositor/
+- The compositor can consume multiple URL types and has a `mosaic://` multi-view input syntax. It can produce frames in filter mode and can use OpenGL for 3D/display-driver paths.
+- This makes GPAC a real prototype candidate for independent feeds, separate from `hevcmerge`. It still needs a proof of Android integration: DASH/HLS input support, decoder path, EGL/output-surface handoff, timestamps/live buffering, and protected output compatibility.
+- Our existing GPAC Android build disables compositor/vout/aout, so this is a new build configuration and integration effort, not something already available in the current native library.
+
+**GStreamer glvideomixer**
+- Documentation: https://gstreamer.freedesktop.org/documentation/opengl/glvideomixer.html
+- GStreamer provides an OpenGL-backed multi-input compositor and an Android deployment guide: https://gstreamer.freedesktop.org/documentation/installing/for-android-development.html
+- It is a credible third-party open-source prototype candidate, but requires a significant Android native packaging/dependency effort. We must verify that the selected decode elements really use device hardware decoders, that frames stay GPU-resident through composition, and that the chosen plugins/licenses suit distribution. A compositor existing in a framework does not itself guarantee low-copy or hardware-efficient composition.
+
+### Real-world multiview product and synchronization research
+
+**MultiViewer for F1 (closed source; behavior/documentation only)**
+- Sync guide: https://multiviewer.app/docs/usage/syncing-streams
+- Public documentation describes per-stream target live latencies, periodic drift measurement, playback-rate corrections, and seeking when drift becomes very large. It also notes that live streams may need tens of seconds of target latency for buffer resilience, and onboard streams may be offset from the world feed.
+- This is useful as observable product behavior and as a source of test scenarios; it is closed source and not a code dependency or design blueprint to copy. We must calibrate our own policy against actual authorized feed timestamps and runtime evidence.
+
+**Open Android TV IPTV multiview apps**
+- StreamVault: https://github.com/Davidona/StreamVault-IPTV
+- AerioTV for Android: https://github.com/jonzey231/AerioTV-Android
+- OwnTV: https://github.com/ahXN00/OwnTV
+- These demonstrate production-shaped TV UI patterns for multi-tile selection, one audio focus, per-tile menus, D-pad navigation, diagnostics, thermal/resource watchdogs, and graceful handling of many feeds. They are not F1-specific and their multiview implementation should be inspected before borrowing any code; feature descriptions alone do not prove a single physical playback pipeline. Respect each repository's license before any code reuse.
+
+**Apple's multiview engineering session (conceptual reference only)**
+- https://developer.apple.com/videos/play/wwdc2025/302/
+- Covers coordinating playback between multiple streams and optimizing stream quality for smaller views. The APIs are Apple-specific, but the product/coordination concerns generalize: choose quality by viewport size, define a common playback target, recover after stalls, and manage audio focus. This does not prove that a multiple-player approach will meet our Android performance target.
+
+### Updated candidate comparison
+
+| Candidate | What it can prove | Main risk / unknown | Decision |
+| --- | --- | --- | --- |
+| Custom MediaCodec + SurfaceTexture + OpenGL ES | Full control of decode scheduling, frame timestamps, one app-owned compositor, diagnostics and viewport resizing | Highest implementation burden; codec limits, lifecycle, live demux and secure surfaces are difficult | Required reference implementation / fallback if frameworks fail |
+| GPAC multi-input graph + compositor | One media graph/session with standard media inputs and a compositor | Android build/output surface, hardware decode and protected playback are not proven | Prototype first alongside the custom path |
+| GStreamer + glvideomixer | Mature multi-input media graph and GL compositor | Native package size/dependencies, device-specific decoder elements, low-copy behavior and DRM surface integration | Third candidate if GPAC integration fails or GStreamer offers a measurable advantage |
+| HEVC compressed-domain merge | Potentially one encoded output and one decode for compatible spatial tiles | Independent onboard cameras are not spatial tiles of one picture; source compatibility not established | Use only for inputs that objectively satisfy the HEVC tiled-stream contract |
+| N separate ExoPlayers/MediaPlayers | Fastest way to show separate sources, useful for a baseline comparison only | Decoder contention, synchronization and jank; violates the intended architecture if used as the production fallback | Not an acceptable production workaround |
+
+### Engineering conclusions from broader research
+1. Do not assume a single logical session means one physical decoder. Keep session ownership, decoding, and composition as separately measured concepts.
+2. Build a benchmark that records per-codec dimensions/rate, number of active hardware decoders, first-frame time, compositor frame time, dropped frames, queue depth, drift, memory, CPU/GPU and thermal behavior.
+3. Include a viewport-aware quality policy: a small tile should not automatically request the same rendition as the main feed if the authorized stream catalog offers lower-resolution variants. Do not assume a rendition exists; inspect the actual manifest.
+4. Live sync needs a target-latency model in addition to PTS drift correction. Streams can have different live edges or encoder offsets even when each player's local position looks valid. Derive alignment from trustworthy timestamps or calibrated content events, not wall-clock guessing.
+5. Use a controlled bake-off with two known-clear synthetic feeds before F1 integration: (a) GPAC compositor graph, (b) custom MediaCodec/SurfaceTexture/OpenGL, and optionally (c) GStreamer. Choose on evidence. A successful library build alone is not sufficient.
+
 ## 3. Target architecture
 
 The app exposes **one logical multiview player/session**. It must not create independent ExoPlayer instances as a workaround. Internally, the engine may need multiple decoder instances when the input consists of independent camera feeds; a single coordinator does not magically turn separate encoded streams into one decoder input.
