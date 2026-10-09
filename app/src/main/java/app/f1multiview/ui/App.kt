@@ -2411,23 +2411,7 @@ private fun FullscreenMultiview(
                     activeId = activeFeedId, modifier = Modifier.fillMaxSize(),
                     surfaceType = SURFACE_TYPE_SURFACE_VIEW,
                     onVideoTap = { controlsVisible = !controlsVisible }
-                ) else {
-                    CanonicalMultiviewLayout(
-                        ui = ui,
-                        selected = selected,
-                        engine = engine,
-                        errors = errors,
-                        editSize = editSize,
-                        onFocus = { id ->
-                            activeFeedId = id
-                            menu = null
-                        },
-                        activeId = activeFeedId,
-                        modifier = Modifier.fillMaxSize(),
-                        surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-                        onVideoTap = { controlsVisible = !controlsVisible }
-                    )
-                }
+                )
             }
 
             Box(
