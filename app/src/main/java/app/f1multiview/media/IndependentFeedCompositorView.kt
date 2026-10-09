@@ -46,6 +46,9 @@ internal class IndependentFeedCompositorView(context: Context) : GLSurfaceView(c
 
     fun renderedFrameCount(): Long = renderer.renderedFrameCount.get()
 
+    fun inputFrameCounts(): Pair<Long, Long> =
+        renderer.sourceFrameCount[0].get() to renderer.sourceFrameCount[1].get()
+
     override fun onDetachedFromWindow() {
         queueEvent { renderer.releaseInputs(listener) }
         super.onDetachedFromWindow()
