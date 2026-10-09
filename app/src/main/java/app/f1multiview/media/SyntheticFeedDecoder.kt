@@ -16,6 +16,7 @@ internal class SyntheticFeedDecoder(
     private val feedLabel: String,
     private val file: File,
     private val outputSurface: Surface,
+    private val sharedPlaybackAnchorNs: Long,
     private val onStatus: (String) -> Unit
 ) {
     val label: String get() = feedLabel
@@ -61,12 +62,14 @@ internal class SyntheticFeedDecoder(
             check(selectedTrack >= 0 && format != null) { "No video track in synthetic input" }
             extractor.selectTrack(selectedTrack)
             val mime = requireNotNull(format.getString(MediaFormat.KEY_MIME))
+            val clipDurationUs = format.getLong(MediaFormat.KEY_DURATION)
+            check(clipDurationUs > 0L) { "Synthetic clip has no positive duration: $clipDurationUs" }
             decoder = MediaCodec.createDecoderByType(mime)
             decoder.configure(format, outputSurface, null, 0)
             decoder.start()
             val codecName = decoder.name
-            onStatus("$feedLabel decoder=$codecName configured")
-            decodeLoop(extractor, decoder)
+            onStatus("$feedLabel decoder=$codecName configured durationUs=$clipDurationUs")
+            decodeLoop(extractor, decoder, clipDurationUs)
         } catch (failure: Throwable) {
             if (!stopRequested.get()) {
                 onStatus("$feedLabel ERROR ${failure.javaClass.simpleName}: ${failure.message ?: "unknown"}")
@@ -80,11 +83,10 @@ internal class SyntheticFeedDecoder(
         }
     }
 
-    private fun decodeLoop(extractor: MediaExtractor, decoder: MediaCodec) {
+    private fun decodeLoop(extractor: MediaExtractor, decoder: MediaCodec, clipDurationUs: Long) {
         val info = MediaCodec.BufferInfo()
         var inputEosQueued = false
-        var firstPtsUs = Long.MIN_VALUE
-        var playbackAnchorNs = 0L
+        var loopIndex = 0L
 
         while (!stopRequested.get()) {
             if (!inputEosQueued) {
@@ -128,18 +130,16 @@ internal class SyntheticFeedDecoder(
                             extractor.seekTo(0L, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
                             decoder.flush()
                             inputEosQueued = false
-                            firstPtsUs = Long.MIN_VALUE
-                            playbackAnchorNs = 0L
+                            loopIndex++
+                            onStatus("$feedLabel loop=$loopIndex timelineUs=${loopIndex * clipDurationUs}")
                             continue
                         }
 
                         if (info.size > 0) {
-                            if (firstPtsUs == Long.MIN_VALUE) {
-                                firstPtsUs = info.presentationTimeUs
-                                playbackAnchorNs = System.nanoTime()
-                            }
-                            val relativeUs = (info.presentationTimeUs - firstPtsUs).coerceAtLeast(0L)
-                            val renderAtNs = playbackAnchorNs + relativeUs * 1_000L
+                            // Every feed uses the same monotonic epoch. Advancing loopIndex rather
+                            // than resetting a per-decoder anchor preserves the shared timeline.
+                            val timelineUs = loopIndex * clipDurationUs + info.presentationTimeUs.coerceAtLeast(0L)
+                            val renderAtNs = sharedPlaybackAnchorNs + timelineUs * 1_000L
                             decoder.releaseOutputBuffer(outputIndex, renderAtNs)
                             val count = outputFramesQueued.incrementAndGet()
                             if (count == 1L || count % 30L == 0L) {
