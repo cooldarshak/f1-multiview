@@ -100,6 +100,43 @@ class F1TvApiClientTest {
     }
 
     @Test
+    fun discoversTmeNestedInsideResultObjSettings() {
+        val response = HttpResponse(
+            200,
+            true,
+            """
+            {
+              "resultObj": {
+                "url": "https://example.com/live.mpd",
+                "settings": {
+                  "isTmeAvailable": true,
+                  "tmeJson": {
+                    "version": 1,
+                    "channel": "TME",
+                    "advanced": {
+                      "tile_size": {"width": 960, "height": 544},
+                      "tile_count_horizontal": 2,
+                      "tile_count_vertical": 1
+                    },
+                    "feeds": [
+                      {"uuid":"a","url":"https://example/shared.mpd","tile_index":0},
+                      {"uuid":"b","url":"https://example/shared.mpd","tile_index":1}
+                    ]
+                  }
+                }
+              }
+            }
+            """.trimIndent()
+        )
+
+        val parsed = F1TvApiClient().parsePlaybackResponse(response, "42", null, "WEB_DASH")
+
+        assertNotNull(parsed.tmeJson)
+        assertEquals(true, TmePlaybackParser.parse(parsed.tmeJson!!)?.feeds?.size == 2)
+        assertEquals(TmeTopology.SINGLE_MOSAIC_SOURCE, TmePlaybackParser.parse(parsed.tmeJson!!)?.topology)
+    }
+
+    @Test
     fun retainsResultObjTmeFallbackForOlderResponses() {
         val response = HttpResponse(
             200,
