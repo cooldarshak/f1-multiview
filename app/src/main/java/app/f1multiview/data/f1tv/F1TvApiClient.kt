@@ -6,6 +6,9 @@ import app.f1multiview.core.network.HttpClient
 import app.f1multiview.media.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -20,8 +23,55 @@ class F1TvApiClient {
         private const val DEFAULT_ENTITLEMENT="F1_TV_Pro_Annual"
         private const val DEFAULT_GROUP="2"
         private val JSON="application/json; charset=utf-8".toMediaType()
+        private val API_VERSION_PATTERN = Regex("^\\d+(?:\\.\\d+)?$")
+        private const val API_CONFIG_CACHE_MS = 30_000L
+
+        /**
+         * Put the server-configured API version first, then preserve known legacy fallbacks.
+         * Validate the version before using it in a URL path.
+         */
+        internal fun apiVersionCandidates(configuredVersion:String?,fallbackVersions:List<String>):List<String>{
+            val preferred=configuredVersion?.trim()?.takeIf{API_VERSION_PATTERN.matches(it)}
+            return (listOfNotNull(preferred)+fallbackVersions).distinct()
+        }
+
+        private fun normalizeApiVersion(value:String?):String? =
+            value?.trim()?.takeIf{API_VERSION_PATTERN.matches(it)}
     }
     private val http=HttpClient.shared
+    private val apiConfigMutex=Mutex()
+    @Volatile private var apiConfigFetchedAt=0L
+    @Volatile private var configuredPlayApiVersion:String?=null
+    @Volatile private var configuredVideoApiVersion:String?=null
+
+    /**
+     * F1's public /config endpoint is the source of truth for playAPIVersion and
+     * videoAPIVersion. Cache it for the server's configured 30-second interval.
+     * If it is unavailable, retain the legacy fallback order rather than blocking
+     * authorized playback.
+     */
+    private suspend fun ensureApiConfig() = apiConfigMutex.withLock {
+        val now=System.currentTimeMillis()
+        if(apiConfigFetchedAt>0L && now-apiConfigFetchedAt<API_CONFIG_CACHE_MS) return@withLock
+        try {
+            val response=execute("$BASE/config","GET",null,emptyMap())
+            if(!response.isSuccessful){
+                AppLogger.w("F1Playback","F1_API_CONFIG_UNAVAILABLE httpStatus=${response.code}")
+            } else {
+                val config=runCatching{JSONObject(response.body).optJSONObject("apiConfig")}.getOrNull()
+                val play=normalizeApiVersion(config?.optString("playAPIVersion"))
+                val video=normalizeApiVersion(config?.optString("videoAPIVersion"))
+                configuredPlayApiVersion=play
+                configuredVideoApiVersion=video
+                AppLogger.i("F1Playback","F1_API_CONFIG httpStatus=${response.code} playApiVersion=${play ?: "absent"} videoApiVersion=${video ?: "absent"}")
+            }
+        } catch(t:Throwable) {
+            if(t is CancellationException) throw t
+            AppLogger.w("F1Playback","F1_API_CONFIG_UNAVAILABLE reason=${t.javaClass.simpleName}")
+        } finally {
+            apiConfigFetchedAt=System.currentTimeMillis()
+        }
+    }
     @Volatile private var subscriptionToken:String?=null
     @Volatile private var entitlementToken:String?=null
     @Volatile private var entitlement=DEFAULT_ENTITLEMENT
@@ -87,15 +137,12 @@ class F1TvApiClient {
         val response=execute(BASE+"/1.0/R/"+LANG+"/WEB_DASH/ALL/EVENTS/LIVENOW/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"live catalog");return JSONObject(response.body)
     }
     suspend fun contentVideo(contentId:String):JSONObject{
-        // F1 TV's channel metadata is still exposed through the 3.0 WEB_HLS
-        // endpoint used by the reference Android TV client. Keep our newer
-        // 4.0 WEB_DASH endpoint as a fallback for accounts/content that use it.
-        // Current F1 TV clients use the 4.0 WEB_DASH content endpoint.
-        // Keep the older 3.0 WEB_HLS path only as a fallback.
-        val endpoints = listOf(
-            BASE+"/4.0/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId,
-            BASE+"/3.0/R/"+LANG+"/WEB_HLS/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
-        )
+        // F1 publishes the active video API version in /config. Keep the
+        // known 4.0 then 3.0 fallback order if that config is unavailable.
+        ensureApiConfig()
+        val endpoints = apiVersionCandidates(configuredVideoApiVersion,listOf("4.0","3.0")).map { apiVersion ->
+            BASE+"/"+apiVersion+"/R/"+LANG+"/WEB_DASH/ALL/CONTENT/VIDEO/"+contentId+"/"+entitlement+"/"+groupId
+        }
         var last:Throwable? = null
         for (endpoint in endpoints) {
             try {
@@ -113,10 +160,11 @@ class F1TvApiClient {
     }
     suspend fun contentPlay(contentId:String,channelId:String?,platform:String):PlaybackResponse{
         val query="?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
-        // Preserve the existing API-version selection until live response diagnostics
-        // establish that trying another version is required. Log shape before parsing,
-        // and retain requested version/status in the parsed result for gateway telemetry.
-        val apiVersions=listOf("2.0","3.0")
+        // Use F1's configured playAPIVersion first. The live /config currently
+        // advertises 3.0 while videoAPIVersion is 4.0; hardcoding 2.0 first
+        // causes any valid 2.0 manifest response to mask the configured playback API.
+        ensureApiConfig()
+        val apiVersions=apiVersionCandidates(configuredPlayApiVersion,listOf("2.0","3.0"))
         var last:Throwable?=null
         for(apiVersion in apiVersions){
             try{
