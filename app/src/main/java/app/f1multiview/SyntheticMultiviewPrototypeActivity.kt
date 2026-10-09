@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.Surface
 import android.view.View
@@ -26,6 +27,7 @@ import java.util.concurrent.Executors
  */
 class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedCompositorView.Listener {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val prototypeStartedAtNs = SystemClock.elapsedRealtimeNanos()
     private val worker = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "synthetic-multiview-setup").apply { isDaemon = true }
     }
@@ -150,9 +152,10 @@ class SyntheticMultiviewPrototypeActivity : Activity(), IndependentFeedComposito
         val lines = buildList {
             add("SYNTHETIC MULTIVIEW · CLEAR CONTENT ONLY")
             add("Two MediaCodec decoders → two SurfaceTextures → one GLES compositor")
-            val inputFrames = compositor.inputFrameCounts()
-            add("SurfaceTexture updates: LEFT ${inputFrames.first} · RIGHT ${inputFrames.second}")
-            add("Compositor render ticks: ${compositor.renderedFrameCount()}")
+            compositor.inputFrameDiagnostics(prototypeStartedAtNs).forEach(::add)
+            val elapsedSeconds = ((SystemClock.elapsedRealtimeNanos() - prototypeStartedAtNs).coerceAtLeast(1L)) / 1_000_000_000.0
+            val renderFps = compositor.renderedFrameCount() / elapsedSeconds
+            add("Compositor render ticks: ${compositor.renderedFrameCount()} · avg ${String.format(java.util.Locale.US, "%.1f", renderFps)} fps")
             statusLines.values.forEach(::add)
             add("Press Back to exit")
         }
