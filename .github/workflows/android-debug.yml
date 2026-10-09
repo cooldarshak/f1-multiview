@@ -40,6 +40,13 @@ jobs:
           git apply ../patches/media3/0001-explicit-media-segment-role.patch
           test "$(grep -Fc 'setCustomData("f1-multiview:media-segment:v1")' libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java)" -eq 2
 
+      - name: Publish patched Media3 HLS and DASH to local Maven
+        working-directory: media3-source
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :lib-exoplayer-hls:publishToMavenLocal :lib-exoplayer-dash:publishToMavenLocal
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
