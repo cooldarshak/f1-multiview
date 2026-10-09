@@ -42,6 +42,38 @@ class F1TvApiClientTest {
         assertEquals(true, TmePlaybackParser.parse(parsed.tmeJson!!)?.feeds?.size == 2)
     }
 
+
+    @Test
+    fun ignoresNullTopLevelTmeAndReadsResultObjTme() {
+        val response = HttpResponse(
+            200,
+            true,
+            """
+            {
+              "url": "https://example.com/live.mpd",
+              "tmeJson": null,
+              "isTmeAvailable": false,
+              "resultObj": {
+                "tmeJson": {
+                  "version": 1,
+                  "channel": "TME",
+                  "advanced": {"tile_size": {"width": 960, "height": 544}},
+                  "feeds": [
+                    {"uuid":"a","url":"https://example/a","tile_index":0},
+                    {"uuid":"b","url":"https://example/b","tile_index":1}
+                  ]
+                }
+              }
+            }
+            """.trimIndent()
+        )
+
+        val parsed = F1TvApiClient().parsePlaybackResponse(response, "42", null, "WEB_DASH")
+
+        assertNotNull(parsed.tmeJson)
+        assertEquals(true, TmePlaybackParser.parse(parsed.tmeJson!!)?.feeds?.size == 2)
+    }
+
     @Test
     fun retainsResultObjTmeFallbackForOlderResponses() {
         val response = HttpResponse(
