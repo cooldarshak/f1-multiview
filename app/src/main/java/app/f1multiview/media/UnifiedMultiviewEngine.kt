@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
  * coordinator fails visibly closed for more than one visible video feed.
  */
 class UnifiedMultiviewEngine(context: Context) {
+    private val appContext = context.applicationContext
     private val decoderManager = DecoderManager(context)
     private val feedRegistry = FeedRegistry()
     private val surfaceManager = MultiviewSurfaceManager(context)
@@ -94,9 +95,22 @@ class UnifiedMultiviewEngine(context: Context) {
         if (visibleVideoCount > 1) {
             multiFeedBlocked = true
             decoderManager.retain(emptySet())
+            val selectedVideoStreams = streams.filter { stream ->
+                stream.id in visibleIds && stream.kind !in videoKinds
+            }
+            selectedVideoStreams.forEach { stream ->
+                val compatibility = ProtectedFeedCompatibility.inspect(appContext, stream)
+                AppLogger.i(
+                    "F1MultiFeedCompatibility",
+                    "feed=${stream.id} ${compatibility.toLogFields()}"
+                )
+            }
             _multiviewStatus.value =
-                "MULTIVIEW NOT YET ENABLED: the own three-feed synthetic renderer must pass phone and Android TV runtime validation before protected F1 feed integration. No independent ExoPlayer fallback was created."
-            AppLogger.e("OwnMultiviewEngine", "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=own-engine-runtime-validation-pending")
+                "PROTECTED F1 MULTIVIEW BLOCKED: authorized feed metadata is being checked, but the current compositor cannot combine Widevine secure SurfaceView outputs. No independent ExoPlayer fallback was created."
+            AppLogger.e(
+                "OwnMultiviewEngine",
+                "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=secure-surface-composition-not-supported"
+            )
             _decoderGeneration.value += 1L
             return emptySet()
         }
