@@ -14,13 +14,14 @@ import java.util.concurrent.locks.LockSupport
  * Each instance owns exactly one MediaCodec decoder and writes to one compositor input Surface.
  */
 internal class SyntheticFeedDecoder(
-    private val feedLabel: String,
-    private val file: File,
+    private val feed: FeedDescriptor,
     private val outputSurface: Surface,
     private val sharedPlaybackAnchorNs: Long,
     private val onStatus: (String) -> Unit
 ) {
-    val label: String get() = feedLabel
+    private val feedLabel: String get() = feed.id
+    private val file: File get() = File(feed.mediaUri)
+    val label: String get() = feed.id
 
     private val stopRequested = AtomicBoolean(false)
     private val outputFramesQueued = AtomicLong(0L)
@@ -68,6 +69,15 @@ internal class SyntheticFeedDecoder(
             check(selectedTrack >= 0 && format != null) { "No video track in synthetic input" }
             extractor.selectTrack(selectedTrack)
             val mime = requireNotNull(format.getString(MediaFormat.KEY_MIME))
+            require(feed.mimeType == null || feed.mimeType.equals(mime, ignoreCase = true)) {
+                "Feed descriptor MIME ${feed.mimeType} does not match input MIME $mime"
+            }
+            require(feed.width == null || feed.width == format.getInteger(MediaFormat.KEY_WIDTH)) {
+                "Feed descriptor width ${feed.width} does not match input width"
+            }
+            require(feed.height == null || feed.height == format.getInteger(MediaFormat.KEY_HEIGHT)) {
+                "Feed descriptor height ${feed.height} does not match input height"
+            }
             val clipDurationUs = format.getLong(MediaFormat.KEY_DURATION)
             check(clipDurationUs > 0L) { "Synthetic clip has no positive duration: $clipDurationUs" }
             decoder = MediaCodec.createDecoderByType(mime)
