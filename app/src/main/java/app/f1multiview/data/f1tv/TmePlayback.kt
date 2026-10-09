@@ -19,15 +19,8 @@ enum class TmeTopology {
     SINGLE_MOSAIC_SOURCE,
 
     /**
-     * Multiple URLs have explicit, unique tile indices in a declared tile grid.
-     * This is only a metadata-level candidate: CMAF/HEVC and encryption inspection
-     * must still prove whether the streams can be combined safely.
-     */
-    MULTI_SOURCE_TILED_CANDIDATE,
-
-    /**
-     * Multiple URLs without sufficient tile-grid metadata. Treat as independent
-     * sources until stronger evidence proves otherwise.
+     * Each logical feed has its own compressed media URL. This requires multiple
+     * decoders unless a provider-specific tiled decoder exists.
      */
     INDEPENDENT_FEED_SOURCES,
 
@@ -57,18 +50,6 @@ data class TmePlayback(
             if (urls.size == 1 && tileWidth != null && tileWidth > 0 && tileHeight != null && tileHeight > 0) {
                 return TmeTopology.SINGLE_MOSAIC_SOURCE
             }
-
-            val columns = tileCountHorizontal
-            val rows = tileCountVertical
-            val tileIndices = feeds.map { it.tileIndex }
-            val hasValidTileGrid = tileWidth != null && tileWidth > 0 &&
-                tileHeight != null && tileHeight > 0 &&
-                columns != null && columns > 0 &&
-                rows != null && rows > 0 &&
-                tileIndices.all { it != null && it >= 0 && it < columns * rows } &&
-                tileIndices.filterNotNull().distinct().size == feeds.size
-
-            if (hasValidTileGrid) return TmeTopology.MULTI_SOURCE_TILED_CANDIDATE
             return TmeTopology.INDEPENDENT_FEED_SOURCES
         }
 
@@ -131,7 +112,7 @@ object TmePlaybackParser {
                 val audio = feed.optJSONObject("audioTrackNames")
                 val feedMetadata = feed.optJSONObject("metadata")
                 val subtitles = feed.optJSONObject("subtitleTrackNames")
-                val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile_index")
+                val tileIndex = firstInt(feed, feedMetadata, "tileIndex", "tile_index", "tile", "index")
                 val row = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
                     tileIndex / resolvedTileCountHorizontal!! else null
                 val column = if (tileIndex != null && resolvedTileCountHorizontal != null && resolvedTileCountHorizontal > 0)
