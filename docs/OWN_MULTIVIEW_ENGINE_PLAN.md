@@ -477,3 +477,38 @@ Fixture provenance and Apache-2.0 notice: `app/src/test/resources/media/NOTICE.t
 The app-owned BoundedCmafSegmentReader wraps a resolved segment byte source with an explicit declared length and configured maximum size. It caps each upstream read at the remaining segment boundary, returns end-of-input only at the declared boundary, and raises an I/O error if the upstream source ends early. Invalid read counts and invalid destination ranges are rejected. A declared segment larger than the configured budget is rejected before reading any bytes.
 
 Unit tests cover boundary capping, repeated end-of-input, zero-length reads, empty segments, truncated upstream data, oversize declarations, and invalid target ranges. This is a bounded byte-reader primitive only: it does not fetch HTTP resources, resolve HLS/DASH playlists, authenticate requests, parse CMAF boxes, decrypt samples, or create Widevine sessions. Integration with an authorized segment data source is a later gate and must preserve the existing Media3 single-feed path.
+
+## 2H. Authorized playback boundary audit (2026-10-09)
+
+### Observed current source boundary
+
+The authorized path is currently:
+
+1. `F1TvApiClient` obtains the configured play API version, makes the authenticated CONTENT/PLAY request, and parses the resolved manifest URL, license URL, DRM fields, and play token.
+2. `AuthorizedF1TvGateway` resolves the selected stream and carries the playback fields into the app's `StreamSource`.
+3. `Media3DecoderManager.buildMediaItem` supplies the manifest URI and Widevine license URI to Media3. `buildMediaSourceFactory` supplies the existing F1 request headers to `DefaultHttpDataSource.Factory`; the HLS playlist adapter wraps that authorized factory, and the license callback receives the existing DRM request properties and play token cookie where present.
+4. Media3's `DefaultMediaSourceFactory` and its HLS/DASH implementations own manifest parsing, segment request scheduling, extractor lifecycle, DRM session integration, and renderer input for the supported single-feed path.
+
+The existing authenticated path must be preserved as-is while researching any replacement. The current source contains provider tokens and request headers at the API/gateway/player boundary; these must never be copied into diagnostics, fixture files, or a new unauthenticated HTTP client.
+
+### Bounded reader integration finding
+
+`BoundedCmafSegmentReader` is currently a `DataReader`, not a Media3 `DataSource` or `DataSource.Factory`. It requires a declared segment length before reading. The current player source factory wraps an authorized HTTP data-source factory, but the audit has not established that the HLS/DASH segment requests consistently supply a known `DataSpec.length` before opening. In Media3, the upstream `DataSource.open(DataSpec)` return value can be unknown for some resources, so treating every opened resource as a known-length CMAF segment would be incorrect. Applying this reader indiscriminately would also risk wrapping playlists, keys, initialization data, or other resources rather than only media segments.
+
+**Decision: do not wire this reader into the production factory yet.** A safe integration requires a segment-specific public Media3 extension point that can distinguish media segments from manifests/keys and preserve the exact authorized upstream factory, redirect behavior, headers, cookies, and transfer listeners. If that public boundary cannot provide a reliable declared length, the implementation must use a different explicitly bounded adapter design with defined unknown-length semantics; it must not mislabel natural EOF as a truncation or break authorized requests. The existing single-feed path remains unchanged.
+
+### Multi-feed architecture finding
+
+`UnifiedMultiviewEngine.updateViewport` currently blocks more than one visible video feed before loading players, clears decoder leases, and reports that protected multiview is not enabled. This is the intended fail-closed behavior.
+
+Separately, `Media3DecoderManager` still contains a map of per-feed `ExoPlayer` instances and its player factory can create one per feed. That manager is the existing single-feed backend, not evidence of an app-owned shared decoder pipeline. The current visible-feed block prevents this path from being used as a production multi-feed fallback. Future integration must keep that block in place until the new engine is proven and must not describe multiple Media3 players as one physical player.
+
+### Next implementation gate
+
+1. Inspect the pinned Media3 1.11.1 public HLS/DASH source and extractor extension points to determine whether media-segment requests can be identified without replacing Media3's authorized manifest/license handling.
+2. Add a focused test for the selected adapter using a fake authorized upstream source, covering known-length reads, unknown-length behavior, early EOF, boundary enforcement, and pass-through for non-segment resources.
+3. Only integrate after the adapter's resource classification and length semantics are demonstrated by tests. Keep the current authorized single-feed route unchanged and multifeed visibly blocked.
+4. Continue the clear synthetic decoder/compositor runtime proof as a separate track. Neither a bounded byte reader nor successful fragmented-MP4 extraction proves Widevine sample handling or protected multi-feed playback.
+
+No production source code was changed by this audit. These findings are a source-level audit, not a runtime validation.
+
