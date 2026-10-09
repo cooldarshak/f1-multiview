@@ -1,15 +1,13 @@
 # F1 MultiView: Own Multiview Engine Plan
 
 **Target branch:** `feature/tiledmedia-multiview-rearchitecture`  
-**Direction:** Build an original multiview engine. Do not make Tiledmedia/TME SDK, metadata, or proprietary service a runtime dependency.
+**Direction:** Build an original multiview engine from open standards and open-source components. Tiledmedia/ClearVR is explicitly out of scope: no SDK, no proprietary metadata dependency, no proprietary implementation study, and no Tiledmedia-derived design blueprint.
 
 ## 1. Findings that change the plan
 
-### Official F1 TV APK (static inspection of the user-provided APK)
+### Explicit exclusion: Tiledmedia/ClearVR
 
-The APK contains Tiledmedia/ClearVR components, including `assets/tm-main-release.js`, `assets/tiledmedia.css`, `assets/tmplayer-ui.html`, and native ClearVR renderer libraries. The bundled SDK exposes concepts for content items, feeds, tracks, tiles, rendering state, and hardware decoder limitations. This is evidence that the official app integrates a specialised Tiledmedia stack; it is not evidence that its proprietary implementation can be reproduced merely by looking for a field in `CONTENT/PLAY`.
-
-Use this inspection only to infer externally observable behavior and architectural responsibilities. Do not copy proprietary implementation code or depend on private SDK symbols.
+Do not inspect, reuse, reverse-engineer, or design around the Tiledmedia/ClearVR assets in the official APK. Do not search for its private metadata, attempt to reproduce its internal SDK contracts, or make TME discovery a project milestone. The official APK is not an input to our architecture work. Use public Android APIs, open standards, and independently maintained open-source projects instead.
 
 ### Existing branch implementation
 
@@ -61,7 +59,7 @@ GPAC gives us two distinct candidates: `hevcmerge` for genuinely compatible spat
 
 ### Research conclusion
 
-I did not find a ready-made, production-quality, open-source Android library that is a drop-in equivalent to Tiledmedia's complete multiview stack. There are reusable building blocks for sync, media demux/decode, and composition. We should build our own engine around those blocks rather than integrate TME.
+We are not looking for a drop-in equivalent to Tiledmedia or attempting to clone its internals. We are building the app's required multiview capabilities from public Android media APIs, open standards, and reusable open-source components. The engine must be independently specified and tested.
 
 ## 3. Target architecture
 
@@ -87,14 +85,12 @@ Proposed components:
 
 **Path 3 — custom coordinated decode/composite:** use one app-owned engine to coordinate per-feed demux/decode pipelines, SurfaceTexture outputs, a shared timeline, and one OpenGL ES compositor. This can emulate the multiview behavior and layout, but may use multiple hardware decoder contexts and has device-dependent limits. It is not the same compression/decoder optimization as a server-prepared tiled stream.
 
-Public Tiledmedia documentation describes multiview transcoding/packaging in its cloud or a customer's transcoding pipeline. Consequently, we can reproduce the user-visible multiview behavior on-device, but we cannot promise the same bandwidth and single-decoder efficiency from arbitrary independent feeds without a compatible pre-tiled source or an equivalent upstream packaging stage.
-
-Run a format/capability probe and a two-feed prototype before choosing the primary path. Do not silently fall back from one path to another.
+An important engineering constraint remains independent of any vendor: arbitrary independent camera feeds cannot be assumed to combine into one encoded stream or one decoder input. We must establish the source formats and then choose a technically valid open implementation. Run a format/capability probe and a two-feed prototype before choosing the primary path. Do not silently fall back from one path to another.
 
 ## 4. Phased execution plan
 
 ### Phase 0 — freeze the correct direction
-- Stop treating TME discovery as the acceptance criterion.
+- Remove TME discovery and all Tiledmedia/ClearVR inspection from the acceptance criteria and implementation plan.
 - Keep current work on `feature/tiledmedia-multiview-rearchitecture`.
 - Preserve resizing, TV remote controls, logging, and existing UI.
 - Do not trigger a build without explicit approval.
