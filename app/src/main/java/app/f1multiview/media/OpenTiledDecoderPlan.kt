@@ -1,10 +1,6 @@
 package app.f1multiview.media
 
 import app.f1multiview.core.playback.TiledMultiviewSession
-import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.sqrt
-
 /**
  * Open-source physical/logical playback plan.
  *
@@ -59,84 +55,32 @@ data class OpenTiledDecoderPlan(
             val authoritativePlacement = session.feeds.all {
                 it.tileRow != null && it.tileColumn != null
             }
-            if (authoritativePlacement) {
-                val columns = session.tileCountHorizontal
-                    ?: (session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 })
-                val rows = session.tileCountVertical
-                    ?: (session.feeds.maxOf { requireNotNull(it.tileRow) + 1 })
-                // Explicit tile geometry is only valid for a precomposed mosaic when
-                // the actual decoded source dimensions match the whole tile canvas.
-                // URL equality alone must not turn a normal single feed into a mosaic.
-                if (sourceVideoWidth > 0 && sourceVideoHeight > 0 &&
-                    (sourceVideoWidth != columns * tileWidth || sourceVideoHeight != rows * tileHeight)
-                ) {
-                    return null
-                }
-                val bindings = session.feeds.mapIndexed { index, feed ->
-                    val feedId = session.feedIds[index]
+            if (!authoritativePlacement) return null
+
+            val columns = session.tileCountHorizontal
+                ?: (session.feeds.maxOf { requireNotNull(it.tileColumn) + 1 })
+            val rows = session.tileCountVertical
+                ?: (session.feeds.maxOf { requireNotNull(it.tileRow) + 1 })
+            if (columns <= 0 || rows <= 0) return null
+            if (session.feeds.any { feed ->
                     val column = requireNotNull(feed.tileColumn)
                     val row = requireNotNull(feed.tileRow)
-                    OpenTiledFeedBinding(
-                        feedId = feedId,
-                        logicalIndex = index,
-                        physicalDecoderId = "tme-native-decoder",
-                        sourceRect = OpenTiledSourceRect(
-                            left = column.toFloat() / columns,
-                            top = row.toFloat() / rows,
-                            right = (column + 1).toFloat() / columns,
-                            bottom = (row + 1).toFloat() / rows
-                        )
-                    )
+                    column !in 0 until columns || row !in 0 until rows
                 }
-                return OpenTiledDecoderPlan(
-                    physicalDecoderIds = listOf(
-                        if (urls.size == 1) "tme-mosaic-decoder" else "tme-native-decoder"
-                    ),
-                    bindings = bindings,
-                    tileColumns = columns,
-                    tileRows = rows,
-                    tileWidthPx = tileWidth,
-                    tileHeightPx = tileHeight
-                )
+            ) return null
+
+            // Explicit tile geometry is only valid for a precomposed mosaic when
+            // the actual decoded source dimensions match the whole tile canvas.
+            // URL equality or feed count alone must not invent a grid.
+            if (sourceVideoWidth > 0 && sourceVideoHeight > 0 &&
+                (sourceVideoWidth != columns * tileWidth || sourceVideoHeight != rows * tileHeight)
+            ) {
+                return null
             }
-
-            if (urls.size != 1) return null
-
-            val feedCount = session.feeds.size
-            val sourceAspect = if (sourceVideoWidth > 0 && sourceVideoHeight > 0) {
-                sourceVideoWidth.toDouble() / sourceVideoHeight.toDouble()
-            } else {
-                tileWidth.toDouble() / tileHeight.toDouble()
-            }
-
-            // The feed count is authoritative for grid topology. Source dimensions
-            // are used only to choose the closest valid factor pair. We never allow
-            // a 24-feed session to be forced into a 4x4 grid just because the source
-            // dimensions happen to divide into four nominal tiles.
-            val factors = (1..ceil(sqrt(feedCount.toDouble())).toInt())
-                .filter { feedCount % it == 0 }
-                .flatMap { rowsCandidate ->
-                    val columnsCandidate = feedCount / rowsCandidate
-                    listOf(
-                        columnsCandidate to rowsCandidate,
-                        rowsCandidate to columnsCandidate
-                    )
-                }
-                .distinct()
-
-            val (columns, rows) = factors.minByOrNull { (candidateColumns, candidateRows) ->
-                abs(
-                    (candidateColumns * tileWidth).toDouble() /
-                        (candidateRows * tileHeight).toDouble() - sourceAspect
-                )
-            } ?: (ceil(sqrt(feedCount.toDouble())).toInt().coerceAtLeast(1) to
-                ceil(feedCount.toDouble() / ceil(sqrt(feedCount.toDouble())).toInt()).toInt())
-
-
             val bindings = session.feeds.mapIndexed { index, feed ->
                 val feedId = session.feedIds[index]
-                val column = index % columns
-                val row = index / columns
+                val column = requireNotNull(feed.tileColumn)
+                val row = requireNotNull(feed.tileRow)
                 OpenTiledFeedBinding(
                     feedId = feedId,
                     logicalIndex = index,
