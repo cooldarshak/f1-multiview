@@ -10,7 +10,7 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /**
- * Creates short, clear H.264 test clips locally for the isolated multiview prototype.
+ * Creates two short, distinct clear H.264 test clips locally for the isolated multiview prototype.
  *
  * This is deliberately independent of F1 authentication, network access, and DRM. It writes
  * ordinary MP4 fixtures into app cache so the prototype can exercise real MediaExtractor and
@@ -31,11 +31,13 @@ internal object SyntheticMultiviewClipFactory {
             if (!exists() && !mkdirs()) error("Unable to create synthetic clip directory")
         }
         val files = listOf(
-            File(directory, "synthetic-left-v3.mp4"),
-            File(directory, "synthetic-center-v3.mp4"),
-            File(directory, "synthetic-right-v3.mp4")
+            File(directory, "synthetic-left-v4.mp4"),
+            File(directory, "synthetic-right-v4.mp4")
         )
-        files.forEachIndexed { variant, file -> if (!isUsable(file)) encodeClip(file, variant) }
+        files.forEachIndexed { index, file ->
+            val variant = if (index == 0) 0 else 2
+            if (!isUsable(file)) encodeClip(file, variant)
+        }
         check(files.all(::isUsable)) { "Synthetic clip generation produced an invalid file" }
         return ClipSet(files)
     }
