@@ -17,7 +17,7 @@ import java.nio.ByteBuffer
  * MediaCodec decoder instances rather than animating placeholder textures.
  */
 internal object SyntheticMultiviewClipFactory {
-    data class ClipPair(val left: File, val right: File)
+    data class ClipSet(val files: List<File>)
 
     private const val WIDTH = 320
     private const val HEIGHT = 180
@@ -30,12 +30,14 @@ internal object SyntheticMultiviewClipFactory {
         val directory = File(context.cacheDir, "synthetic-multiview").apply {
             if (!exists() && !mkdirs()) error("Unable to create synthetic clip directory")
         }
-        val left = File(directory, "synthetic-left-v2-color.mp4")
-        val right = File(directory, "synthetic-right-v2-color.mp4")
-        if (!isUsable(left)) encodeClip(left, 0)
-        if (!isUsable(right)) encodeClip(right, 1)
-        check(isUsable(left) && isUsable(right)) { "Synthetic clip generation produced an invalid file" }
-        return ClipPair(left, right)
+        val files = listOf(
+            File(directory, "synthetic-left-v3.mp4"),
+            File(directory, "synthetic-center-v3.mp4"),
+            File(directory, "synthetic-right-v3.mp4")
+        )
+        files.forEachIndexed { variant, file -> if (!isUsable(file)) encodeClip(file, variant) }
+        check(files.all(::isUsable)) { "Synthetic clip generation produced an invalid file" }
+        return ClipSet(files)
     }
 
     private fun isUsable(file: File): Boolean = file.isFile && file.length() > 1_024L
@@ -155,7 +157,11 @@ internal object SyntheticMultiviewClipFactory {
     private fun fillImage(image: android.media.Image, frame: Int, variant: Int): Int {
         val planes = image.planes
         require(planes.size == 3) { "Expected a three-plane YUV420 encoder input" }
-        val yBase = if (variant == 0) 64 else 160
+        val yBase = when (variant) {
+            0 -> 96
+            1 -> 150
+            else -> 70
+        }
         val movingBandStart = (frame * 3) % (HEIGHT - 24)
         val markerStart = (frame * 5 + variant * 37) % (WIDTH - 48)
         val yPlane = planes[0]
@@ -175,8 +181,11 @@ internal object SyntheticMultiviewClipFactory {
         // Keep the feeds visually unmistakable in the compositor: left is warm/red,
         // right is cool/blue. Neutral chroma made a successful render look like a blank
         // grey screen and made it difficult to spot a swapped or missing viewport.
-        val u = if (variant == 0) 90 else 240
-        val v = if (variant == 0) 240 else 110
+        val (u, v) = when (variant) {
+            0 -> 90 to 240
+            1 -> 54 to 34
+            else -> 240 to 110
+        }
         fillChromaPlane(planes[1], WIDTH / 2, HEIGHT / 2, u)
         fillChromaPlane(planes[2], WIDTH / 2, HEIGHT / 2, v)
         return imageDataSize()
