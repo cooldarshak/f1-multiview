@@ -140,7 +140,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             sessionType=info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"},
             status=info.optString("Status").ifBlank{_status.value},
             circuitKey=circuit.optInt("Key",0).takeIf{it>0},
-            year=year
+            year=year,
+            circuitName=circuit.optString("Name").ifBlank { circuit.optString("ShortName") }
         )
     }
 
