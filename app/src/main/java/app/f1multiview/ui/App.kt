@@ -1631,7 +1631,24 @@ private fun CanonicalMultiviewLayout(
             if (index < layoutFeeds.size) place("feed:" + layoutFeeds[index].id, x, y, childWidth, childHeight)
         }
 
-        when (layoutFeeds.size) {
+        val referenceDashLayout = layoutFeeds.size == 3 &&
+            layoutFeeds[1].kind == StreamKind.F1_DASH_DATA &&
+            layoutFeeds[2].kind == StreamKind.TRACK_MAP
+        if (referenceDashLayout) {
+            // Video and circuit map stack on the left; live timing fills the right rail.
+            val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
+            val leftWidth = (availableWidth * 0.665f).toInt().coerceIn(0, availableWidth)
+            val rightWidth = availableWidth - leftWidth
+            val rightX = leftWidth + gapPx + dividerPx + gapPx
+            val availableHeight = (height - 2 * gapPx - dividerPx).coerceAtLeast(0)
+            val videoHeight = (availableHeight * 0.665f).toInt().coerceIn(0, availableHeight)
+            val mapHeight = availableHeight - videoHeight
+            placeVideo(0, 0, 0, leftWidth, videoHeight)
+            place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
+            placeVideo(1, rightX, 0, rightWidth, height)
+            place("handle-right-1", 0, videoHeight + gapPx, leftWidth, dividerPx)
+            placeVideo(2, 0, videoHeight + gapPx + dividerPx + gapPx, leftWidth, mapHeight)
+        } else when (layoutFeeds.size) {
             0 -> place("empty", 0, 0, width, height)
             1 -> placeVideo(0, 0, 0, width, height)
             2 -> {
