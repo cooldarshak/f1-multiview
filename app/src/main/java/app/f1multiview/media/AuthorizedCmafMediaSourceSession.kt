@@ -303,6 +303,8 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
 
     companion object {
         private const val LIVE_BACK_BUFFER_US = 2_000_000L
+        private const val MIN_PLAYBACK_SPEED = 0.25f
+        private const val MAX_PLAYBACK_SPEED = 2.0f
 
         fun open(
             stream: StreamSource,
