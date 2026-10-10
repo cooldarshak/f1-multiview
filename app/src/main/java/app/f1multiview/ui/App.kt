@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import app.f1multiview.BuildConfig
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +69,8 @@ import app.f1multiview.media.EnginePlayerHandle
 import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.DebugPresentationSettings
+import app.f1multiview.media.AuthorizedCmafProbe
+import kotlinx.coroutines.launch
 import app.f1multiview.media.AppLogger
 import app.f1multiview.BuildConfig
 import app.f1multiview.model.*
@@ -2110,6 +2113,9 @@ private fun FullscreenFeedControls(
     var position by remember(stream.id) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0L)) }
     var duration by remember(stream.id) { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
     var trackVersion by remember(stream.id) { mutableIntStateOf(0) }
+    var cmafProbeRunning by remember(stream.id) { mutableStateOf(false) }
+    var cmafProbeStatus by remember(stream.id) { mutableStateOf<String?>(null) }
+    val cmafProbeScope = rememberCoroutineScope()
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { playing = value }
@@ -2171,6 +2177,38 @@ private fun FullscreenFeedControls(
                                     onMenu(null)
                                 }
                                 Control(false, "RETRY") { player.prepare(); player.play(); onMenu(null) }
+                                if (BuildConfig.DEBUG) {
+                                    Control(false, if (cmafProbeRunning) "PROBING…" else "CMAF PROBE") {
+                                        if (!cmafProbeRunning) {
+                                            cmafProbeRunning = true
+                                            cmafProbeStatus = "Fetching authorized DASH/CMAF and checking Widevine keys…"
+                                            cmafProbeScope.launch {
+                                                try {
+                                                    val result = AuthorizedCmafProbe.run(stream)
+                                                    cmafProbeStatus = if (result.widevineKeysReady) {
+                                                        "PASS · ${result.width}×${result.height} · ${result.trackCount} tracks · Widevine keys ready; decode/render NOT tested"
+                                                    } else {
+                                                        "INCOMPLETE · DRM states ${result.drmSessionStates.values.joinToString()} · decode/render NOT tested"
+                                                    }
+                                                } catch (error: Exception) {
+                                                    cmafProbeStatus = "FAILED · ${error.javaClass.simpleName}; decode/render NOT tested"
+                                                } finally {
+                                                    cmafProbeRunning = false
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (BuildConfig.DEBUG && cmafProbeStatus != null) {
+                                Text(
+                                    "CMAF PROBE: " + cmafProbeStatus,
+                                    color = if (cmafProbeStatus!!.startsWith("PASS")) Color(0xFF63D69A) else Muted,
+                                    fontSize = 8.sp,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
                             }
                         }
                         "speed" -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
