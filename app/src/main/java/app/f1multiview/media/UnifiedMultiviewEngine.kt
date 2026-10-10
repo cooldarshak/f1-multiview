@@ -70,6 +70,10 @@ class UnifiedMultiviewEngine(context: Context) {
         decoderManager.retain(ids)
     }
 
+    fun isProtectedFeedSelected(id: String): Boolean = multiFeedBlocked && id in protectedRuntimes
+    fun isProtectedFeedPlaying(id: String): Boolean = protectedRuntimes[id]?.isPlaying == true
+    fun protectedFeedStatus(id: String): String? = protectedRuntimeStatus[id]
+
     fun hasDecoder(id: String): Boolean = decoderManager.hasDecoder(id)
     fun activeDecoderIds(): Set<String> = decoderManager.activeDecoderIds()
     fun availableDecoderSlots(): Int = decoderManager.availableDecoderSlots()

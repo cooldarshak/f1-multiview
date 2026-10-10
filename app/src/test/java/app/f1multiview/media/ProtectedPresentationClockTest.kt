@@ -36,6 +36,43 @@ class ProtectedPresentationClockTest {
         assertFalse(clock.isReady)
     }
 
+    @Test
+    fun smallFollowerDriftUsesFivePercentPhaseCorrection() {
+        val clock = ProtectedPresentationClock()
+        clock.setMaster("main")
+        clock.establish(1_000_000L)
+        val baseNs = clock.presentationTimeNs("main", 1_000_000L)
+
+        val observation = clock.observeRenderedFrame(
+            feedId = "follower",
+            presentationTimeUs = 1_100_000L,
+            renderTimeNs = baseNs + 200_000_000L,
+            isLive = false
+        )
+
+        assertEquals(-100_000L, observation.driftUs)
+        assertEquals(5_000L, observation.correctionUs)
+        assertFalse(observation.hardResync)
+    }
+
+    @Test
+    fun largeLiveDriftRequestsHardResynchronization() {
+        val clock = ProtectedPresentationClock()
+        clock.setMaster("main")
+        clock.establish(1_000_000L)
+        val baseNs = clock.presentationTimeNs("main", 1_000_000L)
+
+        val observation = clock.observeRenderedFrame(
+            feedId = "follower",
+            presentationTimeUs = 1_100_000L,
+            renderTimeNs = baseNs + 2_000_000_000L,
+            isLive = true
+        )
+
+        assertTrue(observation.hardResync)
+        assertEquals(0L, observation.correctionUs)
+    }
+
     @Test(expected = IllegalStateException::class)
     fun cannotEstablishClockBeforeChoosingMaster() {
         ProtectedPresentationClock().establish(0L)

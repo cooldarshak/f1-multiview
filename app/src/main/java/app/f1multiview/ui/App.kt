@@ -1852,6 +1852,11 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
     val displayHdr = displaySupportsHdr(context)
     var playing by remember(stream.id) { mutableStateOf(player.isPlaying) }
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
+    val protectedPipelinePulse by engine.multiviewStatus.collectAsState()
+    @Suppress("UNUSED_VARIABLE") val protectedPipelineRecompose = protectedPipelinePulse
+    val ownProtectedSelected = engine.isProtectedFeedSelected(stream.id)
+    val ownProtectedPlaying = engine.isProtectedFeedPlaying(stream.id)
+    val ownProtectedStatus = engine.protectedFeedStatus(stream.id)
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -1903,9 +1908,30 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
                 }
                 Text(stream.driver?.takeIf { it.isNotBlank() } ?: stream.title, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
-                Text(if (engine.isMuted(stream.id)) "MUTED" else "AUDIO ON", color = if (engine.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A), fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        ownProtectedSelected -> "AUDIO N/A"
+                        engine.isMuted(stream.id) -> "MUTED"
+                        else -> "AUDIO ON"
+                    },
+                    color = if (ownProtectedSelected || engine.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A),
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.width(6.dp))
-                Text(when { error != null -> "ERROR"; !ready -> "LOADING"; playing -> "PLAYING"; else -> "PAUSED" }, color = if (error != null) Color(0xFFFF7777) else Color.White.copy(alpha = .6f), fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        error != null -> "ERROR"
+                        ownProtectedPlaying -> "PLAYING"
+                        ownProtectedSelected -> ownProtectedStatus?.substringBefore(":") ?: "PREPARING"
+                        !ready -> "LOADING"
+                        playing -> "PLAYING"
+                        else -> "PAUSED"
+                    },
+                    color = if (error != null) Color(0xFFFF7777) else Color.White.copy(alpha = .6f),
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.width(7.dp))
 
             }
