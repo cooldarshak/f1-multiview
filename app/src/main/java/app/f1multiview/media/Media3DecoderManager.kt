@@ -11,7 +11,6 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -226,19 +225,7 @@ class Media3DecoderManager(context: Context) {
 
     private fun buildMediaSourceFactory(stream: StreamSource): DefaultMediaSourceFactory {
         val url = stream.url ?: error("Stream URL missing for ${stream.id}")
-        val baseDataSource = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36")
-            .setDefaultRequestProperties(stream.requestHeaders)
-        // Media-segment budgets require explicit metadata from the pinned Media3 HLS/DASH
-        // chunk constructors. Unmarked requests (playlists/manifests, init/index, keys) pass
-        // through unchanged; no URL or request-order guessing is used here.
-        val roleAwareDataSource = MediaSegmentRoleDataSource.Factory(baseDataSource)
-        val dataSource = if (url.contains(".m3u8", true)) {
-            F1CmafHlsDrmFixingDataSource.Factory(roleAwareDataSource)
-        } else {
-            roleAwareDataSource
-        }
+        val dataSource = AuthorizedStreamDataSourceFactory.create(stream)
         val drmManager = AuthorizedWidevineDrmSessionFactory.createSessionManager(stream)
         return if (drmManager != null) {
             DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
