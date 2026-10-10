@@ -93,26 +93,50 @@ class ReplayTimingClient {
     fun sync():ReplaySyncData=syncData
     private fun parse(text:String):List<ReplayTimingSnapshot> {
         val out=ArrayList<ReplayTimingSnapshot>()
-        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+        val mergedLines=JSONObject()
+        BufferedReader(StringReader(text.removePrefix("\\uFEFF"))).forEachLine { line ->
             if(line.length<12)return@forEachLine
             val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
             val json=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
-            val lines=json.optJSONObject("Lines") ?: json.optJSONObject("lines") ?: return@forEachLine
-            val rows=ArrayList<TimingRow>(); val keys=lines.keys()
+            val delta=json.optJSONObject("Lines") ?: json.optJSONObject("lines") ?: return@forEachLine
+            // TimingData.jsonStream records after the first snapshot are sparse deltas. Merge
+            // recursively before deriving rows; otherwise drivers disappear or retain stale gaps
+            // during replay seeks.
+            mergeObject(mergedLines,delta)
+            val rows=ArrayList<TimingRow>()
+            val keys=mergedLines.keys()
             while(keys.hasNext()){
-                val d=lines.optJSONObject(keys.next()) ?: continue
+                val d=mergedLines.optJSONObject(keys.next()) ?: continue
                 val pos=d.optInt("Position",d.optInt("PositionNumber",0))
                 val driver=d.optString("FullName").ifBlank{d.optString("Tla").ifBlank{d.optString("Driver")}}
                 if(pos<=0 || driver.isBlank())continue
                 val gap=d.optString("GapToLeader").ifBlank{d.optString("TimeDiffToFastest")}.ifBlank{"-"}
-                val lap=d.optString("LastLapTime").ifBlank{d.optString("LastLap")}.ifBlank{"-"}
-                val tyre=d.optJSONObject("BestLapTime")?.optString("Compound").orEmpty().ifBlank{d.optString("Compound").ifBlank{"-"}}
+                val lastObj=d.optJSONObject("LastLapTime")
+                val lap=lastObj?.optString("Value").orEmpty().ifBlank{d.optString("LastLapTime").takeIf{!it.startsWith("{")} ?: d.optString("LastLap")}.ifBlank{"-"}
+                val bestObj=d.optJSONObject("BestLapTime")
+                val tyre=bestObj?.optString("Compound").orEmpty().ifBlank{d.optString("Compound")}.ifBlank{"-"}
                 rows += TimingRow(pos,driver,gap,lap,tyre,d.optInt("NumberOfPitStops",0))
             }
             if(rows.isNotEmpty())out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
         }
         return out
     }
+
+    private fun mergeObject(target:JSONObject,delta:JSONObject) {
+        val keys=delta.keys()
+        while(keys.hasNext()) {
+            val key=keys.next()
+            val incoming=delta.opt(key)
+            val existing=target.opt(key)
+            if(incoming is JSONObject) {
+                val base=if(existing is JSONObject) existing else JSONObject().also{target.put(key,it)}
+                mergeObject(base,incoming)
+            } else {
+                target.put(key,incoming)
+            }
+        }
+    }
+
     internal fun parsePositions(text:String):List<ReplayPositionSnapshot> {
         val out=ArrayList<ReplayPositionSnapshot>()
         val trails=mutableMapOf<String,MutableList<TrackPoint>>()
