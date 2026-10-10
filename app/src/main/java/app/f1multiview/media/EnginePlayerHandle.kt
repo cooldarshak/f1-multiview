@@ -19,9 +19,9 @@ class EnginePlayerHandle internal constructor(
     private val player: ExoPlayer?
         get() = engine.backendPlayerOrNull(id)
 
-    val currentPosition: Long get() = player?.currentPosition ?: 0L
+    val currentPosition: Long get() = engine.currentPositionMs(id, player?.currentPosition ?: 0L)
     val duration: Long get() = player?.duration ?: C.TIME_UNSET
-    val isPlaying: Boolean get() = player?.isPlaying == true
+    val isPlaying: Boolean get() = engine.isFeedPlaying(id, player?.isPlaying == true)
     val playbackState: Int get() = player?.playbackState ?: Player.STATE_IDLE
     val currentMediaItem: MediaItem? get() = player?.currentMediaItem
     val currentTracks: Tracks get() = player?.currentTracks ?: Tracks.EMPTY

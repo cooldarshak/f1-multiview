@@ -39,6 +39,12 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
+    internal fun currentPositionMs(id: String, fallback: Long): Long =
+        if (multiFeedBlocked && id in protectedRuntimes) protectedPresentationClock.positionUsFor(id) / 1_000L else fallback
+
+    internal fun isFeedPlaying(id: String, fallback: Boolean): Boolean =
+        if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.isPlaying == true else fallback
+
     fun multiviewDiagnostics(): Map<String, String> =
         decoderResourceDiagnostics() + surfaceManager.secureSurfaceDiagnostics() + mapOf("multiviewStatus" to _multiviewStatus.value)
 

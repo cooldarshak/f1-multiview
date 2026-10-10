@@ -60,6 +60,8 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private var videoDrmSession: DrmSession? = null
     private var pendingError: IOException? = null
     private var periodPositionUs = 0L
+    private var defaultPositionUs = 0L
+    private var playbackSpeed = 1f
 
     val state: State get() = stateValue
     val currentVideoFormat: Format? get() = videoFormat
@@ -91,6 +93,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
             } else {
                 0L
             }
+            defaultPositionUs = periodPositionUs
             val newPeriod = source.createPeriod(
                 MediaSource.MediaPeriodId(requireNotNull(periodInfo.uid)),
                 allocator,
@@ -150,6 +153,14 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         return periodPositionUs
     }
 
+    fun seekToDefaultPosition(): Long = seekToUs(defaultPositionUs)
+
+    fun setPlaybackSpeed(speed: Float) {
+        checkThread()
+        require(speed in MIN_PLAYBACK_SPEED..MAX_PLAYBACK_SPEED) { "Playback speed is outside the supported range" }
+        playbackSpeed = speed
+    }
+
     fun pump(positionUs: Long = periodPositionUs): ReadResult {
         checkThread()
         pendingError?.let { throw it }
@@ -159,7 +170,12 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         periodPositionUs = positionUs.coerceAtLeast(0L)
         // Retain a bounded rolling window behind the playback clock for live sessions.
         activePeriod.discardBuffer((periodPositionUs - LIVE_BACK_BUFFER_US).coerceAtLeast(0L), /* toKeyframe= */ true)
-        activePeriod.continueLoading(LoadingInfo.Builder().setPlaybackPositionUs(periodPositionUs).build())
+        activePeriod.continueLoading(
+            LoadingInfo.Builder()
+                .setPlaybackPositionUs(periodPositionUs)
+                .setPlaybackSpeed(playbackSpeed)
+                .build()
+        )
         activeStream.maybeThrowError()
         sampleBuffer.clear()
         val holder = androidx.media3.exoplayer.FormatHolder()

@@ -74,6 +74,38 @@ internal class ProtectedCmafFeedRuntime(
         scheduleFrame()
     }
 
+    fun seekTo(positionMs: Long) {
+        checkThread()
+        require(positionMs >= 0L)
+        val activeSource = source ?: return
+        activeSource.seekToUs(positionMs * 1_000L)
+        decoder?.close()
+        decoder = null
+        pendingSample = null
+        eosQueued = false
+        stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+        publish("SEEKING: ${positionMs}ms")
+        scheduleFrame()
+    }
+
+    fun seekToDefaultPosition() {
+        checkThread()
+        val activeSource = source ?: return
+        activeSource.seekToDefaultPosition()
+        decoder?.close()
+        decoder = null
+        pendingSample = null
+        eosQueued = false
+        stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+        publish("SEEKING: default position")
+        scheduleFrame()
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        checkThread()
+        source?.setPlaybackSpeed(speed)
+    }
+
     fun pause() {
         checkThread()
         if (stateValue == State.FAILED || stateValue == State.CLOSED) return
@@ -297,6 +329,29 @@ internal class ProtectedPresentationClock {
 
     data class DriftObservation(val driftUs: Long, val correctionUs: Long, val hardResync: Boolean)
 
+    fun resetEpoch() {
+        basePresentationTimeUs = null
+        baseElapsedRealtimeNs = null
+    }
+
+    fun seekToPositionUs(positionUs: Long) {
+        require(positionUs >= 0L)
+        basePresentationTimeUs = positionUs
+        baseElapsedRealtimeNs = SystemClock.elapsedRealtimeNanos() + STARTUP_LEAD_NS
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        require(speed in MIN_PLAYBACK_SPEED..MAX_PLAYBACK_SPEED) { "Playback speed is outside the supported range" }
+        if (isReady) {
+            val basePts = requireNotNull(basePresentationTimeUs)
+            val baseNs = requireNotNull(baseElapsedRealtimeNs)
+            val elapsedUs = ((SystemClock.elapsedRealtimeNanos() - baseNs) / 1_000.0 * playbackSpeed).toLong()
+            basePresentationTimeUs = (basePts + elapsedUs).coerceAtLeast(0L)
+            baseElapsedRealtimeNs = SystemClock.elapsedRealtimeNanos() + STARTUP_LEAD_NS
+        }
+        playbackSpeed = speed
+    }
+
     fun establish(masterPresentationTimeUs: Long) {
         if (isReady) return
         check(masterFeedId.isNotBlank()) { "Master feed must be selected before establishing the clock" }
@@ -333,7 +388,7 @@ internal class ProtectedPresentationClock {
         val basePts = basePresentationTimeUs ?: throw IOException("Main-feed presentation clock is not ready")
         val baseNs = baseElapsedRealtimeNs ?: throw IOException("Main-feed presentation clock is not ready")
         val offsetUs = offsetsUs[feedId] ?: 0L
-        val targetNs = baseNs + (presentationTimeUs - basePts - offsetUs) * 1_000L
+        val targetNs = baseNs + ((presentationTimeUs - basePts - offsetUs) * 1_000.0 / playbackSpeed).toLong()
         return maxOf(targetNs, SystemClock.elapsedRealtimeNanos() + MIN_PRESENTATION_LEAD_NS)
     }
 
@@ -341,7 +396,7 @@ internal class ProtectedPresentationClock {
     fun positionUsFor(feedId: String): Long {
         val basePts = basePresentationTimeUs ?: return 0L
         val baseNs = baseElapsedRealtimeNs ?: return 0L
-        val elapsedUs = (SystemClock.elapsedRealtimeNanos() - baseNs) / 1_000L
+        val elapsedUs = ((SystemClock.elapsedRealtimeNanos() - baseNs) / 1_000.0 * playbackSpeed).toLong()
         return (basePts + elapsedUs + (offsetsUs[feedId] ?: 0L)).coerceAtLeast(0L)
     }
 
@@ -352,5 +407,7 @@ internal class ProtectedPresentationClock {
         const val VOD_HARD_SEEK_THRESHOLD_US = 500_000L
         const val LIVE_HARD_SEEK_THRESHOLD_US = 1_500_000L
         const val PLAYBACK_RATE_CORRECTION = 0.05
+        const val MIN_PLAYBACK_SPEED = 0.25f
+        const val MAX_PLAYBACK_SPEED = 2.0f
     }
 }
