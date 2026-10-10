@@ -327,23 +327,42 @@ internal class ProtectedCmafFeedRuntime(
                 }
             }
             activeDecoder.drainOutput()
-        } else if (stateValue != State.PAUSED) {
-            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
-            publish("WAITING: Widevine keys, main-feed clock, or secure surface")
         }
     }
 
     private fun ensureSecureDecoder(activeSource: AuthorizedCmafMediaSourceSession) {
-        if (decoder != null || !clock.isReady) return
-        val format = activeSource.currentVideoFormat ?: return
-        val drmSession = activeSource.currentVideoDrmSession ?: return
+        if (decoder != null) return
+        if (!clock.isReady) {
+            stateValue = State.PREPARING
+            publish("WAITING_FOR_MASTER_CLOCK: awaiting the selected main feed's first sample")
+            return
+        }
+        val format = activeSource.currentVideoFormat ?: run {
+            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+            publish("WAITING_FOR_VIDEO_FORMAT: authorized source has not emitted a video format")
+            return
+        }
+        val drmSession = activeSource.currentVideoDrmSession ?: run {
+            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+            publish("WAITING_FOR_WIDEVINE_SESSION: Media3 has not attached a DRM session to the video track")
+            return
+        }
         if (drmSession.state == DrmSession.STATE_ERROR) {
             throw IOException("Widevine session entered an error state", drmSession.error)
         }
-        if (drmSession.state != DrmSession.STATE_OPENED_WITH_KEYS) return
+        if (drmSession.state != DrmSession.STATE_OPENED_WITH_KEYS) {
+            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+            publish("WAITING_FOR_WIDEVINE_KEYS: drmSessionState=" + drmSession.state)
+            return
+        }
         var lease = surfaceLease
         if (lease == null || !surfaceManager.isCurrentProtectedSurfaceLease(lease)) {
-            lease = surfaceManager.claimProtectedSurfaceForOwnDecoder(stream.id) ?: return
+            lease = surfaceManager.claimProtectedSurfaceForOwnDecoder(stream.id)
+            if (lease == null) {
+                stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+                publish("WAITING_FOR_PROTECTED_SURFACE: secure SurfaceView lease is not currently available")
+                return
+            }
             surfaceLease = lease
         }
         AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_PREPARE feed=${stream.id} " +
