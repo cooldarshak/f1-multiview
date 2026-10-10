@@ -52,6 +52,13 @@ internal class ProtectedCmafFeedRuntime(
     val state: State get() = stateValue
     val isPlaying: Boolean get() = stateValue == State.PLAYING
     val durationMs: Long get() = source?.durationMs ?: androidx.media3.common.C.TIME_UNSET
+    fun currentPositionMs(): Long {
+        val activeSource = source ?: return 0L
+        return if (clock.isReady) activeSource.windowPositionUsForGlobal(clock.positionUsFor(stream.id)) / 1_000L else 0L
+    }
+
+    fun globalPositionUsForWindow(windowPositionUs: Long): Long =
+        source?.globalPositionUsForWindow(windowPositionUs) ?: windowPositionUs
 
     fun start() {
         checkThread()
@@ -86,7 +93,7 @@ internal class ProtectedCmafFeedRuntime(
         require(positionMs >= 0L)
         val activeSource = source ?: return
         if (activeSource.state == AuthorizedCmafMediaSourceSession.State.READY) {
-            activeSource.seekToUs(positionMs * 1_000L)
+            activeSource.seekToWindowPositionUs(positionMs * 1_000L)
         } else {
             pendingSeekUs = positionMs * 1_000L
             pendingDefaultSeek = false
@@ -187,7 +194,7 @@ internal class ProtectedCmafFeedRuntime(
             pendingDefaultSeek = false
             pendingSeekUs = null
         } else {
-            pendingSeekUs?.let { activeSource.seekToUs(it) }
+            pendingSeekUs?.let { activeSource.seekToWindowPositionUs(it) }
             pendingSeekUs = null
         }
 
@@ -196,7 +203,7 @@ internal class ProtectedCmafFeedRuntime(
             decoder?.close()
             decoder = null
             pendingSample = null
-            activeSource.seekToUs(clock.positionUsFor(stream.id))
+            activeSource.seekToGlobalPositionUs(clock.positionUsFor(stream.id))
             publish("SYNC_HARD_RESYNC: follower sought to shared main-feed clock")
         }
 
@@ -208,7 +215,7 @@ internal class ProtectedCmafFeedRuntime(
         }
 
         if (pendingSample == null && !eosQueued) {
-            val result = if (clock.isReady) activeSource.pump(clock.positionUsFor(stream.id)) else activeSource.pump()
+            val result = if (clock.isReady) activeSource.pumpGlobalPosition(clock.positionUsFor(stream.id)) else activeSource.pump()
             when (result.kind) {
                 AuthorizedCmafMediaSourceSession.ReadKind.FORMAT -> {
                     val format = result.format ?: throw IOException("Video format result had no format")
@@ -222,13 +229,28 @@ internal class ProtectedCmafFeedRuntime(
                 AuthorizedCmafMediaSourceSession.ReadKind.SAMPLE -> {
                     val sample = result.sample ?: throw IOException("Video sample result had no sample buffer")
                     if (stream.id == clock.masterFeedId && !clock.isReady) {
-                        clock.establish(sample.timeUs)
+                        clock.establish(activeSource.toGlobalPresentationTimeUs(sample.timeUs))
                     }
                     pendingSample = sample
                 }
                 AuthorizedCmafMediaSourceSession.ReadKind.END_OF_STREAM -> {
-                    pendingSample = result.sample
-                    eosQueued = true
+                    if (stream.isLive) {
+                        if (activeSource.advanceToLatestLivePeriod()) {
+                            decoder?.close()
+                            decoder = null
+                            pendingSample = null
+                            eosQueued = false
+                            lastFormat = null
+                            stateValue = State.PREPARING
+                            publish("LIVE_PERIOD_ADVANCE: waiting for next authorized DASH period")
+                        } else {
+                            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+                            publish("WAITING: next live period is not available yet")
+                        }
+                    } else {
+                        pendingSample = result.sample
+                        eosQueued = true
+                    }
                 }
                 AuthorizedCmafMediaSourceSession.ReadKind.NOTHING -> Unit
             }
@@ -268,14 +290,18 @@ internal class ProtectedCmafFeedRuntime(
             drmSession = drmSession,
             surfaceLease = lease,
             isLeaseCurrent = surfaceManager::isCurrentProtectedSurfaceLease,
-            releaseTimeNsForPresentationTimeUs = { presentationTimeUs -> clock.presentationTimeNs(stream.id, presentationTimeUs) },
+            releaseTimeNsForPresentationTimeUs = { presentationTimeUs ->
+                val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
+                clock.presentationTimeNs(stream.id, globalPtsUs)
+            },
             onFrameRendered = { presentationTimeUs, renderTimeNs ->
                 if (stateValue != State.PLAYING) {
                     stateValue = State.PLAYING
                     publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
                 }
                 renderedFrameCount++
-                val observation = clock.observeRenderedFrame(stream.id, presentationTimeUs, renderTimeNs, stream.isLive)
+                val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
+                val observation = clock.observeRenderedFrame(stream.id, globalPtsUs, renderTimeNs, stream.isLive)
                 if (renderedFrameCount % 30L == 0L) {
                     AppLogger.i(
                         "ProtectedCmafSync",

@@ -41,7 +41,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
     internal fun currentPositionMs(id: String, fallback: Long): Long =
-        if (multiFeedBlocked && id in protectedRuntimes) protectedPresentationClock.positionUsFor(id) / 1_000L else fallback
+        if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.currentPositionMs() ?: 0L else fallback
 
     internal fun isFeedPlaying(id: String, fallback: Boolean): Boolean =
         if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.isPlaying == true else fallback
@@ -254,7 +254,9 @@ class UnifiedMultiviewEngine(context: Context) {
     fun prepare(id: String) { if (!multiFeedBlocked) decoderManager.prepare(id) }
     fun seekTo(id: String, positionMs: Long) {
         if (multiFeedBlocked) {
-            protectedPresentationClock.seekToPositionUs(positionMs * 1_000L)
+            val globalTargetUs = protectedRuntimes[protectedPresentationClock.masterFeedId]
+                ?.let { it.globalPositionUsForWindow(positionMs * 1_000L) } ?: positionMs * 1_000L
+            protectedPresentationClock.seekToPositionUs(globalTargetUs)
             protectedRuntimes.values.forEach { it.seekTo(positionMs) }
         } else decoderManager.seekTo(id, positionMs)
     }

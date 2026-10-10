@@ -72,12 +72,27 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private var defaultPositionUs = 0L
     private var durationUs = C.TIME_UNSET.toLong()
     private var playbackSpeed = 1f
+    private var latestTimeline: Timeline? = null
+    private var currentPeriodUid: Any? = null
+    private var periodPositionInWindowUs = 0L
+    private var timelineAbsoluteOffsetUs = 0L
+    private var lastKnownPeriodWindowPositionUs: Long? = null
 
     val state: State get() = stateValue
     val currentVideoFormat: Format? get() = videoFormat
     val currentVideoDrmSession: DrmSession? get() = videoDrmSession
     val positionUs: Long get() = periodPositionUs
+    val periodWindowOffsetUs: Long get() = periodPositionInWindowUs + timelineAbsoluteOffsetUs
     val durationMs: Long get() = if (durationUs == C.TIME_UNSET.toLong()) C.TIME_UNSET else durationUs / 1_000L
+
+    fun toGlobalPresentationTimeUs(periodPresentationTimeUs: Long): Long =
+        periodPresentationTimeUs + periodWindowOffsetUs
+
+    fun globalPositionUsForWindow(windowPositionUs: Long): Long =
+        windowPositionUs + timelineAbsoluteOffsetUs
+
+    fun windowPositionUsForGlobal(globalPositionUs: Long): Long =
+        globalPositionUs - timelineAbsoluteOffsetUs
 
     fun prepare() {
         checkThread()
@@ -88,20 +103,35 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
 
     override fun onSourceInfoRefreshed(source: MediaSource, timeline: Timeline) {
         checkThread()
-        if (stateValue == State.CLOSED || stateValue == State.FAILED || period != null) return
+        if (stateValue == State.CLOSED || stateValue == State.FAILED) return
+        latestTimeline = timeline
         try {
             if (timeline.periodCount == 0 || timeline.windowCount == 0) {
                 throw IOException("Authorized F1 source returned an empty timeline")
             }
-            source.enable(this)
-            sourceEnabled = true
-            val periodIndex = if (stream.isLive) timeline.periodCount - 1 else 0
-            val periodInfo = timeline.getPeriod(periodIndex, Timeline.Period(), /* setIds= */ true)
             val window = timeline.getWindow(0, Timeline.Window())
             durationUs = window.durationUs
+            if (period != null) {
+                val currentIndex = (0 until timeline.periodCount).firstOrNull {
+                    timeline.getUidOfPeriod(it) == currentPeriodUid
+                }
+                if (currentIndex != null) {
+                    val currentInfo = timeline.getPeriod(currentIndex, Timeline.Period(), /* setIds= */ true)
+                    updateTimelineOffset(window, currentInfo, samePeriod = true)
+                }
+                return
+            }
+            if (!sourceEnabled) {
+                source.enable(this)
+                sourceEnabled = true
+            }
+            val periodIndex = if (stream.isLive) timeline.periodCount - 1 else 0
+            val periodInfo = timeline.getPeriod(periodIndex, Timeline.Period(), /* setIds= */ true)
+            updateTimelineOffset(window, periodInfo, samePeriod = false)
+            currentPeriodUid = requireNotNull(periodInfo.uid)
             val defaultPosition = window.defaultPositionUs
             periodPositionUs = if (stream.isLive && defaultPosition != C.TIME_UNSET) {
-                (defaultPosition - periodInfo.positionInWindowUs).coerceAtLeast(0L)
+                (defaultPosition - periodPositionInWindowUs).coerceAtLeast(0L)
             } else {
                 0L
             }
@@ -117,6 +147,26 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         } catch (error: Exception) {
             fail(error)
         }
+    }
+
+    private fun updateTimelineOffset(
+        window: Timeline.Window,
+        periodInfo: Timeline.Period,
+        samePeriod: Boolean
+    ) {
+        val previousPositionInWindowUs = lastKnownPeriodWindowPositionUs
+        val hasAbsoluteWindowStart = window.windowStartTimeMs != C.TIME_UNSET
+        if (stream.isLive && hasAbsoluteWindowStart) {
+            timelineAbsoluteOffsetUs = window.windowStartTimeMs * 1_000L
+        } else if (stream.isLive && samePeriod && previousPositionInWindowUs != null) {
+            // If the live window slides but the source omits wall-clock start time, preserve
+            // this period's global timestamp by compensating for its changed window-relative offset.
+            timelineAbsoluteOffsetUs += previousPositionInWindowUs - periodInfo.positionInWindowUs
+        } else if (!stream.isLive) {
+            timelineAbsoluteOffsetUs = 0L
+        }
+        periodPositionInWindowUs = periodInfo.positionInWindowUs
+        lastKnownPeriodWindowPositionUs = periodInfo.positionInWindowUs
     }
 
     override fun onPrepared(mediaPeriod: MediaPeriod) {
@@ -143,7 +193,49 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         return periodPositionUs
     }
 
+    fun seekToWindowPositionUs(windowPositionUs: Long): Long =
+        seekToUs((windowPositionUs - periodPositionInWindowUs).coerceAtLeast(0L))
+
+    fun seekToGlobalPositionUs(globalPositionUs: Long): Long =
+        seekToUs((globalPositionUs - periodWindowOffsetUs).coerceAtLeast(0L))
+
     fun seekToDefaultPosition(): Long = seekToUs(defaultPositionUs)
+
+    fun pumpGlobalPosition(globalPositionUs: Long): ReadResult =
+        pump((globalPositionUs - periodWindowOffsetUs).coerceAtLeast(0L))
+
+    fun advanceToLatestLivePeriod(): Boolean {
+        checkThread()
+        if (!stream.isLive || stateValue != State.READY) return false
+        val timeline = latestTimeline ?: return false
+        if (timeline.periodCount == 0 || timeline.windowCount == 0) return false
+        val latestIndex = timeline.periodCount - 1
+        val latestInfo = timeline.getPeriod(latestIndex, Timeline.Period(), /* setIds= */ true)
+        val latestUid = requireNotNull(latestInfo.uid)
+        if (latestUid == currentPeriodUid) return false
+        val window = timeline.getWindow(0, Timeline.Window())
+        val oldPeriod = period
+        period = null
+        if (oldPeriod != null) source.releasePeriod(oldPeriod)
+        videoStream = null
+        videoFormat = null
+        videoDrmSession = null
+        selectedVideoGroup = null
+        selectedVideoTrackIndex = -1
+        updateTimelineOffset(window, latestInfo, samePeriod = false)
+        currentPeriodUid = latestUid
+        periodPositionUs = if (window.defaultPositionUs != C.TIME_UNSET) {
+            (window.defaultPositionUs - periodPositionInWindowUs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        defaultPositionUs = periodPositionUs
+        val next = source.createPeriod(MediaSource.MediaPeriodId(latestUid), allocator, periodPositionUs)
+        period = next
+        stateValue = State.PREPARING_PERIOD
+        next.prepare(this, periodPositionUs)
+        return true
+    }
 
     fun setVideoQuality(quality: Quality, autoMaxWidth: Int, autoMaxHeight: Int) {
         checkThread()
