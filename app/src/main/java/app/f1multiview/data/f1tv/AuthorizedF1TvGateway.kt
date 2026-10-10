@@ -484,7 +484,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                     manifestLicense = probe.licenseUrl
                 }
                 val license = result.licenseUrl ?: manifestLicense ?: if (result.manifestUrl.contains(".mpd", true)) {
-                    api.fallbackLicense(request.contentId, request.channelId, platform, result.pipelineVersion, result.streamType)
+                    api.fallbackLicense(request.contentId, request.channelId, platform, result.pipelineVersion, result.streamType, result.drmType)
                 } else null
                 if (result.manifestUrl.contains(".mpd", true) && license == null) {
                     throw F1TvException("Protected DASH manifest has no Widevine license endpoint")
