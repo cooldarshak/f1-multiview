@@ -53,6 +53,20 @@ class AuthorizedWidevineDrmSessionFactoryTest {
     }
 
     @Test
+    fun preservesExistingSessionCookiesWhenAddingPlayToken() {
+        val config = requireNotNull(
+            AuthorizedWidevineDrmSessionFactory.configurationFor(
+                stream(
+                    drmRequestHeaders = mapOf("cookie" to "session=abc; region=uk; playToken=old-token"),
+                    playToken = "new-token"
+                )
+            )
+        )
+
+        assertEquals("session=abc; region=uk; playToken=new-token", config.requestHeaders["cookie"])
+    }
+
+    @Test
     fun fallsBackToPlaybackHeadersAndDefaultUserAgent() {
         val config = requireNotNull(
             AuthorizedWidevineDrmSessionFactory.configurationFor(
