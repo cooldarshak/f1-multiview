@@ -125,9 +125,12 @@ class Media3DecoderManager(context: Context) {
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         _errors.value = _errors.value + (id to (error.message ?: error.errorCodeName))
-                        when {
-                            isDecoderFailure(error) -> recoverFromDecoderFailure(id, player, error)
-                            PlaybackFailurePolicy.isDrmFailure(error.errorCodeName, error.message) -> {
+                        when (PlaybackFailurePolicy.classify(
+                            error.errorCodeName,
+                            error.message,
+                            isDecoderFailure(error)
+                        )) {
+                            PlaybackFailurePolicy.FailureKind.DRM_FATAL -> {
                                 // A licence/session failure is not a transient CDN/quality failure.
                                 // Do not repeatedly reacquire a rejected licence or conceal it as
                                 // a quality fallback. Keep the protected playback error visible.
@@ -138,7 +141,10 @@ class Media3DecoderManager(context: Context) {
                                     "DRM_PLAYBACK_FAILED feed=$id code=${error.errorCodeName} recovery=blocked"
                                 )
                             }
-                            else -> recoverFromSourceFailure(id, player)
+                            PlaybackFailurePolicy.FailureKind.DECODER_RECOVERY ->
+                                recoverFromDecoderFailure(id, player, error)
+                            PlaybackFailurePolicy.FailureKind.SOURCE_RECOVERY ->
+                                recoverFromSourceFailure(id, player)
                         }
                     }
 

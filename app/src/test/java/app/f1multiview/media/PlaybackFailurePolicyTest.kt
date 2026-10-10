@@ -1,10 +1,48 @@
 package app.f1multiview.media
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackFailurePolicyTest {
+
+    @Test
+    fun explicitDrmFailureTakesPrecedenceOverGenericDecoderFailure() {
+        assertEquals(
+            PlaybackFailurePolicy.FailureKind.DRM_FATAL,
+            PlaybackFailurePolicy.classify(
+                "ERROR_CODE_DRM_SYSTEM_ERROR",
+                "MediaCodecVideoRenderer failed",
+                decoderFailure = true
+            )
+        )
+    }
+
+    @Test
+    fun ordinaryDecoderFailureUsesDecoderRecovery() {
+        assertEquals(
+            PlaybackFailurePolicy.FailureKind.DECODER_RECOVERY,
+            PlaybackFailurePolicy.classify(
+                "ERROR_CODE_DECODER_INIT_FAILED",
+                "codec init failed",
+                decoderFailure = true
+            )
+        )
+    }
+
+    @Test
+    fun ordinarySourceFailureUsesSourceRecovery() {
+        assertEquals(
+            PlaybackFailurePolicy.FailureKind.SOURCE_RECOVERY,
+            PlaybackFailurePolicy.classify(
+                "ERROR_CODE_IO_NETWORK_CONNECTION_FAILED",
+                "timeout",
+                decoderFailure = false
+            )
+        )
+    }
+
     @Test
     fun classifiesLicenceAcquisitionFailureAsNonRetryableDrmFailure() {
         assertTrue(

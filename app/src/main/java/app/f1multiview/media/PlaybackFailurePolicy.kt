@@ -9,6 +9,19 @@ package app.f1multiview.media
  * and never creates a clear-playback fallback.
  */
 internal object PlaybackFailurePolicy {
+    enum class FailureKind {
+        DRM_FATAL,
+        DECODER_RECOVERY,
+        SOURCE_RECOVERY
+    }
+
+    fun classify(errorCodeName: String?, message: String?, decoderFailure: Boolean): FailureKind =
+        when {
+            isDrmFailure(errorCodeName, message) -> FailureKind.DRM_FATAL
+            decoderFailure -> FailureKind.DECODER_RECOVERY
+            else -> FailureKind.SOURCE_RECOVERY
+        }
+
     fun isDrmFailure(errorCodeName: String?, message: String?): Boolean {
         val code = errorCodeName.orEmpty()
         val detail = message.orEmpty()
