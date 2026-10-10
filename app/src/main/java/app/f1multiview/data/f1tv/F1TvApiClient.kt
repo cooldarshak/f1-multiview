@@ -231,7 +231,7 @@ class F1TvApiClient {
         val playApiVersion=sources.asSequence().mapNotNull { firstString(it,"playApiVersion","playAPIVersion") }.firstOrNull()
         val platform=sources.asSequence().mapNotNull { firstString(it,"platform") }.firstOrNull()?:requestedPlatform
         val drmType=sources.asSequence().mapNotNull { firstString(it,"drmType") }.firstOrNull()
-        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
+        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType,drmType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
         val response=execute(BASE+"/2.0/R/"+LANG+"/WEB_DASH/ALL/PAGE/"+pageId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"archive page "+pageId)
@@ -295,8 +295,14 @@ class F1TvApiClient {
         if(method=="POST")builder.post((body?:"").toRequestBody(JSON))else builder.get()
         http.newCall(builder.build()).execute().use{r->HttpResponse(r.code,r.isSuccessful,r.body?.string().orEmpty())}
     }
-    fun fallbackLicense(contentId:String,channelId:String?,platform:String,pipelineVersion:Int?,streamType:String?):String?{
-        val useWidevine=(pipelineVersion?:-1)>=3||(pipelineVersion==null&&streamType?.contains("WV",true)==true);if(!useWidevine)return null
+    fun fallbackLicense(contentId:String,channelId:String?,platform:String,pipelineVersion:Int?,streamType:String?,drmType:String?=null):String?{
+        // pipelineVersion describes the playback pipeline, not the content's DRM scheme.
+        // F1 also returns pipelineVersion=6 for SDR_HD_DASH_SINGLE; synthesizing a Widevine
+        // endpoint for that response misclassifies clear feeds as protected and causes a
+        // guaranteed DRM-session failure. Only explicit Widevine metadata may enable this fallback.
+        val declaresWidevine = streamType?.contains("DASHWV",true)==true ||
+            streamType?.contains("WIDEVINE",true)==true || drmType?.contains("WIDEVINE",true)==true
+        if(!declaresWidevine)return null
         return BASE+"/2.0/R/"+LANG+"/"+platform+"/ALL/CONTENT/LA/widevine?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
     }
     private fun extractPlayToken(url:String):String?{
