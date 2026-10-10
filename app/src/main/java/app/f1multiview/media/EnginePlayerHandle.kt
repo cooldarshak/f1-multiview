@@ -63,12 +63,14 @@ class EnginePlayerHandle internal constructor(
         if (player != null) engine.attachSurfaceView(id, surfaceView)
     }
     fun clearVideoSurfaceView(surfaceView: SurfaceView) {
-        if (player != null) engine.detachSurfaceView(id, surfaceView)
+        // Cleanup must remain possible after the engine closes playback admission.
+        engine.detachSurfaceView(id, surfaceView)
     }
     fun setVideoTextureView(textureView: TextureView) {
         if (player != null) engine.attachTextureView(id, textureView)
     }
     fun clearVideoTextureView(textureView: TextureView) {
-        if (player != null) engine.detachTextureView(id, textureView)
+        // Cleanup must remain possible after the engine closes playback admission.
+        engine.detachTextureView(id, textureView)
     }
 }
