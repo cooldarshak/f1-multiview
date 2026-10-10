@@ -91,7 +91,7 @@ class ReplayTimingClient {
     fun snapshotCount():Int = snapshots.size
     fun isLoaded()=snapshots.isNotEmpty()
     fun sync():ReplaySyncData=syncData
-    private fun parse(text:String):List<ReplayTimingSnapshot> {
+    internal fun parse(text:String):List<ReplayTimingSnapshot> {
         val out=ArrayList<ReplayTimingSnapshot>()
         val mergedLines=JSONObject()
         BufferedReader(StringReader(text.removePrefix("\\uFEFF"))).forEachLine { line ->
