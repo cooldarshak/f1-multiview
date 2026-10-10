@@ -113,7 +113,8 @@ class UnifiedMultiviewEngine(context: Context) {
         decoderManager.retain(ids)
     }
 
-    fun isProtectedFeedSelected(id: String): Boolean = multiFeedBlocked && id in protectedRuntimes
+    fun isProtectedFeedSelected(id: String): Boolean =
+        multiFeedBlocked && (id in protectedRuntimes || id in protectedRuntimeStatus)
     fun isProtectedFeedPlaying(id: String): Boolean = protectedRuntimes[id]?.isPlaying == true
     fun protectedFeedStatus(id: String): String? = protectedRuntimeStatus[id]
 
