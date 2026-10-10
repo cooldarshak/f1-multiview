@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.StringReader
 import java.util.zip.Inflater
-import android.util.Base64
+import java.util.Base64
 import org.json.JSONArray
 
 data class ReplayTimingSnapshot(val offsetMs:Long,val rows:List<TimingRow>)
@@ -94,7 +94,7 @@ class ReplayTimingClient {
     internal fun parse(text:String):List<ReplayTimingSnapshot> {
         val out=ArrayList<ReplayTimingSnapshot>()
         val mergedLines=JSONObject()
-        BufferedReader(StringReader(text.removePrefix("\\uFEFF"))).forEachLine { line ->
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
             if(line.length<12)return@forEachLine
             val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
             val json=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
@@ -184,7 +184,7 @@ class ReplayTimingClient {
     }
 
     private fun inflatePosition(encoded:String):JSONObject? {
-        val bytes=runCatching{Base64.decode(encoded,Base64.DEFAULT)}.getOrNull() ?: return null
+        val bytes=runCatching{Base64.getDecoder().decode(encoded)}.getOrNull() ?: return null
         val inflater=Inflater(true)
         return try {
             inflater.setInput(bytes)
