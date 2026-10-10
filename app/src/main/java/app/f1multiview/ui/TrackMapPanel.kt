@@ -180,6 +180,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
 ){
     Canvas(modifier){
         val points=mutableListOf<TrackPoint>()
+        geometry?.centerline?.forEach{points+=it}
         geometry?.corners?.forEach{points+=TrackPoint(it.x,it.y)}
         drivers.forEach{points+=TrackPoint(it.x,it.y)}
         if(points.isEmpty()) return@Canvas
@@ -206,27 +207,28 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             return Offset(center.x+t.x.toFloat()*scale,center.y-t.y.toFloat()*scale)
         }
 
-        val track=geometry?.corners?.map{screen(TrackPoint(it.x,it.y))}
-        if(track!=null && track.size>=2){
-            val edge=Path()
-            edge.moveTo(track.first().x,track.first().y)
-            track.drop(1).forEach{edge.lineTo(it.x,it.y)}
-            edge.close()
-            drawPath(edge,color=MapTrackEdge,style=Stroke(width=18f))
-            drawPath(edge,color=MapTrack,style=Stroke(width=11f))
-            geometry.corners.forEachIndexed{index,c->
-                if(c.number<=0)return@forEachIndexed
-                val p=track[index]
-                drawCircle(Color.White.copy(alpha=.55f),radius=7f,center=p)
-                drawIntoCanvas{canvas->
-                    val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                        color=android.graphics.Color.WHITE
-                        textSize=18f
-                        textAlign=Paint.Align.CENTER
-                        typeface=android.graphics.Typeface.DEFAULT_BOLD
-                    }
-                    drawContext.canvas.nativeCanvas.drawText(c.number.toString()+c.letter,p.x,p.y-10f,paint)
+        val centerline=geometry?.centerline.orEmpty().map(::screen)
+        if(centerline.size >= 20){
+            val path=Path()
+            path.moveTo(centerline.first().x,centerline.first().y)
+            centerline.drop(1).forEach{path.lineTo(it.x,it.y)}
+            drawPath(path,color=MapTrackEdge,style=Stroke(width=18f))
+            drawPath(path,color=MapTrack,style=Stroke(width=11f))
+        }
+        // Corner labels are annotations anchored to the same telemetry coordinate system;
+        // they are never joined into a synthetic polygon.
+        geometry?.corners?.forEach{corner->
+            if(corner.number<=0)return@forEach
+            val p=screen(TrackPoint(corner.x,corner.y))
+            drawCircle(Color.White.copy(alpha=.55f),radius=7f,center=p)
+            drawIntoCanvas{
+                val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                    color=android.graphics.Color.WHITE
+                    textSize=18f
+                    textAlign=Paint.Align.CENTER
+                    typeface=android.graphics.Typeface.DEFAULT_BOLD
                 }
+                drawContext.canvas.nativeCanvas.drawText(corner.number.toString()+corner.letter,p.x,p.y-10f,paint)
             }
         }
 
