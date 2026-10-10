@@ -29,6 +29,16 @@ jobs:
           git apply ../patches/media3/0001-explicit-media-segment-role.patch
           test "$(grep -Fc 'setCustomData("f1-multiview:media-segment:v1")' libraries/exoplayer_dash/src/main/java/androidx/media3/exoplayer/dash/DefaultDashChunkSource.java)" -eq 2
 
+      - name: Stage and verify pinned encrypted CMAF fixture
+        run: |
+          set -euo pipefail
+          FIXTURE="media3-source/libraries/test_data/src/test/assets/media/drm/sample_fragmented_widevine.mp4"
+          test -s "$FIXTURE"
+          test "$(git -C media3-source hash-object "$FIXTURE")" = "942694cfcc66632973689c4d46a8f94794ba510b"
+          mkdir -p app/src/test/resources/media
+          cp "$FIXTURE" app/src/test/resources/media/sample_fragmented_widevine.mp4
+          test -s app/src/test/resources/media/sample_fragmented_widevine.mp4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

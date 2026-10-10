@@ -8,3 +8,15 @@ Upstream fixture SHA-1 (Git blob): 16907fdd987223e0996d3cfc65ba346cb4123752
 
 The fixture is sourced from the Apache-2.0-licensed AndroidX Media repository. It is used only as a deterministic clear-media parser test fixture; it is not a protected F1 stream and does not validate DRM or protected multiview.
 Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
+
+Encrypted fixture provenance
+
+File: media/sample_fragmented_widevine.mp4
+Source project: AndroidX Media (Media3), Android Open Source Project
+Pinned source revision: 8c6678b657ede1e7883fc164ef73ed483c7796c3
+Source path: libraries/test_data/src/test/assets/media/drm/sample_fragmented_widevine.mp4
+Source URL: https://github.com/androidx/media/blob/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/test_data/src/test/assets/media/drm/sample_fragmented_widevine.mp4
+Upstream Git blob SHA-1: 942694cfcc66632973689c4d46a8f94794ba510b
+
+CI stages this exact fixture from the pinned AndroidX Media checkout and verifies its Git blob hash before running tests. The fixture validates container/DRM/sample-encryption metadata only; it does not grant a playback licence, decrypt media, or prove secure decoder/protected-surface playback.

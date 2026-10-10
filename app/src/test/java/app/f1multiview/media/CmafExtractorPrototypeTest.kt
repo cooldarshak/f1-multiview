@@ -78,6 +78,58 @@ class CmafExtractorPrototypeTest {
     }
 
     @Test
+    fun encryptedWidevineCmafFixtureEmitsDrmAndSampleCryptoMetadata() {
+        val bytes = javaClass.classLoader!!
+            .getResourceAsStream("media/sample_fragmented_widevine.mp4")!!
+            .use { it.readBytes() }
+        assertTrue("Pinned encrypted fixture should contain fragmented MP4 data", bytes.size > 10_000)
+
+        val extractor = CmafExtractorPrototype.createExtractor()
+        try {
+            assertTrue(
+                "Media3 must recognize the encrypted fixture as fragmented MP4",
+                extractor.sniff(newInput(bytes, 0))
+            )
+
+            val output = CapturingExtractorOutput()
+            extractor.init(output)
+            var input = newInput(bytes, 0)
+            val seekPosition = PositionHolder()
+            var result: Int
+            var reads = 0
+            do {
+                check(++reads <= 20_000) { "Encrypted fixture extractor exceeded bounded read loop" }
+                result = extractor.read(input, seekPosition)
+                if (result == Extractor.RESULT_SEEK) {
+                    val requested = seekPosition.position
+                    check(requested in 0..bytes.size.toLong()) {
+                        "Encrypted fixture requested out-of-range seek: $requested"
+                    }
+                    extractor.seek(requested, 0)
+                    input = newInput(bytes, requested.toInt())
+                }
+            } while (result == Extractor.RESULT_CONTINUE || result == Extractor.RESULT_SEEK)
+
+            assertEquals(Extractor.RESULT_END_OF_INPUT, result)
+            assertTrue("Encrypted fixture should emit at least one track", output.tracks.isNotEmpty())
+            assertTrue(
+                "Encrypted track format should expose DRM initialization data",
+                output.tracks.values.any { it.format?.drmInitData != null }
+            )
+            assertTrue(
+                "At least one emitted sample must carry Media3 CryptoData",
+                output.tracks.values.flatMap { it.samples }.any { it.encrypted }
+            )
+            assertTrue(
+                "Encrypted fixture must emit sample bytes",
+                output.tracks.values.sumOf { it.sampleBytes } > 0
+            )
+        } finally {
+            extractor.release()
+        }
+    }
+
+    @Test
     fun rejectsNonFragmentedBytesDuringSniff() {
         val extractor = CmafExtractorPrototype.createExtractor()
         try {
