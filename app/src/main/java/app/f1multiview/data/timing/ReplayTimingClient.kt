@@ -43,7 +43,7 @@ class ReplayTimingClient {
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
             // Position.z is the archived source for the moving track-map markers. Keep it on the
             // same session-relative clock as TimingData so replay seeking can reconstruct both.
-            positionSnapshots=parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream"))
+            positionSnapshots=runCatching { parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream")) }.getOrDefault(emptyList())
             syncData=loadCuratedSync(meeting.optString("Key"),session.optString("Key")) ?: ReplaySyncData(0L, emptyMap())
             syncOffsetMs=syncData.sessionStartMs
         }
