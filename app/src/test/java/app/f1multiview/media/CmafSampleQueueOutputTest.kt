@@ -71,7 +71,7 @@ class CmafSampleQueueOutputTest {
                             sampleCount++
                             if (buffer.isEncrypted) {
                                 encryptedSampleCount++
-                                assertTrue("Encrypted samples must have positive sample size", buffer.data!!.remaining() > 0)
+                                assertTrue("Encrypted samples must have positive sample size", buffer.data!!.position() > 0)
                                 assertTrue("Encrypted samples must expose subsample crypto metadata", buffer.cryptoInfo.numSubSamples > 0)
                                 val iv = requireNotNull(buffer.cryptoInfo.iv) { "Encrypted samples must expose an IV" }
                                 assertTrue("Encrypted sample IV must not be empty", iv.isNotEmpty())
