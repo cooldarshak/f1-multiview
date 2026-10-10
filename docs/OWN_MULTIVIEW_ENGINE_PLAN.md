@@ -544,3 +544,56 @@ A first isolated `BoundedMediaDataSource` adapter has been added with tests. It 
 
 The tests use a fake data source and do not prove the adapter is correctly placed in F1's HLS/DASH production source factories. The next gate is to test the exact factory routing while preserving current authorized headers, HLS playlist handling, and Widevine DRM provider. Production wiring remains blocked until both HLS and DASH routes are proven.
 
+
+## 2E. Binding hard requirement: one coded tiled stream, one decoder (2026-10-10)
+
+This section supersedes any interpretation of the three-decoder synthetic prototype as the desired production architecture.
+
+### Non-negotiable product acceptance criteria
+
+The production app must display 2, 3, or 4 selected feeds together from **one coded tiled video stream**, using **one video decoder and one output surface**, with authorized Widevine playback and measured stable output on both the Samsung Galaxy S22 Ultra and the user's Android TV. Tiledmedia, TME, ClearVR, their SDKs, their proprietary metadata, and their media components are excluded.
+
+A three-decoder-plus-compositor design is not an acceptable production substitute. It may remain only as an isolated test harness for general UI/timeline experiments and must not be described as progress toward the single-decoder acceptance criterion.
+
+### Critical feasibility boundary
+
+A conventional client cannot turn several independently encoded, separately licensed F1 camera streams into one decoder-compatible tiled bitstream by arranging views in the UI. A single decoder consumes one compatible coded video elementary stream. To show multiple camera views in that stream, the tiles must be assembled before decode (for example by a compatible provider-generated tiled representation or by a separately authorized server-side ingest/encode/package service).
+
+The app must not extract or bypass Widevine protection to manufacture such a stream. The source/DRM investigation must establish which of these legitimate contracts exists:
+
+1. The authorized provider exposes a single tiled representation and a supported Widevine license contract for it; or
+2. The provider explicitly authorizes server-side processing of the selected source feeds, with a compliant ingest, decode/composition/encode, packaging, and DRM re-encryption/license arrangement.
+
+If neither contract is available, the required single-decoder product is blocked by the source/rights boundary; a client-only implementation cannot truthfully claim to meet it. Do not disguise independent decoders as a solution or weaken DRM to force a demo.
+
+### Work plan and exit gates
+
+**Gate A — establish source and rights contract**
+- Capture redacted metadata from actual authorized F1 content/play responses for main, driver, and data feeds: manifest family, stream type, DRM type, license endpoint presence, play-token presence (boolean only), and authorized representation metadata.
+- Inspect only provider-delivered manifests/metadata and documented public interfaces. Determine whether an authorized tiled stream/profile exists and whether the license/session contract applies to that representation.
+- If no tiled representation exists, document whether server-side ingest and re-packaging are explicitly permitted. No credentials, cookies, tokens, or signed URLs may be written to logs or committed.
+
+**Gate B — define the single-stream contract**
+- Define a versioned app-owned tiled-stream descriptor: stream URI, codec/profile, tile count and tile rectangles, shared presentation timeline, live-edge/segment alignment, encryption scheme, key rotation, license endpoint, and tile-selection metadata. Metadata must be app-owned and standards-based; it must not mimic or depend on TME/ClearVR proprietary contracts.
+- Add parser/validation tests for 2/3/4 tiles, malformed topology, timeline discontinuity, unsupported codec/profile, absent DRM metadata, and unauthorized/missing license configuration. Fail closed for invalid/unauthorized input.
+
+**Gate C — implement one-stream playback**
+- Feed the single authorized tiled representation to one Media3/Widevine playback session and one hardware decoder/output surface. If custom MediaCodec is needed, prove that the supported DRM/session/secure-output contract can be preserved before replacing Media3's secure decoder path.
+- Keep tile choice/layout in presentation metadata; changing a tile layout must not instantiate additional video decoders.
+- Do not add a per-feed ExoPlayer fallback.
+
+**Gate D — prove stability on target devices**
+- Test 2, 3, and 4 tile layouts on the Samsung Galaxy S22 Ultra and the specified Android TV.
+- Record the exact device/build/OS, decoder name/profile, Widevine security level when available, license/session/key status, first-frame latency, rendered-frame cadence, dropped-frame evidence, PTS/timeline drift, rebuffering, CPU/memory/thermal behavior, and long-run surface lifecycle.
+- Acceptance requires one active video decoder and one output surface for the tiled video stream, actual rendered frames, successful authorized Widevine keys, and stable long-duration playback. A cloud build or synthetic clear-stream test is not sufficient.
+
+### Current status against this requirement
+
+- One coded tiled stream sourced from authorized F1 feeds: **not implemented / source contract unproven**.
+- One decoder and one output surface for that tiled stream: **not proven**.
+- Authorized Widevine playback for that tiled representation: **currently blocked/unproven**; device screenshot reports WIDEVINE_SESSION_UNAVAILABLE and missing DASH DRM initialization data for selected feeds.
+- S22 Ultra runtime proof: **pending**.
+- Android TV runtime proof: **pending**.
+- 2/3/4-tile long-duration stability: **pending**.
+
+Do not mark the project complete until all of these are proven. The next engineering action is Gate A: establish whether the authorized F1 source/license contract supplies a tiled representation or explicitly permits a server-side packaging pipeline. Source-code changes alone cannot create a compliant single-stream input if neither exists.
