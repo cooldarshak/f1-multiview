@@ -141,7 +141,7 @@ class ReplayTimingClient {
         val out=ArrayList<ReplayPositionSnapshot>()
         val trails=mutableMapOf<String,MutableList<TrackPoint>>()
         var recordIndex=0
-        BufferedReader(StringReader(text.removePrefix("\\uFEFF"))).forEachLine { line ->
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
             if(line.length<13)return@forEachLine
             val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
             // Position telemetry is high frequency. Sample every fifth archive record, as the
