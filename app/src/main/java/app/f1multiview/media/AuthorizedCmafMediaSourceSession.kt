@@ -219,7 +219,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         if (oldPeriod != null) source.releasePeriod(oldPeriod)
         videoStream = null
         videoFormat = null
-        videoDrmSession = null
+        releaseVideoDrmSession()
         selectedVideoGroup = null
         selectedVideoTrackIndex = -1
         updateTimelineOffset(window, latestInfo, samePeriod = false)
@@ -361,8 +361,20 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         val holder = androidx.media3.exoplayer.FormatHolder()
         return when (activeStream.readData(holder, sampleBuffer, /* readFlags= */ 0)) {
             C.RESULT_FORMAT_READ -> {
-                videoFormat = holder.format
-                videoDrmSession = holder.drmSession
+                val format = holder.format ?: throw IOException("Media3 emitted a video format result without a format")
+                videoFormat = format
+                // A manually driven MediaPeriod has no ExoPlayer renderer to acquire the DRM
+                // session on our behalf. SampleStream's FormatHolder may therefore carry no
+                // session even though the track is protected. Acquire it explicitly from the
+                // same Media3 manager configured for this authorized source and keep it alive
+                // until the track changes or this source session closes.
+                val streamSession = holder.drmSession
+                if (videoDrmSession !== streamSession && streamSession != null) {
+                    releaseVideoDrmSession()
+                    videoDrmSession = streamSession
+                } else if (videoDrmSession == null) {
+                    videoDrmSession = drmManager.acquire(/* eventDispatcher= */ null, format)
+                }
                 ReadResult(ReadKind.FORMAT, videoFormat, videoDrmSession)
             }
             C.RESULT_BUFFER_READ -> {
@@ -375,6 +387,12 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
             C.RESULT_NOTHING_READ -> ReadResult(ReadKind.NOTHING, videoFormat, videoDrmSession)
             else -> throw IOException("Unexpected Media3 SampleStream read result")
         }
+    }
+
+    private fun releaseVideoDrmSession() {
+        val activeSession = videoDrmSession ?: return
+        videoDrmSession = null
+        runCatching { drmManager.release(activeSession) }
     }
 
     private fun fail(error: Exception) {
@@ -396,7 +414,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         stateValue = State.CLOSED
         videoStream = null
         videoFormat = null
-        videoDrmSession = null
+        releaseVideoDrmSession()
         period?.let { active ->
             runCatching { source.releasePeriod(active) }
             period = null
