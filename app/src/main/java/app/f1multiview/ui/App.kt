@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
@@ -48,6 +49,8 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -1529,6 +1532,9 @@ private fun CanonicalMultiviewLayout(
     var bottomX2 by rememberSaveable { mutableFloatStateOf(.5f) }
     var gridY by rememberSaveable { mutableFloatStateOf(.5f) }
     val firstResizeFocusRequester = remember { FocusRequester() }
+    // Keep feed composables as keyed siblings under one stable parent. Switching 1/2/3/4/6-up
+    // layouts now changes placement and constraints, not the lifetime of each AndroidView surface.
+    val layoutFeeds = selected.take(6)
 
     LaunchedEffect(editSize, selected.size) {
         if (editSize && selected.size > 1) {
@@ -1537,121 +1543,175 @@ private fun CanonicalMultiviewLayout(
         }
     }
 
-    Box(modifier) {
-        when {
-            selected.isEmpty() ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Layout(
+        modifier = modifier,
+        content = {
+            if (layoutFeeds.isEmpty()) {
+                Box(Modifier.layoutId("empty").fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("NO FEEDS SELECTED", color = White, fontWeight = FontWeight.Bold)
                 }
-            selected.size == 1 ->
-                MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.fillMaxSize(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-            selected.size == 2 ->
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(splitX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
-                    MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(1f - splitX).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                }
-            selected.size == 3 ->
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(mainX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
-                    Column(Modifier.weight(1f - mainX).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight(splitY).fillMaxWidth(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                        ResizeHandle(Orientation.Vertical, editSize) { splitY = (splitY + it / 900f).coerceIn(.2f, .8f) }
-                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight(1f - splitY).fillMaxWidth(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                    }
-                }
-            selected.size == 4 ->
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    // Four-feed layout: the main feed gets the large left pane;
-                    // feeds 2-4 are stacked vertically on the right.
+            }
+            layoutFeeds.forEach { stream ->
+                key(stream.id) {
                     MultiviewFeedTile(
-                        selected[0],
-                        ui,
-                        engine,
-                        errors[selected[0].id],
-                        Modifier.weight(mainX).fillMaxHeight(),
-                        onFocus,
-                        active = activeId == selected[0].id,
-                        surfaceType = surfaceType,
-                        onVideoTap = onVideoTap
+                        stream, ui, engine, errors[stream.id],
+                        Modifier.layoutId("feed:" + stream.id),
+                        onFocus, active = activeId == stream.id,
+                        surfaceType = surfaceType, onVideoTap = onVideoTap
                     )
+                }
+            }
+            when (layoutFeeds.size) {
+                2 -> ResizeHandle(
+                    Orientation.Horizontal, editSize, firstResizeFocusRequester,
+                    modifier = Modifier.layoutId("handle-main")
+                ) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
+                3 -> {
                     ResizeHandle(
-                        Orientation.Horizontal,
-                        editSize,
-                        firstResizeFocusRequester
-                    ) {
-                        mainX = (mainX + it / 1000f).coerceIn(.45f, .78f)
-                    }
-                    Column(
-                        Modifier.weight(1f - mainX).fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(gap)
-                    ) {
-                        MultiviewFeedTile(
-                        selected[1],
-                        ui,
-                            engine,
-                            errors[selected[1].id],
-                            Modifier.weight(fourSideH1).fillMaxWidth(),
-                            onFocus,
-                            active = activeId == selected[1].id,
-                            surfaceType = surfaceType,
-                            onVideoTap = onVideoTap
-                        )
-                        ResizeHandle(Orientation.Vertical, editSize) {
-                            val delta = it / 900f
-                            fourSideH1 = (fourSideH1 + delta).coerceIn(.16f, .58f)
-                            fourSideH2 = (fourSideH2 - delta).coerceIn(.16f, .58f)
-                        }
-                        MultiviewFeedTile(
-                        selected[2],
-                        ui,
-                            engine,
-                            errors[selected[2].id],
-                            Modifier.weight(fourSideH2).fillMaxWidth(),
-                            onFocus,
-                            active = activeId == selected[2].id,
-                            surfaceType = surfaceType,
-                            onVideoTap = onVideoTap
-                        )
-                        ResizeHandle(Orientation.Vertical, editSize) {
-                            val delta = it / 900f
-                            fourSideH2 = (fourSideH2 + delta).coerceIn(.16f, .58f)
-                        }
-                        MultiviewFeedTile(
-                        selected[3],
-                        ui,
-                            engine,
-                            errors[selected[3].id],
-                            Modifier.weight((1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)).fillMaxWidth(),
-                            onFocus,
-                            active = activeId == selected[3].id,
-                            surfaceType = surfaceType,
-                            onVideoTap = onVideoTap
-                        )
+                        Orientation.Horizontal, editSize, firstResizeFocusRequester,
+                        modifier = Modifier.layoutId("handle-main")
+                    ) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
+                    ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-right-1")) {
+                        splitY = (splitY + it / 900f).coerceIn(.2f, .8f)
                     }
                 }
-            else ->
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                    Row(Modifier.weight(gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[0], ui, engine, errors[selected[0].id], Modifier.weight(topX).fillMaxHeight(), onFocus, active = activeId == selected[0].id, surfaceType = surfaceType)
-                        ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester) { topX = (topX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[1], ui, engine, errors[selected[1].id], Modifier.weight((1f - topX) * topX2).fillMaxHeight(), onFocus, active = activeId == selected[1].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                        ResizeHandle(Orientation.Horizontal, editSize) { topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[2], ui, engine, errors[selected[2].id], Modifier.weight((1f - topX) * (1f - topX2)).fillMaxHeight(), onFocus, active = activeId == selected[2].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
+                4 -> {
+                    ResizeHandle(
+                        Orientation.Horizontal, editSize, firstResizeFocusRequester,
+                        modifier = Modifier.layoutId("handle-main")
+                    ) { mainX = (mainX + it / 1000f).coerceIn(.45f, .78f) }
+                    ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-right-1")) {
+                        val delta = it / 900f
+                        fourSideH1 = (fourSideH1 + delta).coerceIn(.16f, .58f)
+                        fourSideH2 = (fourSideH2 - delta).coerceIn(.16f, .58f)
                     }
-                    ResizeHandle(Orientation.Vertical, editSize) { gridY = (gridY + it / 1000f).coerceIn(.25f, .75f) }
-                    Row(Modifier.weight(1f - gridY).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        MultiviewFeedTile(selected[3], ui, engine, errors[selected[3].id], Modifier.weight(bottomX).fillMaxHeight(), onFocus, active = activeId == selected[3].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f) }
-                        MultiviewFeedTile(selected[4], ui, engine, errors[selected[4].id], Modifier.weight((1f - bottomX) * bottomX2).fillMaxHeight(), onFocus, active = activeId == selected[4].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
-                        ResizeHandle(Orientation.Horizontal, editSize) { bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f) }
-                        MultiviewFeedTile(selected[5], ui, engine, errors[selected[5].id], Modifier.weight((1f - bottomX) * (1f - bottomX2)).fillMaxHeight(), onFocus, active = activeId == selected[5].id, surfaceType = surfaceType, onVideoTap = onVideoTap)
+                    ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-right-2")) {
+                        val delta = it / 900f
+                        fourSideH2 = (fourSideH2 + delta).coerceIn(.16f, .58f)
                     }
                 }
+                in 5..6 -> {
+                    ResizeHandle(Orientation.Horizontal, editSize, firstResizeFocusRequester, modifier = Modifier.layoutId("handle-top-1")) {
+                        topX = (topX + it / 1400f).coerceIn(.18f, .52f)
+                    }
+                    ResizeHandle(Orientation.Horizontal, editSize, modifier = Modifier.layoutId("handle-top-2")) {
+                        topX2 = (topX2 + it / 1200f).coerceIn(.25f, .75f)
+                    }
+                    ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-grid-vertical")) {
+                        gridY = (gridY + it / 1000f).coerceIn(.25f, .75f)
+                    }
+                    ResizeHandle(Orientation.Horizontal, editSize, modifier = Modifier.layoutId("handle-bottom-1")) {
+                        bottomX = (bottomX + it / 1400f).coerceIn(.18f, .52f)
+                    }
+                    if (layoutFeeds.size == 6) {
+                        ResizeHandle(Orientation.Horizontal, editSize, modifier = Modifier.layoutId("handle-bottom-2")) {
+                            bottomX2 = (bottomX2 + it / 1200f).coerceIn(.25f, .75f)
+                        }
+                    }
+                }
+            }
         }
+    ) { measurables, constraints ->
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.minWidth
+        val height = if (constraints.hasBoundedHeight) constraints.maxHeight else constraints.minHeight
+        val gapPx = gap.roundToPx()
+        val dividerPx = 3.dp.roundToPx()
+        val byId = measurables.associateBy { it.layoutId as? String }
+        val placements = mutableListOf<() -> Unit>()
+
+        fun place(id: String, x: Int, y: Int, childWidth: Int, childHeight: Int) {
+            val measurable = byId[id] ?: return
+            val placeable = measurable.measure(
+                Constraints.fixed(childWidth.coerceAtLeast(0), childHeight.coerceAtLeast(0))
+            )
+            placements += { placeable.placeRelative(x, y) }
+        }
+
+        fun placeVideo(index: Int, x: Int, y: Int, childWidth: Int, childHeight: Int) {
+            if (index < layoutFeeds.size) place("feed:" + layoutFeeds[index].id, x, y, childWidth, childHeight)
+        }
+
+        when (layoutFeeds.size) {
+            0 -> place("empty", 0, 0, width, height)
+            1 -> placeVideo(0, 0, 0, width, height)
+            2 -> {
+                val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
+                val leftWidth = (availableWidth * splitX).toInt().coerceIn(0, availableWidth)
+                val rightWidth = availableWidth - leftWidth
+                placeVideo(0, 0, 0, leftWidth, height)
+                place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
+                placeVideo(1, leftWidth + gapPx + dividerPx + gapPx, 0, rightWidth, height)
+            }
+            3 -> {
+                val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
+                val leftWidth = (availableWidth * mainX).toInt().coerceIn(0, availableWidth)
+                val rightWidth = availableWidth - leftWidth
+                val rightX = leftWidth + gapPx + dividerPx + gapPx
+                val availableHeight = (height - 2 * gapPx - dividerPx).coerceAtLeast(0)
+                val topHeight = (availableHeight * splitY).toInt().coerceIn(0, availableHeight)
+                val bottomHeight = availableHeight - topHeight
+                placeVideo(0, 0, 0, leftWidth, height)
+                place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
+                placeVideo(1, rightX, 0, rightWidth, topHeight)
+                place("handle-right-1", rightX, topHeight + gapPx, rightWidth, dividerPx)
+                placeVideo(2, rightX, topHeight + gapPx + dividerPx + gapPx, rightWidth, bottomHeight)
+            }
+            4 -> {
+                val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
+                val leftWidth = (availableWidth * mainX).toInt().coerceIn(0, availableWidth)
+                val rightWidth = availableWidth - leftWidth
+                val rightX = leftWidth + gapPx + dividerPx + gapPx
+                val availableHeight = (height - 4 * gapPx - 2 * dividerPx).coerceAtLeast(0)
+                val h1 = (availableHeight * fourSideH1).toInt().coerceAtLeast(0)
+                val h2 = (availableHeight * fourSideH2).toInt().coerceIn(0, availableHeight - h1)
+                val h3 = availableHeight - h1 - h2
+                placeVideo(0, 0, 0, leftWidth, height)
+                place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
+                placeVideo(1, rightX, 0, rightWidth, h1)
+                place("handle-right-1", rightX, h1 + gapPx, rightWidth, dividerPx)
+                placeVideo(2, rightX, h1 + gapPx + dividerPx + gapPx, rightWidth, h2)
+                place("handle-right-2", rightX, h1 + h2 + 3 * gapPx + dividerPx, rightWidth, dividerPx)
+                placeVideo(3, rightX, h1 + h2 + 4 * gapPx + 2 * dividerPx, rightWidth, h3)
+            }
+            else -> {
+                val availableHeight = (height - 2 * gapPx - dividerPx).coerceAtLeast(0)
+                val topHeight = (availableHeight * gridY).toInt().coerceIn(0, availableHeight)
+                val bottomHeight = availableHeight - topHeight
+                val rowWidth3 = (width - 4 * gapPx - 2 * dividerPx).coerceAtLeast(0)
+                val topLeft = (rowWidth3 * topX).toInt().coerceIn(0, rowWidth3)
+                val topRemainder = rowWidth3 - topLeft
+                val topMiddle = (topRemainder * topX2).toInt().coerceIn(0, topRemainder)
+                val topRight = topRemainder - topMiddle
+                placeVideo(0, 0, 0, topLeft, topHeight)
+                place("handle-top-1", topLeft + gapPx, 0, dividerPx, topHeight)
+                placeVideo(1, topLeft + 2 * gapPx + dividerPx, 0, topMiddle, topHeight)
+                place("handle-top-2", topLeft + topMiddle + 3 * gapPx + dividerPx, 0, dividerPx, topHeight)
+                placeVideo(2, topLeft + topMiddle + 4 * gapPx + 2 * dividerPx, 0, topRight, topHeight)
+                place("handle-grid-vertical", 0, topHeight + gapPx, width, dividerPx)
+                val bottomY = topHeight + 2 * gapPx + dividerPx
+                if (layoutFeeds.size == 5) {
+                    val rowWidth2 = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
+                    val bottomLeft = (rowWidth2 * bottomX).toInt().coerceIn(0, rowWidth2)
+                    placeVideo(3, 0, bottomY, bottomLeft, bottomHeight)
+                    place("handle-bottom-1", bottomLeft + gapPx, bottomY, dividerPx, bottomHeight)
+                    placeVideo(4, bottomLeft + gapPx + dividerPx + gapPx, bottomY, rowWidth2 - bottomLeft, bottomHeight)
+                } else {
+                    val bottomLeft = (rowWidth3 * bottomX).toInt().coerceIn(0, rowWidth3)
+                    val bottomRemainder = rowWidth3 - bottomLeft
+                    val bottomMiddle = (bottomRemainder * bottomX2).toInt().coerceIn(0, bottomRemainder)
+                    val bottomRight = bottomRemainder - bottomMiddle
+                    placeVideo(3, 0, bottomY, bottomLeft, bottomHeight)
+                    place("handle-bottom-1", bottomLeft + gapPx, bottomY, dividerPx, bottomHeight)
+                    placeVideo(4, bottomLeft + 2 * gapPx + dividerPx, bottomY, bottomMiddle, bottomHeight)
+                    place("handle-bottom-2", bottomLeft + bottomMiddle + 3 * gapPx + dividerPx, bottomY, dividerPx, bottomHeight)
+                    placeVideo(5, bottomLeft + bottomMiddle + 4 * gapPx + 2 * dividerPx, bottomY, bottomRight, bottomHeight)
+                }
+            }
+        }
+        layout(width, height) { placements.forEach { it() } }
     }
 }
+
 @Composable
 private fun ResizableCompactWall(selected: List<StreamSource>, engine: UnifiedMultiviewEngine, errors: Map<String,String>, onFullscreen:(String)->Unit, editSize:Boolean) {
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -1721,11 +1781,12 @@ private fun ResizeHandle(
     orientation: Orientation,
     enabled: Boolean,
     focusRequester: FocusRequester? = null,
+    modifier: Modifier = Modifier,
     onDelta: (Float) -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     val step = 28f
-    val modifier = Modifier
+    val handleModifier = Modifier
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         .then(
             if (enabled) {
@@ -1759,8 +1820,9 @@ private fun ResizeHandle(
         )
         .background(if (enabled) Red.copy(alpha = .75f) else Color.White.copy(alpha = .08f))
         .then(if (focused) Modifier.border(1.dp, White, RoundedCornerShape(2.dp)) else Modifier)
+        .then(modifier)
 
-    Box(modifier, contentAlignment = Alignment.Center) {
+    Box(handleModifier, contentAlignment = Alignment.Center) {
         if (enabled) {
             Text(
                 if (orientation == Orientation.Horizontal) "⋮" else "⋯",
