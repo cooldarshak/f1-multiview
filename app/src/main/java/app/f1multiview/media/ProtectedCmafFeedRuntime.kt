@@ -56,6 +56,7 @@ internal class ProtectedCmafFeedRuntime(
     private var firstFramePresentedAtNs: Long? = null
     private var lastCodecName: String? = null
     private var lastDrmSessionState: String? = null
+    private var lastDrmKeysReady: Boolean? = null
     private var lastSourceState: String? = null
     private var lastVideoMime: String? = null
     private var lastVideoSize: String? = null
@@ -175,7 +176,7 @@ internal class ProtectedCmafFeedRuntime(
             "state" to stateValue.name,
             "sourceState" to (activeSource?.state?.name ?: lastSourceState ?: "UNAVAILABLE"),
             "drmSessionState" to (drm?.state?.toString() ?: lastDrmSessionState ?: "UNAVAILABLE"),
-            "drmKeysReady" to (drm?.state == DrmSession.STATE_OPENED_WITH_KEYS).toString(),
+            "drmKeysReady" to (drm?.state?.let { it == DrmSession.STATE_OPENED_WITH_KEYS } ?: lastDrmKeysReady ?: false).toString(),
             "videoMime" to (activeSource?.currentVideoFormat?.sampleMimeType ?: lastVideoMime ?: "UNAVAILABLE"),
             "videoSize" to (activeSource?.currentVideoFormat?.let { "${it.width}x${it.height}" } ?: lastVideoSize ?: "UNAVAILABLE"),
             "decoderConfigured" to (activeDecoder?.codecName != null).toString(),
@@ -453,7 +454,10 @@ internal class ProtectedCmafFeedRuntime(
         val activeSource = source
         val drmSession = activeSource?.currentVideoDrmSession
         activeSource?.let { lastSourceState = it.state.name }
-        drmSession?.let { lastDrmSessionState = it.state.toString() }
+        drmSession?.let {
+            lastDrmSessionState = it.state.toString()
+            lastDrmKeysReady = it.state == DrmSession.STATE_OPENED_WITH_KEYS
+        }
         val drmState = drmSession?.state?.toString() ?: "unavailable"
         val sourceState = activeSource?.state?.toString() ?: "unavailable"
         val lease = surfaceLease
@@ -488,7 +492,10 @@ internal class ProtectedCmafFeedRuntime(
         val failingDrm = failingSource?.currentVideoDrmSession
         val failingLease = surfaceLease
         failingSource?.let { lastSourceState = it.state.name }
-        failingDrm?.let { lastDrmSessionState = it.state.toString() }
+        failingDrm?.let {
+            lastDrmSessionState = it.state.toString()
+            lastDrmKeysReady = it.state == DrmSession.STATE_OPENED_WITH_KEYS
+        }
         failingSource?.currentVideoFormat?.let { format ->
             lastVideoMime = format.sampleMimeType
             lastVideoSize = "${format.width}x${format.height}"
