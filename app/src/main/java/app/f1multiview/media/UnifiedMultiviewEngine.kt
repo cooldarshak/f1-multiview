@@ -141,82 +141,32 @@ class UnifiedMultiviewEngine(context: Context) {
         streams.forEach(feedRegistry::put)
         val visibleVideoCount = ProtectedMultiviewFeedPolicy.visibleVideoCount(streams, visibleIds)
         if (visibleVideoCount > 1) {
-            val enteringProtectedMultiview = !multiFeedBlocked
-            multiFeedBlocked = true
-            val selectedVideoStreams = ProtectedMultiviewFeedPolicy.selectedVideoStreams(streams, visibleIds)
-            val mainFeedId = referenceId ?: selectedVideoStreams.firstOrNull()?.id
-            if (mainFeedId == null) {
-                _multiviewStatus.value = "Protected multiview blocked: no selected video feeds resolved"
-                return emptySet()
-            }
-            protectedPresentationClock.setMaster(mainFeedId)
-            // Release Media3 video decoders only on entry. One authorized audio-only player may
-            // remain active while every video feed uses the own secure MediaCodec runtime.
-            if (enteringProtectedMultiview) decoderManager.retain(emptySet())
-            protectedRuntimes.keys.filterNot(visibleIds::contains).toList().forEach(::closeProtectedRuntime)
-            val desiredAudioId = selectedAudioFeedId?.takeIf { id -> selectedVideoStreams.any { it.id == id } } ?: mainFeedId
-            val audioStream = selectedVideoStreams.firstOrNull { it.id == desiredAudioId }
-            if (audioStream != null &&
-                DrmProtectionPolicy.requiresProtectedOutput(audioStream) &&
-                !DrmProtectionPolicy.missingLicenseEndpoint(audioStream)
-            ) {
-                if (selectedAudioFeedId != audioStream.id || !decoderManager.hasAudioOnlyFeed(audioStream.id)) {
-                    if (!enteringProtectedMultiview) decoderManager.retain(emptySet())
-                    if (!decoderManager.loadAudioOnly(audioStream)) {
-                        selectedAudioFeedId = null
-                        protectedRuntimeStatus["audio"] = "AUDIO_BLOCKED: authorized audio source could not be prepared"
-                    } else {
-                        selectedAudioFeedId = audioStream.id
-                        decoderManager.setAudioPlayer(audioStream.id)
-                        protectedRuntimeStatus.remove("audio")
-                    }
-                } else {
-                    decoderManager.setAudioPlayer(audioStream.id)
-                }
-            } else {
+            // Production must never fall back to one decoder per feed. Until the authorized
+            // provider-tiled HEVC stream and its Widevine contract are resolved and passed into
+            // SingleStreamTiledPlaybackPolicy, fail closed rather than instantiate independent
+            // ProtectedCmafFeedRuntime/MediaCodec instances.
+            val decision = SingleStreamTiledPlaybackPolicy.evaluate(
+                visibleVideoFeedCount = visibleVideoCount,
+                descriptor = null
+            )
+            if (!multiFeedBlocked) {
+                protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
+                protectedRuntimeStatus.clear()
                 selectedAudioFeedId = null
-                if (!enteringProtectedMultiview) decoderManager.retain(emptySet())
                 decoderManager.setAudioPlayer(null)
-                protectedRuntimeStatus["audio"] = "AUDIO_UNAVAILABLE: no selected feed has authorized Widevine audio"
+                decoderManager.retain(emptySet())
+                surfaceManager.clear()
             }
-            selectedVideoStreams.forEach { stream ->
-                val compatibility = ProtectedFeedCompatibility.inspect(appContext, stream)
-                AppLogger.i("F1MultiFeedCompatibility", "feed=${stream.id} ${compatibility.toLogFields()}")
-                if (!DrmProtectionPolicy.requiresProtectedOutput(stream) ||
-                    DrmProtectionPolicy.missingLicenseEndpoint(stream)
-                ) {
-                    closeProtectedRuntime(stream.id)
-                    protectedRuntimeStatus[stream.id] =
-                        "BLOCKED: feed requires authorized Widevine protection and a license endpoint"
-                } else {
-                    if (protectedRuntimes[stream.id]?.matches(stream) == false) closeProtectedRuntime(stream.id)
-                    protectedRuntimes.getOrPut(stream.id) {
-                        ProtectedCmafFeedRuntime(
-                            stream = stream,
-                            surfaceManager = surfaceManager,
-                            clock = protectedPresentationClock,
-                            playbackLooper = Looper.getMainLooper(),
-                            quality = protectedQualities[stream.id] ?: Quality.AUTO,
-                            autoMaxWidth = if (stream.id == mainFeedId) Int.MAX_VALUE else 854,
-                            autoMaxHeight = if (stream.id == mainFeedId) Int.MAX_VALUE else 480
-                        ) { feedId, status ->
-                            protectedRuntimeStatus[feedId] = status
-                            _multiviewStatus.value = "Own protected F1 pipeline: " +
-                                protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
-                        }.also { it.start() }
-                    }
-                }
-            }
-            _multiviewStatus.value = "Own protected F1 pipeline: " +
-                protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
-            AppLogger.i(
+            multiFeedBlocked = true
+            _multiviewStatus.value = "MULTIVIEW_BLOCKED: ${decision.reason}; refusing independent decoders and clear fallback"
+            AppLogger.w(
                 "OwnMultiviewEngine",
-                "MULTIVIEW_OWN_PIPELINE_START visibleVideoFeeds=$visibleVideoCount feeds=${selectedVideoStreams.joinToString(",") { it.id }}"
+                "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=${decision.reason} " +
+                    "required=one-authorized-Widevine-HEVC-tiled-stream/one-decoder/one-surface"
             )
             _decoderGeneration.value += 1L
-            return selectedVideoStreams.map { it.id }.toSet()
+            return emptySet()
         }
-
         if (multiFeedBlocked) {
             protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
             protectedRuntimeStatus.clear()
