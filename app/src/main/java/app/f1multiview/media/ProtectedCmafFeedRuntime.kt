@@ -471,7 +471,8 @@ internal class ProtectedPresentationClock {
     }
 
     private companion object {
-        const val STARTUP_LEAD_NS = 0L
+        // One shared timestamp-scheduling margin, not a per-feed startup stagger.
+        const val STARTUP_LEAD_NS = 5_000_000L
         const val MIN_PRESENTATION_LEAD_NS = 1_000_000L
         const val DRIFT_TOLERANCE_US = 50_000L
         const val VOD_HARD_SEEK_THRESHOLD_US = 500_000L
