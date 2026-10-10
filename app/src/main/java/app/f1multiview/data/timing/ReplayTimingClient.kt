@@ -113,7 +113,7 @@ class ReplayTimingClient {
         }
         return out
     }
-    private fun parsePositions(text:String):List<ReplayPositionSnapshot> {
+    internal fun parsePositions(text:String):List<ReplayPositionSnapshot> {
         val out=ArrayList<ReplayPositionSnapshot>()
         val trails=mutableMapOf<String,MutableList<TrackPoint>>()
         var recordIndex=0
