@@ -73,6 +73,30 @@ class AuthorizedDashManifestResolverTest {
     }
 
     @Test
+    fun protectedResolutionAcceptsWidevinePsshDeclaredOnAdaptationSet() {
+        val protectedManifest = manifest
+            .replace(
+                "xmlns=\"urn:mpeg:dash:schema:mpd:2011\"",
+                "xmlns=\"urn:mpeg:dash:schema:mpd:2011\" xmlns:cenc=\"urn:mpeg:cenc:2013\""
+            )
+            .replace(
+                "</AdaptationSet>",
+                """<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"><cenc:pssh>AAAAIHBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAAAA=</cenc:pssh></ContentProtection></AdaptationSet>"""
+            )
+
+        val plan = AuthorizedDashManifestResolver.resolve(
+            manifestUri = manifestUri,
+            manifestBytes = protectedManifest.toByteArray(),
+            requestHeaders = emptyMap(),
+            requireWidevineInitData = true
+        )
+
+        assertTrue(plan.manifestDeclaredDrmInitData)
+        assertEquals(640, plan.format.width)
+        assertEquals(360, plan.format.height)
+    }
+
+    @Test
     fun protectedResolutionRejectsManifestWithoutWidevineInitData() {
         try {
             AuthorizedDashManifestResolver.resolve(
