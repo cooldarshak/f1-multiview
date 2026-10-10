@@ -310,7 +310,28 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     persist()
 }
 fun toggleStream(id:String)=viewModelScope.launch{
-    val current = _ui.value.selectedStreamIds
+    val tapped = _ui.value.streams.firstOrNull { it.id == id } ?: return@launch
+    val isNativeDashboard = tapped.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+    var current = _ui.value.selectedStreamIds
+    val videoKinds = setOf(StreamKind.WORLD, StreamKind.ONBOARD, StreamKind.TIMING, StreamKind.TRACK, StreamKind.HELICAM, StreamKind.DATA, StreamKind.F1_DASH)
+    val hasSelectedVideo = current.any { selectedId ->
+        _ui.value.streams.firstOrNull { it.id == selectedId }?.kind in videoKinds
+    }
+    // Selecting the native data/map panels from an empty Director must not create a
+    // dashboard with no video master. Preserve the official F1 stream and make it main.
+    if (isNativeDashboard && !hasSelectedVideo) {
+        val main = _ui.value.streams.firstOrNull { it.kind == StreamKind.WORLD && it.contentId != null }
+            ?: _ui.value.streams.firstOrNull { it.kind in videoKinds && it.contentId != null }
+        if (main != null && main.id != id) {
+            current = (current + main.id).distinct()
+            _ui.value = _ui.value.copy(
+                selectedStreamIds = current,
+                mainStreamId = main.id,
+                providerError = null
+            )
+            if (main.url == null) resolveSource(main)
+        }
+    }
     val maxFeeds = maxLogicalFeeds()
     if (id in current) {
         if (id == _ui.value.mainStreamId) return@launch
