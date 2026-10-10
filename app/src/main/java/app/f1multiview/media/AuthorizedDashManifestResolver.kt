@@ -51,24 +51,35 @@ internal object AuthorizedDashManifestResolver {
 
         for (periodIndex in 0 until manifest.periodCount) {
             val period = manifest.getPeriod(periodIndex)
-            val videoSet = period.adaptationSets.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }
-                ?: continue
-            val candidates = videoSet.representations.filter { representation ->
-                val mime = representation.format.sampleMimeType
-                mime?.startsWith("video/", ignoreCase = true) == true &&
-                    representation.getIndex() != null &&
-                    representation.getInitializationUri() != null
-            }
+            // A period may expose multiple video AdaptationSets (for example alternate
+            // camera/role representations). Catalogue all of them, and prefer a representation
+            // carrying actual Widevine init data rather than blindly taking the first set.
+            val candidates = period.adaptationSets
+                .filter { it.type == C.TRACK_TYPE_VIDEO }
+                .flatMap { it.representations }
+                .filter { representation ->
+                    val mime = representation.format.sampleMimeType
+                    mime?.startsWith("video/", ignoreCase = true) == true &&
+                        representation.getIndex() != null &&
+                        representation.getInitializationUri() != null
+                }
             if (candidates.isEmpty()) continue
 
-            val withinBounds = candidates.filter { representation ->
+            val protectedCandidates = candidates.filter { representation ->
+                val drm = representation.format.drmInitData
+                drm != null && (0 until drm.schemeDataCount).any { index ->
+                    drm.get(index).matches(C.WIDEVINE_UUID)
+                }
+            }
+            val selectionPool = protectedCandidates.ifEmpty { candidates }
+            val withinBounds = selectionPool.filter { representation ->
                 representation.format.width in 1..maxWidth &&
                     representation.format.height in 1..maxHeight
             }
             val selected = if (withinBounds.isNotEmpty()) {
                 withinBounds.maxByOrNull { pixelArea(it.format) }
             } else {
-                candidates.minByOrNull { pixelArea(it.format) }
+                selectionPool.minByOrNull { pixelArea(it.format) }
             } ?: continue
 
             val index = requireNotNull(selected.getIndex())
