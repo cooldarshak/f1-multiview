@@ -1,5 +1,7 @@
 package app.f1multiview.data.timing
 import app.f1multiview.model.TimingRow
+import app.f1multiview.model.TrackDriverPosition
+import app.f1multiview.model.TrackPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -7,12 +9,17 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.StringReader
+import java.util.zip.Inflater
+import android.util.Base64
+import org.json.JSONArray
 
 data class ReplayTimingSnapshot(val offsetMs:Long,val rows:List<TimingRow>)
+data class ReplayPositionSnapshot(val offsetMs:Long,val positions:List<TrackDriverPosition>)
 data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Long>)
 class ReplayTimingClient {
     private val http=OkHttpClient()
     private var snapshots:List<ReplayTimingSnapshot> = emptyList()
+    private var positionSnapshots:List<ReplayPositionSnapshot> = emptyList()
     private var syncOffsetMs:Long = 0L
     private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
@@ -34,6 +41,9 @@ class ReplayTimingClient {
             val session=(0 until sessions.length()).map{sessions.getJSONObject(it)}.firstOrNull{it.optString("Name").contains(wanted,true) || it.optString("Type").equals(wanted,true)} ?: error("Timing archive session not found")
             val path=session.optString("Path").trim('/').ifBlank{error("Timing archive session has no path")}
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
+            // Position.z is the archived source for the moving track-map markers. Keep it on the
+            // same session-relative clock as TimingData so replay seeking can reconstruct both.
+            positionSnapshots=parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream"))
             syncData=loadCuratedSync(meeting.optString("Key"),session.optString("Key")) ?: ReplaySyncData(0L, emptyMap())
             syncOffsetMs=syncData.sessionStartMs
         }
@@ -50,6 +60,26 @@ class ReplayTimingClient {
         }
         return if(best>=0) snapshots[best].rows else emptyList()
     }
+
+    /**
+     * Latest archived car positions at the requested video position. This is replay state, not
+     * live state: callers should replace the map's driver positions with this snapshot on every
+     * playback time update, including backwards seeks.
+     */
+    fun positionsAt(videoPositionMs:Long):List<TrackDriverPosition> {
+        val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
+        if(positionSnapshots.isEmpty()) return emptyList()
+        var lo=0
+        var hi=positionSnapshots.lastIndex
+        var best=-1
+        while(lo<=hi){
+            val mid=(lo+hi) ushr 1
+            if(positionSnapshots[mid].offsetMs<=target){best=mid;lo=mid+1}else hi=mid-1
+        }
+        return if(best>=0) positionSnapshots[best].positions else emptyList()
+    }
+
+    fun positionSnapshotCount():Int = positionSnapshots.size
 
     fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs }
 
@@ -83,6 +113,68 @@ class ReplayTimingClient {
         }
         return out
     }
+    private fun parsePositions(text:String):List<ReplayPositionSnapshot> {
+        val out=ArrayList<ReplayPositionSnapshot>()
+        val trails=mutableMapOf<String,MutableList<TrackPoint>>()
+        var recordIndex=0
+        BufferedReader(StringReader(text.removePrefix("\\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            // Position telemetry is high frequency. Sample every fifth archive record, as the
+            // desktop reference does, to bound memory while preserving visibly smooth movement.
+            if(recordIndex++ % 5 != 0)return@forEachLine
+            val raw=line.substring(12).trim()
+            val root=runCatching {
+                val tok=org.json.JSONTokener(raw).nextValue()
+                when(tok) {
+                    is JSONObject -> tok
+                    is String -> inflatePosition(tok)
+                    else -> null
+                }
+            }.getOrNull() ?: return@forEachLine
+            val snapshots=root.optJSONArray("Position") ?: JSONArray().put(root)
+            val latest=linkedMapOf<String,TrackDriverPosition>()
+            for(i in 0 until snapshots.length()) {
+                val snap=snapshots.optJSONObject(i) ?: continue
+                val entries=snap.optJSONObject("Entries") ?: continue
+                val keys=entries.keys()
+                while(keys.hasNext()) {
+                    val number=keys.next()
+                    val p=entries.optJSONObject(number) ?: continue
+                    val x=p.optDouble("X",Double.NaN)
+                    val y=p.optDouble("Y",Double.NaN)
+                    if(!x.isFinite() || !y.isFinite())continue
+                    val trail=trails.getOrPut(number){mutableListOf()}
+                    trail.add(TrackPoint(x,y))
+                    while(trail.size>12)trail.removeAt(0)
+                    latest[number]=TrackDriverPosition(
+                        number=number, acronym=number, x=x, y=y,
+                        z=p.optDouble("Z",0.0), updatedAtMs=offset,
+                        trail=trail.toList()
+                    )
+                }
+            }
+            if(latest.isNotEmpty())out.add(ReplayPositionSnapshot(offset,latest.values.toList()))
+        }
+        return out
+    }
+
+    private fun inflatePosition(encoded:String):JSONObject? {
+        val bytes=runCatching{Base64.decode(encoded,Base64.DEFAULT)}.getOrNull() ?: return null
+        val inflater=Inflater(true)
+        return try {
+            inflater.setInput(bytes)
+            val output=java.io.ByteArrayOutputStream()
+            val buffer=ByteArray(8192)
+            while(!inflater.finished()) {
+                val count=inflater.inflate(buffer)
+                if(count<=0)break
+                output.write(buffer,0,count)
+            }
+            JSONObject(output.toString(Charsets.UTF_8.name()))
+        } catch(_:Throwable) { null } finally { inflater.end() }
+    }
+
     private fun parseOffset(ts:String):Long?=runCatching{val p=ts.split(":",".");if(p.size!=4)null else ((p[0].toLong()*3600+p[1].toLong()*60+p[2].toLong())*1000+p[3].toLong())}.getOrNull()
     private fun getText(url:String):String { val r=http.newCall(Request.Builder().url(url).header("User-Agent","BestHTTP").build()).execute(); r.use{if(!it.isSuccessful)error("Timing archive HTTP "+it.code);return it.body?.string().orEmpty()} }
     private fun getJson(url:String)=JSONObject(getText(url))
