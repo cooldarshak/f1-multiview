@@ -82,7 +82,12 @@ class UnifiedMultiviewEngine(context: Context) {
         } else fallback
 
     fun multiviewDiagnostics(): Map<String, String> =
-        decoderResourceDiagnostics() + surfaceManager.secureSurfaceDiagnostics() + mapOf("multiviewStatus" to _multiviewStatus.value)
+        decoderResourceDiagnostics() + surfaceManager.secureSurfaceDiagnostics() +
+            protectedRuntimeStatus.mapKeys { (feedId, _) -> "protectedFeed.$feedId.status" } +
+            protectedRuntimes.flatMap { (feedId, runtime) ->
+                runtime.diagnostics().map { (key, value) -> "protectedFeed.$feedId.$key" to value }
+            }.toMap() +
+            mapOf("multiviewStatus" to _multiviewStatus.value)
 
     internal fun backendPlayer(id: String): ExoPlayer {
         check(!multiFeedBlocked) { _multiviewStatus.value }

@@ -52,6 +52,7 @@ internal class ProtectedCmafFeedRuntime(
     private var lastRenderedPtsUs: Long? = null
     private var lastRenderedAtNs: Long? = null
     private var lastObservedSourceState: AuthorizedCmafMediaSourceSession.State? = null
+    private var lastPlaybackError: String? = null
     private var stateValue = State.NEW
 
     val state: State get() = stateValue
@@ -152,6 +153,36 @@ internal class ProtectedCmafFeedRuntime(
 
     fun qualityAvailable(candidate: Quality): Boolean =
         candidate == Quality.AUTO || source?.qualityAvailable(candidate) == true
+
+    /** Snapshot diagnostics distinguish a configured decoder from a frame actually presented. */
+    fun diagnostics(): Map<String, String> {
+        val activeSource = source
+        val drm = activeSource?.currentVideoDrmSession
+        val lease = surfaceLease
+        val activeDecoder = decoder
+        return mapOf(
+            "state" to stateValue.name,
+            "sourceState" to (activeSource?.state?.name ?: "UNAVAILABLE"),
+            "drmSessionState" to (drm?.state?.toString() ?: "UNAVAILABLE"),
+            "drmKeysReady" to (drm?.state == DrmSession.STATE_OPENED_WITH_KEYS).toString(),
+            "videoMime" to (activeSource?.currentVideoFormat?.sampleMimeType ?: "UNAVAILABLE"),
+            "videoSize" to "${activeSource?.currentVideoFormat?.width ?: 0}x${activeSource?.currentVideoFormat?.height ?: 0}",
+            "decoderConfigured" to (activeDecoder?.codecName != null).toString(),
+            "decoderName" to (activeDecoder?.codecName ?: "UNAVAILABLE"),
+            "outputSurfaceValid" to (lease?.surface?.isValid == true).toString(),
+            "outputSurfaceProtected" to (lease?.secureFlagRequested == true).toString(),
+            "outputSurfaceGeneration" to (lease?.generation?.toString() ?: "UNAVAILABLE"),
+            "outputSurfaceSize" to "${lease?.width ?: 0}x${lease?.height ?: 0}",
+            "samplesQueued" to queuedSampleCount.toString(),
+            "lastSamplePtsUs" to (lastSamplePtsUs?.toString() ?: "UNAVAILABLE"),
+            "firstFramePresented" to ((activeDecoder?.renderedFrameCount ?: 0L) > 0L).toString(),
+            "renderedFrameCount" to (activeDecoder?.renderedFrameCount?.toString() ?: "0"),
+            "firstFrameRenderedAtNs" to (activeDecoder?.firstFrameRenderedAtNs?.toString() ?: "UNAVAILABLE"),
+            "lastRenderedPtsUs" to (lastRenderedPtsUs?.toString() ?: "UNAVAILABLE"),
+            "lastRenderedAtNs" to (lastRenderedAtNs?.toString() ?: "UNAVAILABLE"),
+            "playbackError" to (lastPlaybackError ?: "")
+        )
+    }
 
     fun pause() {
         checkThread()
@@ -395,6 +426,7 @@ internal class ProtectedCmafFeedRuntime(
             frameScheduled = false
         }
         stateValue = State.FAILED
+        lastPlaybackError = error.javaClass.simpleName + ": " + (error.message ?: "no message")
         val failingSource = source
         val failingDrm = failingSource?.currentVideoDrmSession
         val failingLease = surfaceLease
