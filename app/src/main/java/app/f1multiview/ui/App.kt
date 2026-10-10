@@ -207,24 +207,28 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         // Timing and Driver Tracker are native data feeds, not video decoders.
         // UnifiedMultiviewEngine now decides which logical video feeds receive physical
         // decoder slots based on the active viewport and reference feed.
+        val playableVideoIds = videoSelectedIds.intersect(ordered.map { it.id }.toSet())
         val scheduled = engine.updateViewport(
             streams = ordered,
-            visibleIds = videoSelectedIds,
+            visibleIds = playableVideoIds,
             referenceId = mainId,
-            autoplay = false
+            autoplay = fullscreenMultiview
         )
         startedFeeds.keys.retainAll(scheduled)
     }
 
-    LaunchedEffect(fullscreenMultiview) {
+    LaunchedEffect(fullscreenMultiview, ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
         if (fullscreenMultiview && ui.selectedStreamIds.isNotEmpty()) {
-            delay(150L)
-            // Establish the reference clock before all followers are necessarily READY.
-            // UnifiedMultiviewEngine will automatically attach each later-ready feed to this clock.
-            val mainId = ui.mainStreamId ?: ui.selectedStreamIds.firstOrNull()
-            if (mainId != null) {
-                engine.syncToMain(mainId)
-            }
+            // Re-run when a selected feed resolves from a logical item into an authorised
+            // manifest URL. The previous effect only keyed on fullscreenMultiview, so playAll
+            // could run before ExoPlayer existed and never run again after resolution.
+            val playableIds = ui.streams.filter {
+                it.id in ui.selectedStreamIds &&
+                    it.url != null &&
+                    it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+            }.map { it.id }.toSet()
+            val mainId = ui.mainStreamId?.takeIf { it in playableIds } ?: ui.selectedStreamIds.firstOrNull { it in playableIds }
+            if (mainId != null) engine.syncToMain(mainId)
             engine.playAll()
         }
     }
