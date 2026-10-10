@@ -45,7 +45,7 @@ class ReplayTimingClientTest {
             deflater.end()
         }
         val encoded = Base64.getEncoder().encodeToString(compressed.toByteArray())
-        val stream = "00:00:01.000\\"$encoded\\"\\n"
+        val stream = "00:00:01.000" + "\"" + encoded + "\"" + "\n"
         val snapshots = ReplayTimingClient().parsePositions(stream)
 
         assertEquals(1, snapshots.size)
@@ -60,7 +60,7 @@ class ReplayTimingClientTest {
 
     @Test
     fun malformedPositionRecordsAreSkippedWithoutCrashing() {
-        assertTrue(ReplayTimingClient().parsePositions("not a timing record\\n00:00:01.000\\"not-base64\\"").isEmpty())
+        assertTrue(ReplayTimingClient().parsePositions("not a timing record" + "\n" + "00:00:01.000" + "\"" + "not-base64" + "\"").isEmpty())
     }
 
     @Test
