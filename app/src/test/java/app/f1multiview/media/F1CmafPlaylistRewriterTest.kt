@@ -30,6 +30,22 @@ segment.m4s
         assertEquals(true, result.contains(widevineKeyFormat))
     }
 
+
+    @Test
+    fun rewritesOnlyWidevineKeyDeclarationInMixedPlaylist() {
+        val identityKey = "#EXT-X-KEY:METHOD=SAMPLE-AES-CTR,URI=\"key.bin\",KEYFORMAT=\"identity\""
+        val input = """#EXTM3U
+#EXT-X-KEY:METHOD=SAMPLE-AES-CTR,URI="data:text/plain;base64,AA==",$widevineKeyFormat
+$identityKey
+#EXTINF:2.0,
+segment.m4s
+"""
+        val result = F1CmafHlsDrmFixingDataSource.rewritePlaylistText(input)
+
+        assertEquals(true, result.contains("METHOD=SAMPLE-AES,URI=\"data:text/plain;base64,AA==\",$widevineKeyFormat"))
+        assertEquals(true, result.contains(identityKey))
+    }
+
     @Test
     fun leavesUnrelatedPlaylistEncryptionUnchanged() {
         val input = """#EXTM3U

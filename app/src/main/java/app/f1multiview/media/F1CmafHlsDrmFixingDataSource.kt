@@ -129,10 +129,22 @@ class F1CmafHlsDrmFixingDataSource private constructor(
          * Rewrites only the documented F1 UHD/HDR Widevine playlist declaration.
          * The KEYFORMAT value is ordinary quoted playlist text, not backslash-escaped text.
          */
+        private const val WIDEVINE_KEY_FORMAT =
+            "KEYFORMAT=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\""
+
         fun rewritePlaylistText(text: String): String {
             if (!text.startsWith("#EXTM3U")) return text
-            if (!text.contains("KEYFORMAT=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\"")) return text
-            return text.replace("METHOD=SAMPLE-AES-CTR", "METHOD=SAMPLE-AES")
+            if (!text.contains(WIDEVINE_KEY_FORMAT)) return text
+            // Encryption methods belong to individual EXT-X-KEY declarations. Do not
+            // rewrite an unrelated key format merely because another line is Widevine.
+            return Regex("(?m)^#EXT-X-KEY:[^\\r\\n]*$").replace(text) { match ->
+                val line = match.value
+                if (line.contains(WIDEVINE_KEY_FORMAT) && line.contains("METHOD=SAMPLE-AES-CTR")) {
+                    line.replace("METHOD=SAMPLE-AES-CTR", "METHOD=SAMPLE-AES")
+                } else {
+                    line
+                }
+            }
         }
     }
 }
