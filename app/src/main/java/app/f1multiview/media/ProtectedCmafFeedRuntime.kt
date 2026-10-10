@@ -276,6 +276,9 @@ internal class ProtectedCmafFeedRuntime(
                 }
                 AuthorizedCmafMediaSourceSession.ReadKind.SAMPLE -> {
                     val sample = result.sample ?: throw IOException("Video sample result had no sample buffer")
+                    if (sample.isEncrypted && result.drmSession == null) {
+                        throw IOException("Encrypted video sample has no associated Widevine DRM session")
+                    }
                     if (stream.id == clock.masterFeedId && !clock.isReady) {
                         clock.establish(activeSource.toGlobalPresentationTimeUs(sample.timeUs))
                     }
