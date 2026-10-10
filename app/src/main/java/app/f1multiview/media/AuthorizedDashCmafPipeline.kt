@@ -49,14 +49,21 @@ internal class AuthorizedDashCmafPipeline(
             manifestSpec,
             MAX_MANIFEST_BYTES
         )
-        val plan = AuthorizedDashManifestResolver.resolve(
-            manifestUri = manifest.resolvedUri,
-            manifestBytes = manifest.bytes,
-            requestHeaders = stream.requestHeaders,
-            maxWidth = maxWidth,
-            maxHeight = maxHeight,
-            requireWidevineInitData = protected
-        )
+        val plan = try {
+            AuthorizedDashManifestResolver.resolve(
+                manifestUri = manifest.resolvedUri,
+                manifestBytes = manifest.bytes,
+                requestHeaders = stream.requestHeaders,
+                maxWidth = maxWidth,
+                maxHeight = maxHeight,
+                requireWidevineInitData = protected
+            )
+        } catch (failure: IllegalArgumentException) {
+            throw IOException(
+                failure.message ?: "Authorized DASH manifest failed protected-stream validation",
+                failure
+            )
+        }
         val extraction = AuthorizedCmafSegmentExtractor(dataSourceFactory)
             .extractFirstSegment(plan, output)
         val hasDrmInitData = output.sampleQueues.values.any { it.upstreamFormat?.drmInitData != null }
