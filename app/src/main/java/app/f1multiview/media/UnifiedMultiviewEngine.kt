@@ -260,6 +260,7 @@ class UnifiedMultiviewEngine(context: Context) {
     ) {
         if (multiFeedBlocked && !DrmProtectionPolicy.requiresProtectedOutput(stream)) return
         surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
+        if (multiFeedBlocked) protectedRuntimes[feedId]?.play()
     }
 
     fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) {
@@ -268,6 +269,7 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout) {
         surfaceManager.detach(feedId, player, container)
+        if (multiFeedBlocked) protectedRuntimes[feedId]?.pause()
     }
 
     fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = surfaceManager.renderSlots()
