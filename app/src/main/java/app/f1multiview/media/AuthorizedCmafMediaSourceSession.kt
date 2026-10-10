@@ -299,23 +299,36 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         }
         val (group, trackIndex, _) = selected
         if (selectedVideoGroup === group && selectedVideoTrackIndex == trackIndex && videoStream != null) return
-        val streams: Array<SampleStream?> = arrayOf(videoStream)
-        val selections: Array<ExoTrackSelection?> = arrayOf(
-            FixedTrackSelection(group, trackIndex, C.TRACK_TYPE_VIDEO)
-        )
-        val resetFlags = booleanArrayOf(false)
+
+        // MediaPeriod selection arrays are indexed by the complete TrackGroupArray, not by
+        // selected tracks. A one-element array breaks manifests exposing multiple track groups.
+        val selectedGroupIndex = (0 until groups.length).firstOrNull { groups[it] === group }
+            ?: throw IOException("Selected video TrackGroup is no longer present in the MediaPeriod")
+        val streams = arrayOfNulls<SampleStream>(groups.length)
+        val selections = arrayOfNulls<ExoTrackSelection>(groups.length)
+        selections[selectedGroupIndex] = FixedTrackSelection(group, trackIndex, C.TRACK_TYPE_VIDEO)
+        val mayRetainStreamFlags = BooleanArray(groups.length)
+        val resetFlags = BooleanArray(groups.length)
+
         mediaPeriod.selectTracks(
             selections,
-            booleanArrayOf(false),
+            mayRetainStreamFlags,
             streams,
             resetFlags,
             periodPositionUs
         )
-        videoStream = streams[0] ?: throw IOException("Media3 did not create a video SampleStream")
+        videoStream = streams[selectedGroupIndex]
+            ?: throw IOException("Media3 did not create a video SampleStream at group=$selectedGroupIndex of ${groups.length}")
         selectedVideoGroup = group
         selectedVideoTrackIndex = trackIndex
         videoFormat = null
         videoDrmSession = null
+        AppLogger.i(
+            "AuthorizedCmafSource",
+            "VIDEO_TRACK_SELECTED feed=${stream.id} group=$selectedGroupIndex/${groups.length} " +
+                "track=$trackIndex mime=${selected.third.sampleMimeType} " +
+                "size=${selected.third.width}x${selected.third.height} bitrate=${selected.third.bitrate}"
+        )
     }
 
     fun setPlaybackSpeed(speed: Float) {
