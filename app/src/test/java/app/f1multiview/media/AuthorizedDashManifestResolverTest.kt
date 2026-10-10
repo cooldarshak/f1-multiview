@@ -15,6 +15,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class AuthorizedDashManifestResolverTest {
     private val manifestUri = Uri.parse("https://origin.example.test/race/manifest.mpd")
+    private val dollar = '$'
     private val manifest = """
         <?xml version="1.0"?>
         <MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
@@ -23,8 +24,8 @@ class AuthorizedDashManifestResolverTest {
           <Period id="p0" start="PT0S" duration="PT8S">
             <AdaptationSet id="1" contentType="video" mimeType="video/mp4" segmentAlignment="true">
               <SegmentTemplate timescale="1" duration="2"
-                  initialization="init-$RepresentationID$.mp4"
-                  media="segment-$Number$.m4s" startNumber="5"/>
+                  initialization="init-${dollar}RepresentationID${dollar}.mp4"
+                  media="segment-${dollar}Number${dollar}.m4s" startNumber="5"/>
               <Representation id="low" bandwidth="300000" width="640" height="360" codecs="avc1.4d401e"/>
               <Representation id="high" bandwidth="1200000" width="1920" height="1080" codecs="avc1.640028"/>
             </AdaptationSet>
