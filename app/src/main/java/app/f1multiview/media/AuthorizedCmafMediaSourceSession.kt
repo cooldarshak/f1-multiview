@@ -205,11 +205,9 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         allocator.trim()
     }
 
-    private companion object {
-        const val LIVE_BACK_BUFFER_US = 2_000_000L
-    }
-
     companion object {
+        private const val LIVE_BACK_BUFFER_US = 2_000_000L
+
         fun open(stream: StreamSource, playbackLooper: Looper): AuthorizedCmafMediaSourceSession? {
             require(DrmProtectionPolicy.requiresProtectedOutput(stream)) {
                 "Authorized CMAF source session is only for protected feeds"
