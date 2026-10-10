@@ -57,6 +57,7 @@ internal class ProtectedCmafFeedRuntime(
     private var lastCodecName: String? = null
     private var lastDrmSessionState: String? = null
     private var lastDrmKeysReady: Boolean? = null
+    private var drmInitDataWaitStartedAtNs: Long? = null
     private var lastSourceState: String? = null
     private var lastVideoMime: String? = null
     private var lastVideoSize: String? = null
@@ -347,33 +348,44 @@ internal class ProtectedCmafFeedRuntime(
 
     private fun ensureSecureDecoder(activeSource: AuthorizedCmafMediaSourceSession) {
         if (decoder != null) return
-        if (!clock.isReady) {
-            stateValue = State.PREPARING
-            publish("WAITING_FOR_MASTER_CLOCK: awaiting the selected main feed's first sample")
-            return
-        }
         val format = activeSource.currentVideoFormat ?: run {
             stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
             publish("WAITING_FOR_VIDEO_FORMAT: authorized source has not emitted a video format")
             return
         }
-        val drmSession = activeSource.currentVideoDrmSession ?: run {
-            // acquireSession() is synchronous in returning the session reference (key loading is
-            // asynchronous). A null result here is not a "wait for keys" state. Fail with the
-            // precise manifest/metadata boundary so the feed cannot spin forever at zero frames.
-            val reason = if (format.drmInitData == null) {
-                "selected DASH video format has no DRM init data / ContentProtection PSSH"
-            } else {
-                "Media3 DRM manager returned no session despite manifest DRM init data"
+        val drmSession = activeSource.currentVideoDrmSession
+        if (format.drmInitData == null && drmSession == null) {
+            // DASH can emit a placeholder Format before the init segment's PSSH is propagated.
+            // Let Media3 continue loading and deliver a subsequent Format update; failing on this
+            // first observation prevents the authorized Widevine session from ever being created.
+            val nowNs = SystemClock.elapsedRealtimeNanos()
+            val startedNs = drmInitDataWaitStartedAtNs ?: nowNs.also { drmInitDataWaitStartedAtNs = it }
+            val waitedMs = (nowNs - startedNs) / 1_000_000L
+            if (waitedMs >= DRM_INIT_DATA_WAIT_TIMEOUT_MS) {
+                throw IOException(
+                    "WIDEVINE_INIT_DATA_UNAVAILABLE feed=${stream.id}: no Widevine init data arrived " +
+                        "from DASH manifest or init-segment format updates within ${waitedMs}ms; refusing clear playback fallback"
+                )
             }
-            throw IOException("WIDEVINE_SESSION_UNAVAILABLE feed=${stream.id}: $reason; refusing clear playback fallback")
-        }
-        if (drmSession.state == DrmSession.STATE_ERROR) {
-            throw IOException("Widevine session entered an error state", drmSession.error)
-        }
-        if (drmSession.state != DrmSession.STATE_OPENED_WITH_KEYS) {
             stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
-            publish("WAITING_FOR_WIDEVINE_KEYS: drmSessionState=" + drmSession.state)
+            publish("WAITING_FOR_WIDEVINE_INIT_DATA: waiting for authorized Media3 manifest/init-segment DRM metadata (${waitedMs}ms)")
+            return
+        }
+        drmInitDataWaitStartedAtNs = null
+        if (!clock.isReady) {
+            stateValue = State.PREPARING
+            publish("WAITING_FOR_MASTER_CLOCK: awaiting the selected main feed's first sample")
+            return
+        }
+        val readyDrmSession = drmSession ?: throw IOException(
+            "WIDEVINE_SESSION_UNAVAILABLE feed=${stream.id}: Media3 DRM manager returned no session despite manifest DRM init data; refusing clear playback fallback"
+        )
+        if (readyDrmSession.state == DrmSession.STATE_ERROR) {
+            throw IOException("Widevine session entered an error state", readyDrmSession.error)
+        }
+        if (readyDrmSession.state != DrmSession.STATE_OPENED_WITH_KEYS) {
+            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+            publish("WAITING_FOR_WIDEVINE_KEYS: drmSessionState=" + readyDrmSession.state)
             return
         }
         var lease = surfaceLease
@@ -402,7 +414,7 @@ internal class ProtectedCmafFeedRuntime(
         decoder = SecureCmafVideoDecoder(
             feedId = stream.id,
             format = format,
-            drmSession = drmSession,
+            drmSession = readyDrmSession,
             surfaceLease = lease,
             isLeaseCurrent = surfaceManager::isCurrentProtectedSurfaceLease,
             releaseTimeNsForPresentationTimeUs = { presentationTimeUs ->
@@ -706,6 +718,7 @@ internal class ProtectedPresentationClock {
         const val DRIFT_TOLERANCE_US = 50_000L
         const val VOD_HARD_SEEK_THRESHOLD_US = 500_000L
         const val LIVE_HARD_SEEK_THRESHOLD_US = 1_500_000L
+        const val DRM_INIT_DATA_WAIT_TIMEOUT_MS = 10_000L
         const val PLAYBACK_RATE_CORRECTION = 0.05
         const val MIN_PLAYBACK_SPEED = 0.25f
         const val MAX_PLAYBACK_SPEED = 2.0f
