@@ -95,6 +95,9 @@ class UnifiedMultiviewEngine(context: Context) {
         }
         if (visibleVideoCount > 1) {
             multiFeedBlocked = true
+            // Clear stale outputs before releasing decoder leases. Detach operations are cleanup
+            // and remain permitted while the playback gate is closed.
+            surfaceManager.clear()
             decoderManager.retain(emptySet())
             val selectedVideoStreams = streams.filter { stream ->
                 stream.id in visibleIds && stream.kind !in videoKinds
@@ -178,13 +181,15 @@ class UnifiedMultiviewEngine(context: Context) {
         if (!multiFeedBlocked) decoderManager.attachSurfaceView(id, surface)
     }
     internal fun detachSurfaceView(id: String, surface: SurfaceView) {
-        if (!multiFeedBlocked) decoderManager.detachSurfaceView(id, surface)
+        // Detach is resource cleanup, not playback admission; it must work while the gate is closed.
+        decoderManager.detachSurfaceView(id, surface)
     }
     internal fun attachTextureView(id: String, texture: TextureView) {
         if (!multiFeedBlocked) decoderManager.attachTextureView(id, texture)
     }
     internal fun detachTextureView(id: String, texture: TextureView) {
-        if (!multiFeedBlocked) decoderManager.detachTextureView(id, texture)
+        // Detach is resource cleanup, not playback admission; it must work while the gate is closed.
+        decoderManager.detachTextureView(id, texture)
     }
     fun pause(id: String) { if (!multiFeedBlocked) decoderManager.pause(id) }
     fun play(id: String) {
