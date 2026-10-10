@@ -72,6 +72,21 @@ class AuthorizedDashManifestResolverTest {
         assertTrue(plan.firstMediaSegment.durationUs > 0)
     }
 
+    @Test
+    fun protectedResolutionRejectsManifestWithoutWidevineInitData() {
+        try {
+            AuthorizedDashManifestResolver.resolve(
+                manifestUri = manifestUri,
+                manifestBytes = manifest.toByteArray(),
+                requestHeaders = emptyMap(),
+                requireWidevineInitData = true
+            )
+            throw AssertionError("Protected DASH must not select a rendition without Widevine init data")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("Widevine DRM initialization data"))
+        }
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsEmptyManifestBytes() {
         AuthorizedDashManifestResolver.resolve(manifestUri, byteArrayOf(), emptyMap())
