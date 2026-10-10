@@ -69,7 +69,8 @@ internal object AuthorizedDashManifestResolver {
             val protectedCandidates = candidates.filter { representation ->
                 val drm = representation.format.drmInitData
                 drm != null && (0 until drm.schemeDataCount).any { index ->
-                    drm.get(index).matches(C.WIDEVINE_UUID)
+                    val schemeData = drm.get(index)
+                    schemeData.matches(C.WIDEVINE_UUID) && !schemeData.data.isNullOrEmpty()
                 }
             }
             if (requireWidevineInitData && protectedCandidates.isEmpty()) {
