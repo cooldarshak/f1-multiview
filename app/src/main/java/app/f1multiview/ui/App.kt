@@ -1910,11 +1910,14 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
                 Spacer(Modifier.weight(1f))
                 Text(
                     when {
-                        ownProtectedSelected -> "AUDIO N/A"
+                        ownProtectedSelected && !engine.isProtectedAudioAvailable(stream.id) -> "AUDIO N/A"
+                        ownProtectedSelected && engine.isProtectedAudioSelected(stream.id) && engine.isMuted(stream.id) -> "MUTED"
+                        ownProtectedSelected && engine.isProtectedAudioSelected(stream.id) -> "AUDIO ON"
+                        ownProtectedSelected -> "AUDIO OFF"
                         engine.isMuted(stream.id) -> "MUTED"
                         else -> "AUDIO ON"
                     },
-                    color = if (ownProtectedSelected || engine.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A),
+                    color = if ((ownProtectedSelected && !engine.isProtectedAudioSelected(stream.id)) || engine.isMuted(stream.id)) Color.White.copy(alpha = .42f) else Color(0xFF66E07A),
                     fontSize = 7.sp,
                     fontWeight = FontWeight.Bold
                 )

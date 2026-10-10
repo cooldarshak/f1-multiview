@@ -28,6 +28,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val protectedRuntimes = linkedMapOf<String, ProtectedCmafFeedRuntime>()
     private val protectedRuntimeStatus = linkedMapOf<String, String>()
     private val protectedQualities = linkedMapOf<String, Quality>()
+    private var selectedAudioFeedId: String? = null
     private var multiFeedBlocked = false
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
@@ -101,6 +102,7 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun clear(id: String) {
         closeProtectedRuntime(id)
+        if (selectedAudioFeedId == id) selectedAudioFeedId = null
         surfaceManager.binding(id)?.let { binding -> surfaceManager.detach(id, binding.owner, binding.container) }
         feedRegistry.remove(id)
         decoderManager.clear(id)
@@ -123,6 +125,7 @@ class UnifiedMultiviewEngine(context: Context) {
             streams.firstOrNull { it.id == id }?.kind !in videoKinds
         }
         if (visibleVideoCount > 1) {
+            val enteringProtectedMultiview = !multiFeedBlocked
             multiFeedBlocked = true
             val selectedVideoStreams = streams.filter { stream ->
                 stream.id in visibleIds && stream.kind !in videoKinds
@@ -133,10 +136,35 @@ class UnifiedMultiviewEngine(context: Context) {
                 return emptySet()
             }
             protectedPresentationClock.setMaster(mainFeedId)
-            // Release Media3 video decoders, but keep the AndroidView containers alive so each
-            // authorized runtime can claim its own secure SurfaceView lease. No player fallback.
-            decoderManager.retain(emptySet())
+            // Release Media3 video decoders only on entry. One authorized audio-only player may
+            // remain active while every video feed uses the own secure MediaCodec runtime.
+            if (enteringProtectedMultiview) decoderManager.retain(emptySet())
             protectedRuntimes.keys.filterNot(visibleIds::contains).toList().forEach(::closeProtectedRuntime)
+            val desiredAudioId = selectedAudioFeedId?.takeIf { id -> selectedVideoStreams.any { it.id == id } } ?: mainFeedId
+            val audioStream = selectedVideoStreams.firstOrNull { it.id == desiredAudioId }
+            if (audioStream != null &&
+                DrmProtectionPolicy.requiresProtectedOutput(audioStream) &&
+                !DrmProtectionPolicy.missingLicenseEndpoint(audioStream)
+            ) {
+                if (selectedAudioFeedId != audioStream.id || !decoderManager.hasAudioOnlyFeed(audioStream.id)) {
+                    if (!enteringProtectedMultiview) decoderManager.retain(emptySet())
+                    if (!decoderManager.loadAudioOnly(audioStream)) {
+                        selectedAudioFeedId = null
+                        protectedRuntimeStatus["audio"] = "AUDIO_BLOCKED: authorized audio source could not be prepared"
+                    } else {
+                        selectedAudioFeedId = audioStream.id
+                        decoderManager.setAudioPlayer(audioStream.id)
+                        protectedRuntimeStatus.remove("audio")
+                    }
+                } else {
+                    decoderManager.setAudioPlayer(audioStream.id)
+                }
+            } else {
+                selectedAudioFeedId = null
+                if (!enteringProtectedMultiview) decoderManager.retain(emptySet())
+                decoderManager.setAudioPlayer(null)
+                protectedRuntimeStatus["audio"] = "AUDIO_UNAVAILABLE: no selected feed has authorized Widevine audio"
+            }
             selectedVideoStreams.forEach { stream ->
                 val compatibility = ProtectedFeedCompatibility.inspect(appContext, stream)
                 AppLogger.i("F1MultiFeedCompatibility", "feed=${stream.id} ${compatibility.toLogFields()}")
@@ -178,6 +206,8 @@ class UnifiedMultiviewEngine(context: Context) {
         if (multiFeedBlocked) {
             protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
             protectedRuntimeStatus.clear()
+            selectedAudioFeedId?.let(decoderManager::disableAudioOnlyMode)
+            selectedAudioFeedId = null
             // The single-feed Media3 path gets a fresh surface binding after protected leases close.
             surfaceManager.clear()
         }
@@ -243,9 +273,48 @@ class UnifiedMultiviewEngine(context: Context) {
     fun qualityAvailable(id: String, quality: Quality): Boolean =
         if (multiFeedBlocked) protectedRuntimes[id]?.qualityAvailable(quality) ?: (quality == Quality.AUTO)
         else decoderManager.qualityAvailable(id, quality)
-    fun setAudioPlayer(id: String?) { if (!multiFeedBlocked) decoderManager.setAudioPlayer(id) }
-    fun setMuted(id: String, muted: Boolean) { if (!multiFeedBlocked) decoderManager.setMuted(id, muted) }
-    fun isMuted(id: String): Boolean = if (multiFeedBlocked) true else decoderManager.isMuted(id)
+    fun setAudioPlayer(id: String?) {
+        if (!multiFeedBlocked) {
+            selectedAudioFeedId = id
+            decoderManager.setAudioPlayer(id)
+            return
+        }
+        if (id == null) {
+            selectedAudioFeedId = null
+            decoderManager.retain(emptySet())
+            decoderManager.setAudioPlayer(null)
+            return
+        }
+        if (id !in protectedRuntimes) return
+        val stream = feedRegistry.get(id) ?: return
+        if (selectedAudioFeedId != id || !decoderManager.hasAudioOnlyFeed(id)) {
+            decoderManager.retain(emptySet())
+            if (!decoderManager.loadAudioOnly(stream)) {
+                selectedAudioFeedId = null
+                protectedRuntimeStatus["audio"] = "AUDIO_BLOCKED: authorized audio source could not be prepared"
+                _multiviewStatus.value = "Own protected F1 pipeline: " +
+                    protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
+                return
+            }
+        }
+        selectedAudioFeedId = id
+        protectedRuntimeStatus.remove("audio")
+        decoderManager.setAudioPlayer(id)
+        _multiviewStatus.value = "Own protected F1 pipeline: " +
+            protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
+    }
+    fun setMuted(id: String, muted: Boolean) {
+        if (!multiFeedBlocked) decoderManager.setMuted(id, muted)
+        else if (!muted) setAudioPlayer(id)
+        else if (selectedAudioFeedId == id) decoderManager.setMuted(id, true)
+    }
+    fun isMuted(id: String): Boolean =
+        if (multiFeedBlocked) !decoderManager.hasAudioOnlyFeed(id) || decoderManager.isMuted(id)
+        else decoderManager.isMuted(id)
+    fun isProtectedAudioAvailable(id: String): Boolean =
+        multiFeedBlocked && decoderManager.hasAudioOnlyFeed(id)
+    fun isProtectedAudioSelected(id: String): Boolean =
+        multiFeedBlocked && selectedAudioFeedId == id && decoderManager.hasAudioOnlyFeed(id)
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
         if (multiFeedBlocked) protectedPresentationClock.setMaster(mainId, channelOffsetsMs)
@@ -258,24 +327,28 @@ class UnifiedMultiviewEngine(context: Context) {
                 ?.let { it.globalPositionUsForWindow(positionMs * 1_000L) } ?: positionMs * 1_000L
             protectedPresentationClock.seekToPositionUs(globalTargetUs)
             protectedRuntimes.values.forEach { it.seekTo(positionMs) }
+            selectedAudioFeedId?.let { decoderManager.seekTo(it, positionMs) }
         } else decoderManager.seekTo(id, positionMs)
     }
     fun seekToDefaultPosition(id: String) {
         if (multiFeedBlocked) {
             protectedPresentationClock.resetEpoch()
             protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::seekToDefaultPosition)
+            selectedAudioFeedId?.let(decoderManager::seekToDefaultPosition)
         } else decoderManager.seekToDefaultPosition(id)
     }
     fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) {
         if (multiFeedBlocked) {
             protectedPresentationClock.setPlaybackSpeed(parameters.speed)
             protectedRuntimes.values.forEach { it.setPlaybackSpeed(parameters.speed) }
+            selectedAudioFeedId?.let { decoderManager.setPlaybackSpeed(it, parameters.speed) }
         } else decoderManager.setPlaybackParameters(id, parameters)
     }
     fun setPlaybackSpeed(id: String, speed: Float) {
         if (multiFeedBlocked) {
             protectedPresentationClock.setPlaybackSpeed(speed)
             protectedRuntimes.values.forEach { it.setPlaybackSpeed(speed) }
+            selectedAudioFeedId?.let { decoderManager.setPlaybackSpeed(it, speed) }
         } else decoderManager.setPlaybackSpeed(id, speed)
     }
     internal fun attachSurfaceView(id: String, surface: SurfaceView) {
@@ -293,23 +366,34 @@ class UnifiedMultiviewEngine(context: Context) {
         decoderManager.detachTextureView(id, texture)
     }
     fun pause(id: String) {
-        if (multiFeedBlocked) protectedRuntimes[id]?.pause() else decoderManager.pause(id)
+        if (multiFeedBlocked) {
+            protectedRuntimes[id]?.pause()
+            if (selectedAudioFeedId == id) decoderManager.pause(id)
+        } else decoderManager.pause(id)
     }
     fun play(id: String) {
-        if (multiFeedBlocked) protectedRuntimes[id]?.play()
-        else if (decoderManager.hasDecoder(id)) decoderManager.play(id)
+        if (multiFeedBlocked) {
+            protectedRuntimes[id]?.play()
+            if (selectedAudioFeedId == id) decoderManager.play(id)
+        } else if (decoderManager.hasDecoder(id)) decoderManager.play(id)
     }
     fun playAll() {
-        if (multiFeedBlocked) protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::play)
-        else decoderManager.playAll()
+        if (multiFeedBlocked) {
+            protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::play)
+            decoderManager.playAll()
+        } else decoderManager.playAll()
     }
     fun pauseAll() {
-        if (multiFeedBlocked) protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::pause)
-        else decoderManager.pauseAll()
+        if (multiFeedBlocked) {
+            protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::pause)
+            decoderManager.pauseAll()
+        } else decoderManager.pauseAll()
     }
     fun stopAll() {
-        if (multiFeedBlocked) protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
-        else decoderManager.stopAll()
+        if (multiFeedBlocked) {
+            protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
+            decoderManager.stopAll()
+        } else decoderManager.stopAll()
     }
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
@@ -348,6 +432,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun release() {
         protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
         protectedRuntimeStatus.clear()
+        selectedAudioFeedId = null
         multiFeedBlocked = false
         surfaceManager.clear()
         feedRegistry.clear()
@@ -410,6 +495,7 @@ private class FeedRegistry {
     private val feeds = linkedMapOf<String, StreamSource>()
 
     fun put(stream: StreamSource) { feeds[stream.id] = stream }
+    fun get(id: String): StreamSource? = feeds[id]
     fun remove(id: String) { feeds.remove(id) }
     fun retain(ids: Set<String>) { feeds.keys.filterNot(ids::contains).toList().forEach(feeds::remove) }
     fun clear() { feeds.clear() }
