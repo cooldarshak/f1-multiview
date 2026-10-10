@@ -363,7 +363,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
     val info=_ui.value.liveSessionInfo
     val key=info.circuitKey ?: return@launch
     val year=info.year ?: java.time.Year.now().value
-    trackMapClient.load(key,year).onSuccess{geometry->_ui.value=_ui.value.copy(trackGeometry=geometry,providerError=null)}
+    trackMapClient.load(key,year,info.circuitName).onSuccess{geometry->_ui.value=_ui.value.copy(trackGeometry=geometry,providerError=null)}
         .onFailure{_ui.value=_ui.value.copy(providerError="Track map geometry unavailable: "+(it.message?:"unknown error"))}
 }
     fun setMainStream(id:String)=viewModelScope.launch{
