@@ -1254,7 +1254,7 @@ private fun dashboardClock(value: String): String? {
 
 @Composable
 private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
-    val rows = ui.timing.sortedBy { it.position }.take(5)
+    val rows = ui.timing.sortedBy { it.position }
     val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
     val totalLaps = ui.totalLaps.takeIf { it > 0 }
     val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
