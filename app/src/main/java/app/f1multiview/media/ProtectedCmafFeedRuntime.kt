@@ -133,7 +133,7 @@ internal class ProtectedCmafFeedRuntime(
         }
 
         if (pendingSample == null && !eosQueued) {
-            val result = activeSource.pump(clock.positionUsFor(stream.id))
+            val result = if (clock.isReady) activeSource.pump(clock.positionUsFor(stream.id)) else activeSource.pump()
             when (result.kind) {
                 AuthorizedCmafMediaSourceSession.ReadKind.FORMAT -> {
                     val format = result.format ?: throw IOException("Video format result had no format")
