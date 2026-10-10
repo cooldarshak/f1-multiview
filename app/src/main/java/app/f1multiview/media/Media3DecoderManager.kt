@@ -125,8 +125,21 @@ class Media3DecoderManager(context: Context) {
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         _errors.value = _errors.value + (id to (error.message ?: error.errorCodeName))
-                        if (isDecoderFailure(error)) recoverFromDecoderFailure(id, player, error)
-                        else recoverFromSourceFailure(id, player)
+                        when {
+                            isDecoderFailure(error) -> recoverFromDecoderFailure(id, player, error)
+                            PlaybackFailurePolicy.isDrmFailure(error.errorCodeName, error.message) -> {
+                                // A licence/session failure is not a transient CDN/quality failure.
+                                // Do not repeatedly reacquire a rejected licence or conceal it as
+                                // a quality fallback. Keep the protected playback error visible.
+                                val message = "Protected playback failed (${error.errorCodeName}); DRM recovery is blocked"
+                                _errors.value = _errors.value + (id to message)
+                                AppLogger.e(
+                                    "Media3DecoderManager",
+                                    "DRM_PLAYBACK_FAILED feed=$id code=${error.errorCodeName} recovery=blocked"
+                                )
+                            }
+                            else -> recoverFromSourceFailure(id, player)
+                        }
                     }
 
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -521,12 +534,10 @@ class Media3DecoderManager(context: Context) {
         val requested = selectedQualities[id] ?: Quality.AUTO
         val attempts = decoderRecoveryAttempts[id] ?: 0
 
-        // Only attempt the L3 fallback for a secondary DRM stream when the failure
-        // has evidence consistent with secure-decoder/resource exhaustion. Do not
-        // downgrade every decoder error: a bad codec/manifest must follow the normal
-        // recovery ladder instead.
-        // Never force a Widevine security-level downgrade to recover from decoder pressure.
-        // Keep the normal quality/resource recovery path and surface a visible error if it fails.
+        // Recovery may lower the selected rendition, but must never downgrade the
+        // provider/device-selected Widevine security level. If decoder capacity remains
+        // unavailable, the playback error stays visible; protected playback is never
+        // converted to a clear fallback.
         val recoveryQuality = qualityManager.recoveryQuality(requested, isMain)
 
         decoderRecoveryAttempts[id] = attempts + 1
