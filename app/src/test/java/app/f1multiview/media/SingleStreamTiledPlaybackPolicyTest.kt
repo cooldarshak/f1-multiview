@@ -36,6 +36,16 @@ class SingleStreamTiledPlaybackPolicyTest {
         assertFalse(SingleStreamTiledPlaybackPolicy.evaluate(4, descriptor(3)).allowed)
     }
 
+    @Test fun rejectsAValidTileCountWhenSourceIdsDoNotMatchSelection() {
+        assertFalse(
+            SingleStreamTiledPlaybackPolicy.evaluate(
+                visibleVideoFeedCount = 3,
+                descriptor = descriptor(3),
+                visibleVideoFeedIds = setOf("feed-0", "feed-1", "different-feed")
+            ).allowed
+        )
+    }
+
     @Test fun rejectsMoreThanFourVisibleVideoFeeds() {
         assertFalse(SingleStreamTiledPlaybackPolicy.evaluate(5, descriptor(4)).allowed)
     }
