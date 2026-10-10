@@ -41,6 +41,7 @@ internal object AuthorizedDashManifestResolver {
         requestHeaders: Map<String, String>,
         maxWidth: Int = Int.MAX_VALUE,
         maxHeight: Int = Int.MAX_VALUE,
+        requireWidevineInitData: Boolean = false,
         nowUnixTimeUs: Long = System.currentTimeMillis() * 1_000L
     ): VideoPlan {
         require(manifestBytes.isNotEmpty()) { "DASH manifest is empty" }
@@ -71,7 +72,14 @@ internal object AuthorizedDashManifestResolver {
                     drm.get(index).matches(C.WIDEVINE_UUID)
                 }
             }
-            val selectionPool = protectedCandidates.ifEmpty { candidates }
+            if (requireWidevineInitData && protectedCandidates.isEmpty()) {
+                throw IllegalArgumentException(
+                    "Protected DASH stream has no representation with Widevine DRM initialization data"
+                )
+            }
+            // Clear synthetic fixtures may opt into unprotected selection. The authorized
+            // protected-playback path must never silently downgrade to an unprotected rendition.
+            val selectionPool = if (requireWidevineInitData) protectedCandidates else protectedCandidates.ifEmpty { candidates }
             val withinBounds = selectionPool.filter { representation ->
                 representation.format.width in 1..maxWidth &&
                     representation.format.height in 1..maxHeight
