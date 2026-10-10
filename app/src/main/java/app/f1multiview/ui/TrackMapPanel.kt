@@ -82,7 +82,18 @@ fun TrackMapPanel(ui:UiState,isTv:Boolean){
         Spacer(Modifier.height(6.dp))
         Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
             Surface(Modifier.weight(1.65f).fillMaxHeight().focusRequester(mapFocusRequester).focusable(),color=MapBg,shape=RoundedCornerShape(5.dp),border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))){
-                TrackCanvas(geometry=ui.trackGeometry,drivers=drivers,selectedNumber=selected,zoom=zoom,focusSelected=focusSelected,panX=panX,panY=panY,modifier=Modifier.fillMaxSize().padding(5.dp))
+                Box(Modifier.fillMaxSize()) {
+                    TrackCanvas(geometry=ui.trackGeometry,drivers=drivers,selectedNumber=selected,zoom=zoom,focusSelected=focusSelected,panX=panX,panY=panY,modifier=Modifier.fillMaxSize().padding(5.dp))
+                    if (ui.trackGeometry?.centerline.isNullOrEmpty()) {
+                        Column(Modifier.align(Alignment.Center).padding(18.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                            Text("CIRCUIT GEOMETRY UNAVAILABLE",color=MapWhite,fontSize=10.sp,fontWeight=FontWeight.Black)
+                            Text(
+                                if (ui.liveSessionInfo.circuitKey == null) "Waiting for session circuit metadata" else "No validated centreline matched this circuit",
+                                color=MapMuted,fontSize=8.sp
+                            )
+                        }
+                    }
+                }
             }
             Column(Modifier.weight(.85f).fillMaxHeight()){
                 RaceLeaderboard(drivers,selected){selected=it;focusSelected=true}
