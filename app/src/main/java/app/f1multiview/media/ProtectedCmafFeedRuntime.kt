@@ -30,7 +30,7 @@ internal class ProtectedCmafFeedRuntime(
     private val onStatus: (String, String) -> Unit
 ) : AutoCloseable, Choreographer.FrameCallback {
 
-    enum class State { NEW, PREPARING, WAITING_FOR_SURFACE_OR_KEYS, PLAYING, PAUSED, FAILED, CLOSED }
+    enum class State { NEW, PREPARING, WAITING_FOR_SURFACE_OR_KEYS, WAITING_FOR_FIRST_FRAME, PLAYING, PAUSED, FAILED, CLOSED }
 
     private val ownerThread = Thread.currentThread()
     private val choreographer = Choreographer.getInstance()
@@ -362,9 +362,11 @@ internal class ProtectedCmafFeedRuntime(
             onFrameRendered = { presentationTimeUs, renderTimeNs ->
                 lastRenderedPtsUs = presentationTimeUs
                 lastRenderedAtNs = renderTimeNs
-                if (stateValue != State.PLAYING) {
+                if (running && stateValue != State.PLAYING) {
                     stateValue = State.PLAYING
                     publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
+                } else if (!running && stateValue != State.PAUSED) {
+                    publish("FRAME_RENDERED_WHILE_NOT_RUNNING ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
                 }
                 renderedFrameCount++
                 val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
@@ -378,12 +380,12 @@ internal class ProtectedCmafFeedRuntime(
                 if (observation.hardResync) pendingHardResync = true
             }
         )
-        stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+        stateValue = State.WAITING_FOR_FIRST_FRAME
         AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_CONFIGURED feed=${stream.id} " +
             "codec=${decoder?.codecName ?: "unknown"} inputEnded=${decoder?.isInputEnded} " +
             "surfaceGeneration=${lease.generation} surfaceValid=${lease.surface.isValid} " +
             "drmState=${drmSession.state}")
-        publish("READY: secure hardware decoder configured")
+        publish("WAITING_FOR_FIRST_FRAME: secure decoder configured; awaiting rendered-frame callback")
     }
 
     private fun scheduleFrame() {

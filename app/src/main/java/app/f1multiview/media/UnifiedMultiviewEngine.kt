@@ -73,12 +73,8 @@ class UnifiedMultiviewEngine(context: Context) {
         if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.durationMs ?: androidx.media3.common.C.TIME_UNSET else fallback
 
     internal fun playbackState(id: String, fallback: Int): Int =
-        if (multiFeedBlocked && id in protectedRuntimes) when (protectedRuntimes[id]?.state) {
-            ProtectedCmafFeedRuntime.State.PREPARING,
-            ProtectedCmafFeedRuntime.State.WAITING_FOR_SURFACE_OR_KEYS -> androidx.media3.common.Player.STATE_BUFFERING
-            ProtectedCmafFeedRuntime.State.PLAYING,
-            ProtectedCmafFeedRuntime.State.PAUSED -> androidx.media3.common.Player.STATE_READY
-            else -> androidx.media3.common.Player.STATE_IDLE
+        if (multiFeedBlocked && id in protectedRuntimes) {
+            ProtectedFeedPlaybackStatePolicy.toPlayerState(protectedRuntimes[id]?.state)
         } else fallback
 
     fun multiviewDiagnostics(): Map<String, String> =
