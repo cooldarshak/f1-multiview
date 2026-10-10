@@ -141,6 +141,15 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         // The owner drives bounded pump() calls on the playback looper.
     }
 
+    fun seekToUs(positionUs: Long): Long {
+        checkThread()
+        check(stateValue == State.READY) { "Authorized CMAF source is not ready: $stateValue" }
+        val activePeriod = period ?: throw IOException("Media period was released")
+        periodPositionUs = activePeriod.seekToUs(positionUs.coerceAtLeast(0L)).coerceAtLeast(0L)
+        sampleBuffer.clear()
+        return periodPositionUs
+    }
+
     fun pump(positionUs: Long = periodPositionUs): ReadResult {
         checkThread()
         pendingError?.let { throw it }

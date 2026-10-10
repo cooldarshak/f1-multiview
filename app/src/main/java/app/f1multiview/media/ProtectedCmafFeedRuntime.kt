@@ -39,6 +39,8 @@ internal class ProtectedCmafFeedRuntime(
     private var frameScheduled = false
     private var lastFormat: Format? = null
     private var lastPublishedMessage: String? = null
+    private var pendingHardResync = false
+    private var renderedFrameCount = 0L
     private var stateValue = State.NEW
 
     val state: State get() = stateValue
@@ -114,6 +116,15 @@ internal class ProtectedCmafFeedRuntime(
         }
         if (activeSource.state != AuthorizedCmafMediaSourceSession.State.READY) return
 
+        if (pendingHardResync) {
+            pendingHardResync = false
+            decoder?.close()
+            decoder = null
+            pendingSample = null
+            activeSource.seekToUs(clock.positionUsFor(stream.id))
+            publish("SYNC_HARD_RESYNC: follower sought to shared main-feed clock")
+        }
+
         val oldLease = surfaceLease
         if (decoder != null && oldLease != null && !surfaceManager.isCurrentProtectedSurfaceLease(oldLease)) {
             decoder?.close()
@@ -188,6 +199,15 @@ internal class ProtectedCmafFeedRuntime(
                     stateValue = State.PLAYING
                     publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
                 }
+                renderedFrameCount++
+                val observation = clock.observeRenderedFrame(stream.id, presentationTimeUs, renderTimeNs, stream.isLive)
+                if (renderedFrameCount % 30L == 0L) {
+                    AppLogger.i(
+                        "ProtectedCmafSync",
+                        "feed=${stream.id} renderedFrames=$renderedFrameCount driftMs=${observation.driftUs / 1000.0} correctionMs=${observation.correctionUs / 1000.0} hardResync=${observation.hardResync}"
+                    )
+                }
+                if (observation.hardResync) pendingHardResync = true
             }
         )
         stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
@@ -275,11 +295,38 @@ internal class ProtectedPresentationClock {
         channelOffsetsMs.forEach { (id, offsetMs) -> offsetsUs[id] = offsetMs * 1_000L }
     }
 
+    data class DriftObservation(val driftUs: Long, val correctionUs: Long, val hardResync: Boolean)
+
     fun establish(masterPresentationTimeUs: Long) {
         if (isReady) return
         check(masterFeedId.isNotBlank()) { "Master feed must be selected before establishing the clock" }
         basePresentationTimeUs = masterPresentationTimeUs
         baseElapsedRealtimeNs = SystemClock.elapsedRealtimeNanos() + STARTUP_LEAD_NS
+    }
+
+    fun observeRenderedFrame(
+        feedId: String,
+        presentationTimeUs: Long,
+        renderTimeNs: Long,
+        isLive: Boolean
+    ): DriftObservation {
+        val basePts = basePresentationTimeUs ?: return DriftObservation(0L, 0L, false)
+        val baseNs = baseElapsedRealtimeNs ?: return DriftObservation(0L, 0L, false)
+        if (feedId == masterFeedId) return DriftObservation(0L, 0L, false)
+        val offsetUs = offsetsUs[feedId] ?: 0L
+        val expectedPtsUs = basePts + (renderTimeNs - baseNs) / 1_000L + offsetUs
+        val driftUs = presentationTimeUs - expectedPtsUs
+        val hardThresholdUs = if (isLive) LIVE_HARD_SEEK_THRESHOLD_US else VOD_HARD_SEEK_THRESHOLD_US
+        if (kotlin.math.abs(driftUs) >= hardThresholdUs) {
+            return DriftObservation(driftUs, 0L, true)
+        }
+        val correctionUs = if (kotlin.math.abs(driftUs) >= DRIFT_TOLERANCE_US) {
+            (-driftUs * PLAYBACK_RATE_CORRECTION).toLong()
+        } else {
+            0L
+        }
+        if (correctionUs != 0L) offsetsUs[feedId] = offsetUs + correctionUs
+        return DriftObservation(driftUs, correctionUs, false)
     }
 
     fun presentationTimeNs(feedId: String, presentationTimeUs: Long): Long {
@@ -301,5 +348,9 @@ internal class ProtectedPresentationClock {
     private companion object {
         const val STARTUP_LEAD_NS = 120_000_000L
         const val MIN_PRESENTATION_LEAD_NS = 1_000_000L
+        const val DRIFT_TOLERANCE_US = 50_000L
+        const val VOD_HARD_SEEK_THRESHOLD_US = 500_000L
+        const val LIVE_HARD_SEEK_THRESHOLD_US = 1_500_000L
+        const val PLAYBACK_RATE_CORRECTION = 0.05
     }
 }
