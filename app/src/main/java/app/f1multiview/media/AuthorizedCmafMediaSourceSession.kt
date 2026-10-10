@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.trackselection.FixedTrackSelection
 import androidx.media3.exoplayer.upstream.Allocator
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultAllocator
+import androidx.media3.exoplayer.LoadingInfo
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import app.f1multiview.model.StreamSource
 import java.io.IOException
@@ -91,7 +92,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                 0L
             }
             val newPeriod = source.createPeriod(
-                MediaSource.MediaPeriodId(periodInfo.uid),
+                MediaSource.MediaPeriodId(requireNotNull(periodInfo.uid)),
                 allocator,
                 periodPositionUs
             )
@@ -140,10 +141,6 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         // The owner drives bounded pump() calls on the playback looper.
     }
 
-    override fun onPrepared(source: MediaPeriod) = onPrepared(source)
-
-    override fun onContinueLoadingRequested(source: MediaPeriod, ignored: Unit) = Unit
-
     fun pump(positionUs: Long = periodPositionUs): ReadResult {
         checkThread()
         pendingError?.let { throw it }
@@ -151,7 +148,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         val activePeriod = period ?: throw IOException("Media period was released")
         val activeStream = videoStream ?: throw IOException("Video sample stream is not selected")
         periodPositionUs = positionUs.coerceAtLeast(0L)
-        activePeriod.continueLoading(periodPositionUs)
+        activePeriod.continueLoading(LoadingInfo.Builder().setPlaybackPositionUs(periodPositionUs).build())
         activeStream.maybeThrowError()
         sampleBuffer.clear()
         val holder = androidx.media3.exoplayer.FormatHolder()
