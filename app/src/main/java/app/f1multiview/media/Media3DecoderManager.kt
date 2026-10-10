@@ -8,6 +8,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.Tracks
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
@@ -89,6 +93,10 @@ class Media3DecoderManager(context: Context) {
     private val desiredPlaying = mutableSetOf<String>()
     private val _errors = MutableStateFlow<Map<String, String>>(emptyMap())
     val errors: StateFlow<Map<String, String>> = _errors.asStateFlow()
+    private val _protectedAudioTrackVersion = MutableStateFlow(0)
+    val protectedAudioTrackVersion: StateFlow<Int> = _protectedAudioTrackVersion.asStateFlow()
+    private val _protectedSubtitleCues = MutableStateFlow<Map<String, List<Cue>>>(emptyMap())
+    val protectedSubtitleCues: StateFlow<Map<String, List<Cue>>> = _protectedSubtitleCues.asStateFlow()
 
     private val audioAttributes = AudioAttributes.Builder()
         .setUsage(C.USAGE_MEDIA)
@@ -154,11 +162,18 @@ class Media3DecoderManager(context: Context) {
                     }
 
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                        if (id in audioOnlyFeedIds) _protectedAudioTrackVersion.value++
                         val selected = selectedQualities[id] ?: Quality.AUTO
                         if (selected != Quality.AUTO) {
                             applyQuality(player, selected, id == audioPlayerId)
                         } else {
                             applyAutoResourceBudget(id, player)
+                        }
+                    }
+
+                    override fun onCues(cueGroup: CueGroup) {
+                        if (id in audioOnlyFeedIds) {
+                            _protectedSubtitleCues.value = _protectedSubtitleCues.value + (id to cueGroup.cues)
                         }
                     }
 
@@ -568,6 +583,7 @@ class Media3DecoderManager(context: Context) {
     fun loadAudioOnly(stream: StreamSource): Boolean {
         val id = stream.id
         audioOnlyFeedIds.add(id)
+        _protectedSubtitleCues.value = _protectedSubtitleCues.value + (id to emptyList())
         val url = stream.url
         if (url.isNullOrBlank()) {
             audioOnlyFeedIds.remove(id)
@@ -595,6 +611,19 @@ class Media3DecoderManager(context: Context) {
     }
 
     fun hasAudioOnlyFeed(id: String): Boolean = id in audioOnlyFeedIds
+
+    fun currentTracks(id: String): Tracks = players[id]?.currentTracks ?: Tracks.EMPTY
+
+    fun trackSelectionParameters(id: String): TrackSelectionParameters? = players[id]?.trackSelectionParameters
+
+    fun setTrackSelectionParameters(id: String, parameters: TrackSelectionParameters) {
+        val player = players[id] ?: return
+        val activeAudio = resourceManager.hasLease(id) || id in audioOnlyFeedIds
+        player.trackSelectionParameters = parameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, id in audioOnlyFeedIds)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !activeAudio)
+            .build()
+    }
 
     fun disableAudioOnlyMode(id: String) {
         if (!audioOnlyFeedIds.remove(id)) return
@@ -731,6 +760,8 @@ class Media3DecoderManager(context: Context) {
         streamKinds.remove(id)
         streams.remove(id)
         audioOnlyFeedIds.remove(id)
+        _protectedSubtitleCues.value = _protectedSubtitleCues.value - id
+        _protectedAudioTrackVersion.value++
         decoderRecoveryAttempts.remove(id)
         startupRequestedAtMs.remove(id)
         startupFirstFrameAtMs.remove(id)
@@ -781,6 +812,8 @@ class Media3DecoderManager(context: Context) {
         desiredPlaying.clear()
         audioPlayerId = null
         audioOnlyFeedIds.clear()
+        _protectedSubtitleCues.value = emptyMap()
+        _protectedAudioTrackVersion.value++
         selectedQualities.clear()
         streamKinds.clear()
         streams.clear()

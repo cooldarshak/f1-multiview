@@ -1854,6 +1854,12 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
     var ready by remember(stream.id) { mutableStateOf(player.playbackState == Player.STATE_READY) }
     val protectedPipelinePulse by engine.multiviewStatus.collectAsState()
     @Suppress("UNUSED_VARIABLE") val protectedPipelineRecompose = protectedPipelinePulse
+    val protectedSubtitleCues by engine.protectedSubtitleCues.collectAsState()
+    val subtitleText = if (engine.isProtectedAudioSelected(stream.id)) {
+        protectedSubtitleCues[stream.id].orEmpty()
+            .mapNotNull { it.text?.toString()?.takeIf(String::isNotBlank) }
+            .joinToString("\n")
+    } else ""
     val ownProtectedSelected = engine.isProtectedFeedSelected(stream.id)
     val ownProtectedPlaying = engine.isProtectedFeedPlaying(stream.id)
     val ownProtectedStatus = engine.protectedFeedStatus(stream.id)
@@ -1883,6 +1889,21 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id, onVideoTap = onVideoTap)
+            if (subtitleText.isNotBlank()) {
+                Text(
+                    subtitleText,
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                        .padding(start = 12.dp, end = 12.dp, bottom = 30.dp)
+                        .background(Color.Black.copy(alpha = .72f), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             if (stream.url == null && error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stream.title, color = White, fontWeight = FontWeight.Bold)
@@ -2405,7 +2426,9 @@ private fun FullscreenMultiview(
         onDispose { activePlayer.removeListener(listener) }
     }
 
-    val audioTracks = remember(activePlayer, trackVersion) {
+    val protectedAudioTrackVersion by engine.protectedAudioTrackVersion.collectAsState()
+
+    val audioTracks = remember(activePlayer, trackVersion, protectedAudioTrackVersion) {
         activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->
             if (group.type != C.TRACK_TYPE_AUDIO) emptyList()
             else (0 until group.length).mapNotNull { index ->
@@ -2415,7 +2438,7 @@ private fun FullscreenMultiview(
         } ?: emptyList()
     }
 
-    val textTracks = remember(activePlayer, trackVersion) {
+    val textTracks = remember(activePlayer, trackVersion, protectedAudioTrackVersion) {
         activePlayer?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->
             if (group.type != C.TRACK_TYPE_TEXT) emptyList()
             else (0 until group.length).mapNotNull { index ->

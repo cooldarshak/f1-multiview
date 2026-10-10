@@ -41,6 +41,25 @@ class UnifiedMultiviewEngine(context: Context) {
 
     fun player(id: String): EnginePlayerHandle = EnginePlayerHandle(this, id)
 
+    val protectedAudioTrackVersion: StateFlow<Int> get() = decoderManager.protectedAudioTrackVersion
+    val protectedSubtitleCues: StateFlow<Map<String, List<Cue>>> get() = decoderManager.protectedSubtitleCues
+
+    internal fun currentTracks(id: String, fallback: Tracks): Tracks =
+        if (multiFeedBlocked && decoderManager.hasAudioOnlyFeed(id)) decoderManager.currentTracks(id) else fallback
+
+    internal fun trackSelectionParameters(
+        id: String,
+        fallback: TrackSelectionParameters
+    ): TrackSelectionParameters =
+        if (multiFeedBlocked && decoderManager.hasAudioOnlyFeed(id)) decoderManager.trackSelectionParameters(id) ?: fallback
+        else fallback
+
+    internal fun setTrackSelectionParameters(id: String, parameters: TrackSelectionParameters) {
+        if (!multiFeedBlocked || (id == selectedAudioFeedId && decoderManager.hasAudioOnlyFeed(id))) {
+            decoderManager.setTrackSelectionParameters(id, parameters)
+        }
+    }
+
     internal fun currentPositionMs(id: String, fallback: Long): Long =
         if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.currentPositionMs() ?: 0L else fallback
 
