@@ -1,6 +1,7 @@
 package app.f1multiview.media
 
 import android.content.Context
+import android.os.Looper
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.media3.exoplayer.ExoPlayer
@@ -23,6 +24,9 @@ class UnifiedMultiviewEngine(context: Context) {
     private val feedRegistry = FeedRegistry()
     private val surfaceManager = MultiviewSurfaceManager(context)
     private val viewportScheduler = ViewportScheduler(maxDecoders = decoderManager.capacity())
+    private val protectedPresentationClock = ProtectedPresentationClock()
+    private val protectedRuntimes = linkedMapOf<String, ProtectedCmafFeedRuntime>()
+    private val protectedRuntimeStatus = linkedMapOf<String, String>()
     private var multiFeedBlocked = false
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
@@ -56,6 +60,7 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun retain(ids: Set<String>) {
+        protectedRuntimes.keys.filterNot(ids::contains).toList().forEach(::closeProtectedRuntime)
         surfaceManager.boundFeedIds().filterNot(ids::contains).forEach { id ->
             surfaceManager.binding(id)?.let { binding ->
                 surfaceManager.detach(id, binding.owner, binding.container)
@@ -72,6 +77,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun suspend(id: String) = decoderManager.suspend(id)
 
     fun clear(id: String) {
+        closeProtectedRuntime(id)
         surfaceManager.binding(id)?.let { binding -> surfaceManager.detach(id, binding.owner, binding.container) }
         feedRegistry.remove(id)
         decoderManager.clear(id)
@@ -95,30 +101,54 @@ class UnifiedMultiviewEngine(context: Context) {
         }
         if (visibleVideoCount > 1) {
             multiFeedBlocked = true
-            // Clear stale outputs before releasing decoder leases. Detach operations are cleanup
-            // and remain permitted while the playback gate is closed.
-            surfaceManager.clear()
-            decoderManager.retain(emptySet())
             val selectedVideoStreams = streams.filter { stream ->
                 stream.id in visibleIds && stream.kind !in videoKinds
             }
+            protectedPresentationClock.setMaster(referenceId ?: selectedVideoStreams.first().id)
+            // Release Media3 video decoders, but keep the AndroidView containers alive so each
+            // authorized runtime can claim its own secure SurfaceView lease. No player fallback.
+            decoderManager.retain(emptySet())
+            protectedRuntimes.keys.filterNot(visibleIds::contains).toList().forEach(::closeProtectedRuntime)
             selectedVideoStreams.forEach { stream ->
                 val compatibility = ProtectedFeedCompatibility.inspect(appContext, stream)
-                AppLogger.i(
-                    "F1MultiFeedCompatibility",
-                    "feed=${stream.id} ${compatibility.toLogFields()}"
-                )
+                AppLogger.i("F1MultiFeedCompatibility", "feed=${stream.id} ${compatibility.toLogFields()}")
+                if (!DrmProtectionPolicy.requiresProtectedOutput(stream) ||
+                    DrmProtectionPolicy.missingLicenseEndpoint(stream)
+                ) {
+                    protectedRuntimeStatus[stream.id] =
+                        "BLOCKED: protected feed requires an authorized Widevine license endpoint"
+                    closeProtectedRuntime(stream.id)
+                } else {
+                    protectedRuntimes.getOrPut(stream.id) {
+                        ProtectedCmafFeedRuntime(
+                            stream = stream,
+                            surfaceManager = surfaceManager,
+                            clock = protectedPresentationClock,
+                            playbackLooper = Looper.getMainLooper()
+                        ) { feedId, status ->
+                            protectedRuntimeStatus[feedId] = status
+                            _multiviewStatus.value = "Own protected F1 pipeline: " +
+                                protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
+                        }.also { it.start() }
+                    }
+                }
             }
-            _multiviewStatus.value =
-                "PROTECTED F1 MULTIVIEW BLOCKED: secure SurfaceView layering is only a candidate; the own authorized F1 demux/DRM/decoder pipeline and concurrent protected playback are not yet validated. No independent ExoPlayer fallback was created."
-            AppLogger.e(
+            _multiviewStatus.value = "Own protected F1 pipeline: " +
+                protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
+            AppLogger.i(
                 "OwnMultiviewEngine",
-                "MULTIVIEW_BLOCKED visibleVideoFeeds=$visibleVideoCount reason=own-authorized-f1-protected-pipeline-not-integrated secureSurfaceLayering=unverified"
+                "MULTIVIEW_OWN_PIPELINE_START visibleVideoFeeds=$visibleVideoCount feeds=${selectedVideoStreams.joinToString(",") { it.id }}"
             )
             _decoderGeneration.value += 1L
-            return emptySet()
+            return selectedVideoStreams.map { it.id }.toSet()
         }
 
+        if (multiFeedBlocked) {
+            protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
+            protectedRuntimeStatus.clear()
+            // The single-feed Media3 path gets a fresh surface binding after protected leases close.
+            surfaceManager.clear()
+        }
         multiFeedBlocked = false
         _multiviewStatus.value = if (visibleVideoCount == 1) {
             "Single authorized feed: Media3 playback. Own multi-feed renderer is not yet integrated with protected F1 media."
@@ -191,18 +221,25 @@ class UnifiedMultiviewEngine(context: Context) {
         // Detach is resource cleanup, not playback admission; it must work while the gate is closed.
         decoderManager.detachTextureView(id, texture)
     }
-    fun pause(id: String) { if (!multiFeedBlocked) decoderManager.pause(id) }
+    fun pause(id: String) {
+        if (multiFeedBlocked) protectedRuntimes[id]?.pause() else decoderManager.pause(id)
+    }
     fun play(id: String) {
-        if (multiFeedBlocked) {
-            AppLogger.w("OwnMultiviewEngine", "PLAY_BLOCKED feed=$id; refusing independent-player fallback")
-        } else if (decoderManager.hasDecoder(id)) decoderManager.play(id)
+        if (multiFeedBlocked) protectedRuntimes[id]?.play()
+        else if (decoderManager.hasDecoder(id)) decoderManager.play(id)
     }
     fun playAll() {
-        if (multiFeedBlocked) AppLogger.w("OwnMultiviewEngine", "PLAY_ALL_BLOCKED; own multi-feed runtime validation is pending")
+        if (multiFeedBlocked) protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::play)
         else decoderManager.playAll()
     }
-    fun pauseAll() { if (!multiFeedBlocked) decoderManager.pauseAll() }
-    fun stopAll() { if (!multiFeedBlocked) decoderManager.stopAll() }
+    fun pauseAll() {
+        if (multiFeedBlocked) protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::pause)
+        else decoderManager.pauseAll()
+    }
+    fun stopAll() {
+        if (multiFeedBlocked) protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
+        else decoderManager.stopAll()
+    }
     fun playbackStartupDiagnostics(): Map<String, String> = decoderManager.playbackStartupDiagnostics()
     fun decoderResourceDiagnostics(): Map<String, String> = decoderManager.decoderResourceDiagnostics()
 
@@ -215,7 +252,7 @@ class UnifiedMultiviewEngine(context: Context) {
         screenshotMode: Boolean = false,
         onVideoTap: (() -> Unit)? = null
     ) {
-        if (multiFeedBlocked) return
+        if (multiFeedBlocked && !DrmProtectionPolicy.requiresProtectedOutput(stream)) return
         surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
     }
 
@@ -230,7 +267,14 @@ class UnifiedMultiviewEngine(context: Context) {
     fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = surfaceManager.renderSlots()
     fun isGpuComposable(feedId: String): Boolean = surfaceManager.isGpuComposable(feedId)
 
+    private fun closeProtectedRuntime(id: String) {
+        protectedRuntimes.remove(id)?.close()
+        protectedRuntimeStatus.remove(id)
+    }
+
     fun release() {
+        protectedRuntimes.keys.toList().forEach(::closeProtectedRuntime)
+        protectedRuntimeStatus.clear()
         multiFeedBlocked = false
         surfaceManager.clear()
         feedRegistry.clear()
