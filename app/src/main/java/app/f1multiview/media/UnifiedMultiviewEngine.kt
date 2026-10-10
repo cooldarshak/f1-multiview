@@ -5,6 +5,9 @@ import android.os.Looper
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Tracks
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.text.Cue
 import app.f1multiview.core.playback.Quality
 import app.f1multiview.model.StreamSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -464,6 +467,16 @@ private class DecoderManager(context: Context) {
     private val backend = Media3DecoderManager(context)
 
     val errors: StateFlow<Map<String, String>> = backend.errors
+    val protectedAudioTrackVersion: StateFlow<Int> = backend.protectedAudioTrackVersion
+    val protectedSubtitleCues: StateFlow<Map<String, List<Cue>>> = backend.protectedSubtitleCues
+
+    fun loadAudioOnly(stream: StreamSource): Boolean = backend.loadAudioOnly(stream)
+    fun hasAudioOnlyFeed(id: String): Boolean = backend.hasAudioOnlyFeed(id)
+    fun disableAudioOnlyMode(id: String) = backend.disableAudioOnlyMode(id)
+    fun currentTracks(id: String): Tracks = backend.currentTracks(id)
+    fun trackSelectionParameters(id: String): TrackSelectionParameters? = backend.trackSelectionParameters(id)
+    fun setTrackSelectionParameters(id: String, parameters: TrackSelectionParameters) =
+        backend.setTrackSelectionParameters(id, parameters)
 
     fun hasDecoder(id: String): Boolean = backend.hasDecoder(id)
     fun capacity(): Int = backend.capacity()

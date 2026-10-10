@@ -24,13 +24,13 @@ class EnginePlayerHandle internal constructor(
     val isPlaying: Boolean get() = engine.isFeedPlaying(id, player?.isPlaying == true)
     val playbackState: Int get() = engine.playbackState(id, player?.playbackState ?: Player.STATE_IDLE)
     val currentMediaItem: MediaItem? get() = player?.currentMediaItem
-    val currentTracks: Tracks get() = player?.currentTracks ?: Tracks.EMPTY
+    val currentTracks: Tracks get() = engine.currentTracks(id, player?.currentTracks ?: Tracks.EMPTY)
     val videoSize: VideoSize get() = player?.videoSize ?: VideoSize(0, 0, 0, 0f)
     val videoFormat: Format? get() = player?.videoFormat
 
     var trackSelectionParameters: TrackSelectionParameters
-        get() = player?.trackSelectionParameters ?: TrackSelectionParameters.DEFAULT
-        set(value) { player?.trackSelectionParameters = value }
+        get() = engine.trackSelectionParameters(id, player?.trackSelectionParameters ?: TrackSelectionParameters.DEFAULT)
+        set(value) { engine.setTrackSelectionParameters(id, value) }
 
     var playWhenReady: Boolean
         get() = player?.playWhenReady == true
