@@ -77,4 +77,15 @@ class F1TvApiClientTest {
     fun rejectsPlaybackResponseWithoutManifest() {
         F1TvApiClient().parsePlaybackResponse(HttpResponse(200, true, """{"resultObj":{"title":"not a manifest"}}"""), "content-3", null, "WEB_DASH")
     }
+
+    @Test
+    fun detectsWidevineOnlyWhenManifestDeclaresItsSystemUuid() {
+        val api = F1TvApiClient()
+        assertEquals(
+            true,
+            api.containsWidevineUuid("<ContentProtection schemeIdUri=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\"/>")
+        )
+        assertEquals(false, api.containsWidevineUuid("<ContentProtection schemeIdUri=\"urn:uuid:9a04f079-9840-4286-ab92-e65be0885f95\"/>"))
+        assertEquals(false, api.containsWidevineUuid("<MPD><Period/></MPD>"))
+    }
 }
