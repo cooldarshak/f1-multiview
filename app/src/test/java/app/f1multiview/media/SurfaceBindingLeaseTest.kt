@@ -6,6 +6,34 @@ import org.junit.Test
 
 class SurfaceBindingLeaseTest {
     @Test
+    fun sameContainerOwnerAndProtectionCanReuseSurfaceAcrossLayoutUpdates() {
+        val container = Any()
+        val owner = Any()
+        val current = SurfaceBindingLease.ReuseIdentity(container, owner, true)
+        val requested = SurfaceBindingLease.ReuseIdentity(container, owner, true)
+
+        assertTrue(SurfaceBindingLease.canReuse(current, requested))
+    }
+
+    @Test
+    fun replacementContainerOrOwnerOrProtectionRequiresNewBinding() {
+        val container = Any()
+        val replacementContainer = Any()
+        val owner = Any()
+        val replacementOwner = Any()
+        val current = SurfaceBindingLease.ReuseIdentity(container, owner, true)
+
+        assertFalse(SurfaceBindingLease.canReuse(current,
+            SurfaceBindingLease.ReuseIdentity(replacementContainer, owner, true)))
+        assertFalse(SurfaceBindingLease.canReuse(current,
+            SurfaceBindingLease.ReuseIdentity(container, replacementOwner, true)))
+        assertFalse(SurfaceBindingLease.canReuse(current,
+            SurfaceBindingLease.ReuseIdentity(container, owner, false)))
+        assertFalse(SurfaceBindingLease.canReuse(null,
+            SurfaceBindingLease.ReuseIdentity(container, owner, true)))
+    }
+
+    @Test
     fun replacementRejectsReleaseFromOldContainer() {
         val owner = Any()
         val oldContainer = Any()

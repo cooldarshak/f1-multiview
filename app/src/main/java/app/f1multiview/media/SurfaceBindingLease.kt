@@ -11,6 +11,19 @@ internal object SurfaceBindingLease {
         val owner: Any
     )
 
+    /** Identity requirements for reusing an existing Android output surface. */
+    data class ReuseIdentity(
+        val container: Any,
+        val owner: Any,
+        val protectedContent: Boolean
+    )
+
+    fun canReuse(current: ReuseIdentity?, requested: ReuseIdentity): Boolean =
+        current != null &&
+            current.container === requested.container &&
+            current.owner === requested.owner &&
+            current.protectedContent == requested.protectedContent
+
     fun matches(
         current: Identity?,
         releasedGeneration: Long?,

@@ -46,14 +46,23 @@ class MultiviewSurfaceManager(private val context: Context) {
         AppLogger.d("Surface", "bind start feed=$feedId player=${player.id} source=$source container=${System.identityHashCode(container)}")
         val current = bindings[feedId]
         val desiredProtected = renderCoordinator.isProtected(stream)
-        if (current != null && current.container === container && current.owner === player &&
-            current.protectedContent == desiredProtected) {
+        val reuseIdentity = SurfaceBindingLease.ReuseIdentity(container, player, desiredProtected)
+        val currentIdentity = current?.let {
+            SurfaceBindingLease.ReuseIdentity(it.container, it.owner, it.protectedContent)
+        }
+        if (SurfaceBindingLease.canReuse(currentIdentity, reuseIdentity)) {
             renderCoordinator.update(feedId, source)
+            val sourceChanged = current!!.source != source
             val updated = current.copy(onTap = onTap, source = source)
             containerGenerations[container] = current.generation
             bindings[feedId] = updated
-            attachExisting(updated, player, source)
-            AppLogger.d("Surface", "bind reused feed=$feedId container=${System.identityHashCode(container)}")
+            updateTouchInterceptor(updated)
+            // Do not repeatedly call setVideoSurfaceView/setVideoTextureView from AndroidView.update.
+            // Reattaching the same output on every Compose recomposition is unnecessary and can
+            // disturb Media3's output lifecycle. Source-specific HDR hints are safe to refresh.
+            if (sourceChanged) applySurfaceHints(updated, source)
+            AppLogger.d("Surface", "bind reused feed=$feedId generation=${current.generation} " +
+                "container=${System.identityHashCode(container)} sourceChanged=$sourceChanged outputReattached=false")
             return
         }
 
@@ -170,9 +179,13 @@ class MultiviewSurfaceManager(private val context: Context) {
                 bindings[feedId] = updated
                 attachExisting(updated, player, source)
             } else {
+                val sourceChanged = it.source != source
                 val updated = it.copy(source = source)
                 bindings[feedId] = updated
-                attachExisting(updated, player, source)
+                updateTouchInterceptor(updated)
+                if (sourceChanged) applySurfaceHints(updated, source)
+                AppLogger.d("Surface", "update reused output feed=$feedId generation=${it.generation} " +
+                    "sourceChanged=$sourceChanged outputReattached=false")
             }
         }
     }
@@ -344,19 +357,29 @@ class MultiviewSurfaceManager(private val context: Context) {
             }
         }
 
-    private fun attachExisting(binding: SurfaceBinding, player: EnginePlayerHandle, source: String) {
+    private fun updateTouchInterceptor(binding: SurfaceBinding) {
         binding.touchInterceptor?.setOnTouchListener { _, event ->
             if (event.actionMasked == android.view.MotionEvent.ACTION_UP) binding.onTap?.invoke()
             true
         }
+    }
+
+    private fun applySurfaceHints(binding: SurfaceBinding, source: String) {
+        binding.surfaceView?.let {
+            HdrSurfaceHints.apply(it, source)
+            if (binding.owner.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
+                HdrSurfaceHints.applyHlg(it, source)
+            }
+        }
+    }
+
+    private fun attachExisting(binding: SurfaceBinding, player: EnginePlayerHandle, source: String) {
+        updateTouchInterceptor(binding)
         if (!binding.playerOutputAttached) return
         binding.textureView?.let(player::setVideoTextureView)
         binding.surfaceView?.let {
             player.setVideoSurfaceView(it)
-            HdrSurfaceHints.apply(it, source)
-            if (player.videoFormat?.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG) {
-                HdrSurfaceHints.applyHlg(it, source)
-            }
+            applySurfaceHints(binding, source)
         }
     }
 }

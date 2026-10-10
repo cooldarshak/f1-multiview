@@ -284,6 +284,12 @@ internal class ProtectedCmafFeedRuntime(
             lease = surfaceManager.claimProtectedSurfaceForOwnDecoder(stream.id) ?: return
             surfaceLease = lease
         }
+        AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_PREPARE feed=${stream.id} " +
+            "drmState=${drmSession.state} hasKeys=${drmSession.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
+            "mime=${format.sampleMimeType} size=${format.width}x${format.height} " +
+            "surfaceGeneration=${lease.generation} surfaceId=${System.identityHashCode(lease.surface)} " +
+            "surfaceValid=${lease.surface.isValid} secureFlag=${lease.secureFlagRequested} " +
+            "surfaceSize=${lease.width}x${lease.height}")
         decoder = SecureCmafVideoDecoder(
             feedId = stream.id,
             format = format,
@@ -312,6 +318,10 @@ internal class ProtectedCmafFeedRuntime(
             }
         )
         stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+        AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_CONFIGURED feed=${stream.id} " +
+            "codec=${decoder?.codecName ?: "unknown"} inputEnded=${decoder?.isInputEnded} " +
+            "surfaceGeneration=${lease.generation} surfaceValid=${lease.surface.isValid} " +
+            "drmState=${drmSession.state}")
         publish("READY: secure hardware decoder configured")
     }
 
@@ -324,6 +334,16 @@ internal class ProtectedCmafFeedRuntime(
     private fun publish(message: String) {
         if (lastPublishedMessage == message) return
         lastPublishedMessage = message
+        val drmState = source?.currentVideoDrmSession?.state?.toString() ?: "unavailable"
+        val sourceState = source?.state?.toString() ?: "unavailable"
+        val lease = surfaceLease
+        AppLogger.i("ProtectedCmafRuntime", "FEED_STATE feed=${stream.id} state=$stateValue " +
+            "message=$message sourceState=$sourceState drmState=$drmState " +
+            "keysReady=${source?.currentVideoDrmSession?.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
+            "decoder=${decoder?.codecName ?: "none"} frames=$renderedFrameCount " +
+            "surfaceGeneration=${lease?.generation ?: -1L} " +
+            "surfaceValid=${lease?.surface?.isValid ?: false} secure=${lease?.secureFlagRequested ?: false} " +
+            "surfaceId=${lease?.surface?.let(System::identityHashCode) ?: -1}")
         onStatus(stream.id, message)
     }
 
