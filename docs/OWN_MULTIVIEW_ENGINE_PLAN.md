@@ -597,3 +597,17 @@ If neither contract is available, the required single-decoder product is blocked
 - 2/3/4-tile long-duration stability: **pending**.
 
 Do not mark the project complete until all of these are proven. The next engineering action is Gate A: establish whether the authorized F1 source/license contract supplies a tiled representation or explicitly permits a server-side packaging pipeline. Source-code changes alone cannot create a compliant single-stream input if neither exists.
+
+### Evidence update — F1's published tile-encoding architecture
+
+Public AWS documentation about F1 TV Premium describes HEVC tile encoding in AWS Elemental MediaLive: independent/extractable tiles are encoded in a larger HEVC resolution, and F1's client performs bitstream rewriting/merging so the decoder can decode selected tile combinations. This is the relevant technical direction for the hard requirement; it is not evidence that this app's current per-feed CONTENT/PLAY responses expose that tiled rendition or its Widevine contract.
+
+Source: https://aws.amazon.com/blogs/media/f1-sets-new-standard-in-sports-streaming-with-f1-tv-premium-using-aws/
+
+Current runtime evidence from the app's supplied logs is still contrary to the desired input contract: selected feeds reported AVC video formats (main 1920x1080 and data 640x360) and no attached Widevine session. Therefore the existing independently resolved feeds cannot simply be passed into a one-decoder design. Gate A must specifically establish whether the authorized API provides the HEVC tile-encoded representation, the tile topology/codec configuration and an applicable Widevine license/session contract. Do not infer that a normal AVC manifest is tiled.
+
+### App-owned contract implementation status
+
+- Added `AppOwnedTiledStreamDescriptor`, which models a single HEVC tiled stream plus Widevine CENC endpoint, timeline, tile geometry and authorized origin. It validates HTTPS endpoints, tile count 2–4, unique source IDs, normalized non-overlapping geometry, and positive timescale.
+- Added JVM unit tests for 2-, 3-, and 4-tile layouts and invalid/missing DRM endpoints, duplicate IDs, overlap, out-of-bounds geometry, and invalid timescale.
+- This descriptor is a validated boundary contract only. It does not yet parse an actual F1 tiled manifest, perform HEVC tile bitstream rewriting, integrate a single secure decoder, or prove authorized playback. Those remain required implementation and device-validation work.
