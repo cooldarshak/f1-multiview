@@ -117,7 +117,8 @@ class TrackMapClient {
 
         val matches = corners.mapNotNull { corner ->
             if (corner.distance <= 0.0 || corner.distance > trackLength * 1.08) return@mapNotNull null
-            val geoPoint = sampleAtDistance(geoPoints, lengths, corner.distance.coerceIn(0.0, lengths.last()))
+            val scaledDistance = (corner.distance / trackLength * lengths.last()).coerceIn(0.0, lengths.last())
+            val geoPoint = sampleAtDistance(geoPoints, lengths, scaledDistance)
             geoPoint?.let { Triple(it.lon, it.lat, corner.x to corner.y) }
         }
         if (matches.size < 3) return emptyList()
@@ -134,6 +135,12 @@ class TrackMapClient {
 
     private fun normalize(value: String): String =
         value.lowercase().filter { it.isLetterOrDigit() }
+            .replace("grandprix", "")
+            .replace("international", "")
+            .replace("streetcircuit", "")
+            .replace("circuit", "")
+            .replace("autodromo", "")
+            .replace("raceway", "")
 
     private fun cumulativeDistances(points: List<GeoPoint>): List<Double> {
         val out = ArrayList<Double>(points.size)
