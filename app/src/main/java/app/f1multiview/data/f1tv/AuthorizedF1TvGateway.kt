@@ -475,6 +475,14 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                         "httpStatus=${result.httpStatus ?: -1} playApiVersion=${result.playApiVersion ?: "absent"} " +
                         "manifest=${if (result.manifestUrl.contains(".mpd", true)) "dash" else "hls"}"
                 )
+                val explicitWidevine = result.drmType?.contains("widevine", true) == true ||
+                    result.streamType?.contains("DASHWV", true) == true ||
+                    result.streamType?.contains("WIDEVINE", true) == true
+                val explicitlyNonWidevineDashSingle = result.manifestUrl.contains(".mpd", true) &&
+                    result.streamType?.contains("DASH_SINGLE", true) == true && !explicitWidevine
+                if (explicitlyNonWidevineDashSingle) {
+                    throw F1TvException("F1 TV profile explicitly declares DASH_SINGLE without Widevine metadata")
+                }
                 var playToken = result.playToken
                 var manifestLicense: String? = null
                 if (result.manifestUrl.contains(".mpd", true)) {
@@ -529,6 +537,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 last = failure
                 val reasonCode = when {
+                    failure.message?.contains("DASH_SINGLE without Widevine", ignoreCase = true) == true -> "PROFILE_NOT_WIDEVINE"
                     failure.message?.contains("no Widevine license endpoint", ignoreCase = true) == true -> "NO_WIDEVINE_LICENSE_ENDPOINT"
                     failure.message?.contains("manifest unavailable", ignoreCase = true) == true -> "MANIFEST_UNAVAILABLE"
                     failure.message?.contains("manifest URL", ignoreCase = true) == true -> "MANIFEST_URL_MISSING"
