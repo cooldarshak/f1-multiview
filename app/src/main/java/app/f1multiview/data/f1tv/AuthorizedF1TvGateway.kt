@@ -528,6 +528,16 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 last = failure
+                val reasonCode = when {
+                    failure.message?.contains("no Widevine license endpoint", ignoreCase = true) == true -> "NO_WIDEVINE_LICENSE_ENDPOINT"
+                    failure.message?.contains("manifest unavailable", ignoreCase = true) == true -> "MANIFEST_UNAVAILABLE"
+                    failure.message?.contains("manifest URL", ignoreCase = true) == true -> "MANIFEST_URL_MISSING"
+                    else -> failure.javaClass.simpleName
+                }
+                AppLogger.w(
+                    "F1Playback",
+                    "AUTHORIZED_PROFILE_REJECTED contentId=${request.contentId} platform=$platform reason=$reasonCode; trying next authorized profile"
+                )
                 if (index < platforms.lastIndex) delay(450L)
             }
         }
