@@ -70,12 +70,14 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private var pendingError: IOException? = null
     private var periodPositionUs = 0L
     private var defaultPositionUs = 0L
+    private var durationUs = C.TIME_UNSET.toLong()
     private var playbackSpeed = 1f
 
     val state: State get() = stateValue
     val currentVideoFormat: Format? get() = videoFormat
     val currentVideoDrmSession: DrmSession? get() = videoDrmSession
     val positionUs: Long get() = periodPositionUs
+    val durationMs: Long get() = if (durationUs == C.TIME_UNSET.toLong()) C.TIME_UNSET else durationUs / 1_000L
 
     fun prepare() {
         checkThread()
@@ -96,6 +98,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
             val periodIndex = if (stream.isLive) timeline.periodCount - 1 else 0
             val periodInfo = timeline.getPeriod(periodIndex, Timeline.Period(), /* setIds= */ true)
             val window = timeline.getWindow(0, Timeline.Window())
+            durationUs = window.durationUs
             val defaultPosition = window.defaultPositionUs
             periodPositionUs = if (stream.isLive && defaultPosition != C.TIME_UNSET) {
                 (defaultPosition - periodInfo.positionInWindowUs).coerceAtLeast(0L)

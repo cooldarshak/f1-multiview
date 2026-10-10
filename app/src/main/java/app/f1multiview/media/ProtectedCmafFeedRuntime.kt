@@ -44,11 +44,14 @@ internal class ProtectedCmafFeedRuntime(
     private var lastFormat: Format? = null
     private var lastPublishedMessage: String? = null
     private var pendingHardResync = false
+    private var pendingSeekUs: Long? = null
+    private var pendingDefaultSeek = false
     private var renderedFrameCount = 0L
     private var stateValue = State.NEW
 
     val state: State get() = stateValue
     val isPlaying: Boolean get() = stateValue == State.PLAYING
+    val durationMs: Long get() = source?.durationMs ?: androidx.media3.common.C.TIME_UNSET
 
     fun start() {
         checkThread()
@@ -82,7 +85,12 @@ internal class ProtectedCmafFeedRuntime(
         checkThread()
         require(positionMs >= 0L)
         val activeSource = source ?: return
-        activeSource.seekToUs(positionMs * 1_000L)
+        if (activeSource.state == AuthorizedCmafMediaSourceSession.State.READY) {
+            activeSource.seekToUs(positionMs * 1_000L)
+        } else {
+            pendingSeekUs = positionMs * 1_000L
+            pendingDefaultSeek = false
+        }
         decoder?.close()
         decoder = null
         pendingSample = null
@@ -95,7 +103,12 @@ internal class ProtectedCmafFeedRuntime(
     fun seekToDefaultPosition() {
         checkThread()
         val activeSource = source ?: return
-        activeSource.seekToDefaultPosition()
+        if (activeSource.state == AuthorizedCmafMediaSourceSession.State.READY) {
+            activeSource.seekToDefaultPosition()
+        } else {
+            pendingDefaultSeek = true
+            pendingSeekUs = null
+        }
         decoder?.close()
         decoder = null
         pendingSample = null
@@ -169,6 +182,14 @@ internal class ProtectedCmafFeedRuntime(
             throw IOException("Authorized CMAF source failed")
         }
         if (activeSource.state != AuthorizedCmafMediaSourceSession.State.READY) return
+        if (pendingDefaultSeek) {
+            activeSource.seekToDefaultPosition()
+            pendingDefaultSeek = false
+            pendingSeekUs = null
+        } else {
+            pendingSeekUs?.let { activeSource.seekToUs(it) }
+            pendingSeekUs = null
+        }
 
         if (pendingHardResync) {
             pendingHardResync = false

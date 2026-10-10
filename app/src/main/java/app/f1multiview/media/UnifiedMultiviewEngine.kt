@@ -46,6 +46,18 @@ class UnifiedMultiviewEngine(context: Context) {
     internal fun isFeedPlaying(id: String, fallback: Boolean): Boolean =
         if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.isPlaying == true else fallback
 
+    internal fun durationMs(id: String, fallback: Long): Long =
+        if (multiFeedBlocked && id in protectedRuntimes) protectedRuntimes[id]?.durationMs ?: androidx.media3.common.C.TIME_UNSET else fallback
+
+    internal fun playbackState(id: String, fallback: Int): Int =
+        if (multiFeedBlocked && id in protectedRuntimes) when (protectedRuntimes[id]?.state) {
+            ProtectedCmafFeedRuntime.State.PREPARING,
+            ProtectedCmafFeedRuntime.State.WAITING_FOR_SURFACE_OR_KEYS -> androidx.media3.common.Player.STATE_BUFFERING
+            ProtectedCmafFeedRuntime.State.PLAYING,
+            ProtectedCmafFeedRuntime.State.PAUSED -> androidx.media3.common.Player.STATE_READY
+            else -> androidx.media3.common.Player.STATE_IDLE
+        } else fallback
+
     fun multiviewDiagnostics(): Map<String, String> =
         decoderResourceDiagnostics() + surfaceManager.secureSurfaceDiagnostics() + mapOf("multiviewStatus" to _multiviewStatus.value)
 
@@ -206,13 +218,31 @@ class UnifiedMultiviewEngine(context: Context) {
         return targetIds
     }
 
-    fun setQuality(id: String, quality: Quality) = decoderManager.setQuality(id, quality)
-    fun setQuality(quality: Quality) = decoderManager.setQuality(quality)
-    fun getQuality(id: String): Quality = decoderManager.getQuality(id)
-    fun availableVideoResolutions(id: String): List<Pair<Int, Int>> = decoderManager.availableVideoResolutions(id)
-    fun availableVideoResolutionsForQualityMenu(id: String): List<Pair<Int, Int>> = decoderManager.availableVideoResolutionsForQualityMenu(id)
-    fun currentVideoDiagnostics(id: String): VideoDiagnostics? = decoderManager.currentVideoDiagnostics(id)
-    fun qualityAvailable(id: String, quality: Quality): Boolean = decoderManager.qualityAvailable(id, quality)
+    fun setQuality(id: String, quality: Quality) {
+        if (multiFeedBlocked) {
+            protectedQualities[id] = quality
+            protectedRuntimes[id]?.setQuality(quality)
+        } else decoderManager.setQuality(id, quality)
+    }
+    fun setQuality(quality: Quality) {
+        if (multiFeedBlocked) {
+            protectedRuntimes.keys.toList().forEach { id ->
+                protectedQualities[id] = quality
+                protectedRuntimes[id]?.setQuality(quality)
+            }
+        } else decoderManager.setQuality(quality)
+    }
+    fun getQuality(id: String): Quality =
+        if (multiFeedBlocked) protectedQualities[id] ?: Quality.AUTO else decoderManager.getQuality(id)
+    fun availableVideoResolutions(id: String): List<Pair<Int, Int>> =
+        if (multiFeedBlocked) protectedRuntimes[id]?.availableVideoResolutions().orEmpty() else decoderManager.availableVideoResolutions(id)
+    fun availableVideoResolutionsForQualityMenu(id: String): List<Pair<Int, Int>> =
+        if (multiFeedBlocked) availableVideoResolutions(id) else decoderManager.availableVideoResolutionsForQualityMenu(id)
+    fun currentVideoDiagnostics(id: String): VideoDiagnostics? =
+        if (multiFeedBlocked) null else decoderManager.currentVideoDiagnostics(id)
+    fun qualityAvailable(id: String, quality: Quality): Boolean =
+        if (multiFeedBlocked) protectedRuntimes[id]?.qualityAvailable(quality) ?: (quality == Quality.AUTO)
+        else decoderManager.qualityAvailable(id, quality)
     fun setAudioPlayer(id: String?) { if (!multiFeedBlocked) decoderManager.setAudioPlayer(id) }
     fun setMuted(id: String, muted: Boolean) { if (!multiFeedBlocked) decoderManager.setMuted(id, muted) }
     fun isMuted(id: String): Boolean = if (multiFeedBlocked) true else decoderManager.isMuted(id)
