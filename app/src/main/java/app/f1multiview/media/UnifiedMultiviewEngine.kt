@@ -27,6 +27,7 @@ class UnifiedMultiviewEngine(context: Context) {
     private val protectedPresentationClock = ProtectedPresentationClock()
     private val protectedRuntimes = linkedMapOf<String, ProtectedCmafFeedRuntime>()
     private val protectedRuntimeStatus = linkedMapOf<String, String>()
+    private val protectedQualities = linkedMapOf<String, Quality>()
     private var multiFeedBlocked = false
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
@@ -140,7 +141,10 @@ class UnifiedMultiviewEngine(context: Context) {
                             stream = stream,
                             surfaceManager = surfaceManager,
                             clock = protectedPresentationClock,
-                            playbackLooper = Looper.getMainLooper()
+                            playbackLooper = Looper.getMainLooper(),
+                            quality = protectedQualities[stream.id] ?: Quality.AUTO,
+                            autoMaxWidth = if (stream.id == mainFeedId) Int.MAX_VALUE else 854,
+                            autoMaxHeight = if (stream.id == mainFeedId) Int.MAX_VALUE else 480
                         ) { feedId, status ->
                             protectedRuntimeStatus[feedId] = status
                             _multiviewStatus.value = "Own protected F1 pipeline: " +
@@ -214,15 +218,34 @@ class UnifiedMultiviewEngine(context: Context) {
     fun isMuted(id: String): Boolean = if (multiFeedBlocked) true else decoderManager.isMuted(id)
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
-        if (!multiFeedBlocked) decoderManager.syncToMain(mainId, channelOffsetsMs)
+        if (multiFeedBlocked) protectedPresentationClock.setMaster(mainId, channelOffsetsMs)
+        else decoderManager.syncToMain(mainId, channelOffsetsMs)
     }
     fun prepare(id: String) { if (!multiFeedBlocked) decoderManager.prepare(id) }
-    fun seekTo(id: String, positionMs: Long) { if (!multiFeedBlocked) decoderManager.seekTo(id, positionMs) }
-    fun seekToDefaultPosition(id: String) { if (!multiFeedBlocked) decoderManager.seekToDefaultPosition(id) }
-    fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) {
-        if (!multiFeedBlocked) decoderManager.setPlaybackParameters(id, parameters)
+    fun seekTo(id: String, positionMs: Long) {
+        if (multiFeedBlocked) {
+            protectedPresentationClock.seekToPositionUs(positionMs * 1_000L)
+            protectedRuntimes.values.forEach { it.seekTo(positionMs) }
+        } else decoderManager.seekTo(id, positionMs)
     }
-    fun setPlaybackSpeed(id: String, speed: Float) { if (!multiFeedBlocked) decoderManager.setPlaybackSpeed(id, speed) }
+    fun seekToDefaultPosition(id: String) {
+        if (multiFeedBlocked) {
+            protectedPresentationClock.resetEpoch()
+            protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::seekToDefaultPosition)
+        } else decoderManager.seekToDefaultPosition(id)
+    }
+    fun setPlaybackParameters(id: String, parameters: androidx.media3.common.PlaybackParameters) {
+        if (multiFeedBlocked) {
+            protectedPresentationClock.setPlaybackSpeed(parameters.speed)
+            protectedRuntimes.values.forEach { it.setPlaybackSpeed(parameters.speed) }
+        } else decoderManager.setPlaybackParameters(id, parameters)
+    }
+    fun setPlaybackSpeed(id: String, speed: Float) {
+        if (multiFeedBlocked) {
+            protectedPresentationClock.setPlaybackSpeed(speed)
+            protectedRuntimes.values.forEach { it.setPlaybackSpeed(speed) }
+        } else decoderManager.setPlaybackSpeed(id, speed)
+    }
     internal fun attachSurfaceView(id: String, surface: SurfaceView) {
         if (!multiFeedBlocked) decoderManager.attachSurfaceView(id, surface)
     }

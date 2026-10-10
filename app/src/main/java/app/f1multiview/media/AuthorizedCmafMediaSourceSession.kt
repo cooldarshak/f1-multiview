@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Timeline
+import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.exoplayer.analytics.PlayerId
@@ -21,6 +22,8 @@ import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.LoadingInfo
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import app.f1multiview.model.StreamSource
+import app.f1multiview.core.playback.Quality
+import kotlin.math.abs
 import java.io.IOException
 
 /**
@@ -36,7 +39,10 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private val stream: StreamSource,
     private val playbackLooper: Looper,
     private val drmManager: DefaultDrmSessionManager,
-    private val source: MediaSource
+    private val source: MediaSource,
+    private var quality: Quality,
+    private var autoMaxWidth: Int,
+    private var autoMaxHeight: Int
 ) : AutoCloseable, MediaSource.MediaSourceCaller, MediaPeriod.Callback {
 
     enum class State { NEW, PREPARING_SOURCE, PREPARING_PERIOD, READY, FAILED, CLOSED }
@@ -58,6 +64,9 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private var videoStream: SampleStream? = null
     private var videoFormat: Format? = null
     private var videoDrmSession: DrmSession? = null
+    private var selectedVideoGroup: TrackGroup? = null
+    private var selectedVideoTrackIndex = -1
+    private val qualityManager = QualityManager()
     private var pendingError: IOException? = null
     private var periodPositionUs = 0L
     private var defaultPositionUs = 0L
@@ -111,29 +120,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         checkThread()
         if (stateValue == State.CLOSED || stateValue == State.FAILED) return
         try {
-            val groups = mediaPeriod.trackGroups
-            var selectedGroup: androidx.media3.common.TrackGroup? = null
-            for (index in 0 until groups.length) {
-                val group = groups[index]
-                if ((0 until group.length).any { group.getFormat(it).sampleMimeType?.startsWith("video/") == true }) {
-                    selectedGroup = group
-                    break
-                }
-            }
-            val videoGroup = selectedGroup ?: throw IOException("Authorized F1 source has no video track")
-            val selections: Array<ExoTrackSelection?> = arrayOf(
-                FixedTrackSelection(videoGroup, /* track= */ 0, C.TRACK_TYPE_VIDEO)
-            )
-            val streams: Array<SampleStream?> = arrayOfNulls(1)
-            val resetFlags = booleanArrayOf(false)
-            mediaPeriod.selectTracks(
-                selections,
-                booleanArrayOf(false),
-                streams,
-                resetFlags,
-                periodPositionUs
-            )
-            videoStream = streams[0] ?: throw IOException("Media3 did not create a video SampleStream")
+            selectVideoTrack(mediaPeriod)
             stateValue = State.READY
         } catch (error: Exception) {
             fail(error)
@@ -154,6 +141,87 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     }
 
     fun seekToDefaultPosition(): Long = seekToUs(defaultPositionUs)
+
+    fun setVideoQuality(quality: Quality, autoMaxWidth: Int, autoMaxHeight: Int) {
+        checkThread()
+        require(autoMaxWidth > 0 && autoMaxHeight > 0)
+        this.quality = quality
+        this.autoMaxWidth = autoMaxWidth
+        this.autoMaxHeight = autoMaxHeight
+        period?.takeIf { stateValue == State.READY }?.let(::selectVideoTrack)
+    }
+
+    fun availableVideoResolutions(): List<Pair<Int, Int>> =
+        period?.trackGroups?.let { groups ->
+            (0 until groups.length).flatMap { groupIndex ->
+                val group = groups[groupIndex]
+                (0 until group.length).mapNotNull { trackIndex ->
+                    val format = group.getFormat(trackIndex)
+                    if (format.sampleMimeType?.startsWith("video/") == true && format.width > 0 && format.height > 0) {
+                        format.width to format.height
+                    } else null
+                }
+            }.distinct().sortedByDescending { it.second }
+        } ?: emptyList()
+
+    fun qualityAvailable(quality: Quality): Boolean {
+        if (quality == Quality.AUTO) return true
+        return availableVideoResolutions().any { it.second >= qualityManager.minimumHeight(quality) }
+    }
+
+    private fun selectVideoTrack(mediaPeriod: MediaPeriod) {
+        val candidates = mutableListOf<Triple<TrackGroup, Int, Format>>()
+        val groups = mediaPeriod.trackGroups
+        for (groupIndex in 0 until groups.length) {
+            val group = groups[groupIndex]
+            for (trackIndex in 0 until group.length) {
+                val format = group.getFormat(trackIndex)
+                if (format.sampleMimeType?.startsWith("video/") == true) {
+                    candidates += Triple(group, trackIndex, format)
+                }
+            }
+        }
+        if (candidates.isEmpty()) throw IOException("Authorized F1 source has no video track")
+        val sized = candidates.filter { it.third.width > 0 && it.third.height > 0 }
+        val selected = when (quality) {
+            Quality.AUTO -> sized.filter {
+                it.third.width <= autoMaxWidth && it.third.height <= autoMaxHeight
+            }.maxWithOrNull(compareBy<Triple<TrackGroup, Int, Format>> { it.third.height }
+                .thenBy { it.third.width }.thenBy { it.third.bitrate })
+                ?: sized.minWithOrNull(compareBy<Triple<TrackGroup, Int, Format>> { it.third.height }
+                    .thenBy { it.third.width }.thenBy { it.third.bitrate })
+                ?: candidates.first()
+            else -> {
+                val desiredHeight = qualityManager.minimumHeight(quality)
+                val near = sized.filter {
+                    it.third.height >= desiredHeight - 32 && it.third.height <= desiredHeight + 256
+                }
+                near.maxWithOrNull(compareBy<Triple<TrackGroup, Int, Format>> { it.third.height }
+                    .thenBy { it.third.width }.thenBy { it.third.bitrate })
+                    ?: sized.minByOrNull { abs(it.third.height - desiredHeight) }
+                    ?: candidates.first()
+            }
+        }
+        val (group, trackIndex, _) = selected
+        if (selectedVideoGroup === group && selectedVideoTrackIndex == trackIndex && videoStream != null) return
+        val streams: Array<SampleStream?> = arrayOf(videoStream)
+        val selections: Array<ExoTrackSelection?> = arrayOf(
+            FixedTrackSelection(group, trackIndex, C.TRACK_TYPE_VIDEO)
+        )
+        val resetFlags = booleanArrayOf(false)
+        mediaPeriod.selectTracks(
+            selections,
+            booleanArrayOf(false),
+            streams,
+            resetFlags,
+            periodPositionUs
+        )
+        videoStream = streams[0] ?: throw IOException("Media3 did not create a video SampleStream")
+        selectedVideoGroup = group
+        selectedVideoTrackIndex = trackIndex
+        videoFormat = null
+        videoDrmSession = null
+    }
 
     fun setPlaybackSpeed(speed: Float) {
         checkThread()
@@ -233,7 +301,13 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     companion object {
         private const val LIVE_BACK_BUFFER_US = 2_000_000L
 
-        fun open(stream: StreamSource, playbackLooper: Looper): AuthorizedCmafMediaSourceSession? {
+        fun open(
+            stream: StreamSource,
+            playbackLooper: Looper,
+            quality: Quality = Quality.AUTO,
+            autoMaxWidth: Int = Int.MAX_VALUE,
+            autoMaxHeight: Int = Int.MAX_VALUE
+        ): AuthorizedCmafMediaSourceSession? {
             require(DrmProtectionPolicy.requiresProtectedOutput(stream)) {
                 "Authorized CMAF source session is only for protected feeds"
             }
@@ -263,7 +337,10 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                 val mediaSource = DefaultMediaSourceFactory(AuthorizedStreamDataSourceFactory.create(stream))
                     .setDrmSessionManagerProvider { drmManager }
                     .createMediaSource(mediaItem)
-                return AuthorizedCmafMediaSourceSession(stream, playbackLooper, drmManager, mediaSource)
+                return AuthorizedCmafMediaSourceSession(
+                    stream, playbackLooper, drmManager, mediaSource,
+                    quality, autoMaxWidth, autoMaxHeight
+                )
             } catch (error: Throwable) {
                 drmManager.release()
                 throw error

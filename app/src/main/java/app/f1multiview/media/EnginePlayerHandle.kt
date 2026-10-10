@@ -44,16 +44,16 @@ class EnginePlayerHandle internal constructor(
         get() = player?.videoScalingMode ?: C.VIDEO_SCALING_MODE_SCALE_TO_FIT
         set(value) { player?.videoScalingMode = value }
 
-    fun play() { if (player != null) engine.play(id) }
-    fun pause() { if (player != null) engine.pause(id) }
+    fun play() { engine.play(id) }
+    fun pause() { engine.pause(id) }
     fun prepare() { if (player != null) engine.prepare(id) }
-    fun seekTo(positionMs: Long) { if (player != null) engine.seekTo(id, positionMs) }
-    fun seekToDefaultPosition() { if (player != null) engine.seekToDefaultPosition(id) }
+    fun seekTo(positionMs: Long) { engine.seekTo(id, positionMs) }
+    fun seekToDefaultPosition() { engine.seekToDefaultPosition(id) }
     fun setPlaybackParameters(parameters: PlaybackParameters) {
-        if (player != null) engine.setPlaybackParameters(id, parameters)
+        engine.setPlaybackParameters(id, parameters)
     }
     fun setPlaybackSpeed(speed: Float) {
-        if (player != null) engine.setPlaybackSpeed(id, speed)
+        engine.setPlaybackSpeed(id, speed)
     }
 
     fun addListener(listener: Player.Listener) { player?.addListener(listener) }

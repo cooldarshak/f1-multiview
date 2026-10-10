@@ -8,6 +8,7 @@ import androidx.media3.common.Format
 import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.exoplayer.drm.DrmSession
 import app.f1multiview.model.StreamSource
+import app.f1multiview.core.playback.Quality
 import java.io.IOException
 
 /**
@@ -23,6 +24,9 @@ internal class ProtectedCmafFeedRuntime(
     private val surfaceManager: MultiviewSurfaceManager,
     private val clock: ProtectedPresentationClock,
     private val playbackLooper: Looper,
+    private var quality: Quality = Quality.AUTO,
+    private val autoMaxWidth: Int = if (stream.id == clock.masterFeedId) Int.MAX_VALUE else 854,
+    private val autoMaxHeight: Int = if (stream.id == clock.masterFeedId) Int.MAX_VALUE else 480,
     private val onStatus: (String, String) -> Unit
 ) : AutoCloseable, Choreographer.FrameCallback {
 
@@ -56,7 +60,7 @@ internal class ProtectedCmafFeedRuntime(
         stateValue = State.PREPARING
         publish("PREPARING: authorized manifest and Widevine source")
         try {
-            source = AuthorizedCmafMediaSourceSession.open(stream, playbackLooper)
+            source = AuthorizedCmafMediaSourceSession.open(stream, playbackLooper, quality, autoMaxWidth, autoMaxHeight)
                 ?: throw IOException("Authorized source did not provide a Widevine license endpoint")
             source!!.prepare()
             running = true
@@ -105,6 +109,24 @@ internal class ProtectedCmafFeedRuntime(
         checkThread()
         source?.setPlaybackSpeed(speed)
     }
+
+    fun setQuality(newQuality: Quality) {
+        checkThread()
+        if (quality == newQuality) return
+        quality = newQuality
+        source?.setVideoQuality(newQuality, autoMaxWidth, autoMaxHeight)
+        decoder?.close()
+        decoder = null
+        pendingSample = null
+        stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+        publish("QUALITY: $newQuality")
+        scheduleFrame()
+    }
+
+    fun availableVideoResolutions(): List<Pair<Int, Int>> = source?.availableVideoResolutions().orEmpty()
+
+    fun qualityAvailable(candidate: Quality): Boolean =
+        candidate == Quality.AUTO || source?.qualityAvailable(candidate) == true
 
     fun pause() {
         checkThread()
