@@ -132,6 +132,18 @@ class MultiviewSurfaceManager(private val context: Context) {
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                // A Surface wrapper can survive a destroy/create cycle. Advance the generation so
+                // an old decoder lease cannot become valid again when the wrapper is reused.
+                val current = bindings[feedId]
+                if (current?.surfaceView === view) {
+                    val generation = nextGeneration.getAndIncrement()
+                    containerGenerations[current.container] = generation
+                    bindings[feedId] = current.copy(generation = generation)
+                    AppLogger.w(
+                        "SecureSurface",
+                        "LEASE_INVALIDATED feed=$feedId generation=$generation reason=surface-destroyed"
+                    )
+                }
                 AppLogger.i(
                     "SecureSurface",
                     "DESTROYED feed=$feedId protected=$protectedContent viewId=${System.identityHashCode(view)} " +

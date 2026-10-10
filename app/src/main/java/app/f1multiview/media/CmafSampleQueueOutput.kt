@@ -24,9 +24,13 @@ internal class CmafSampleQueueOutput(
 ) : ExtractorOutput, AutoCloseable {
     private val allocator = DefaultAllocator(/* trimOnReset= */ true, allocationSize)
     private val queues = linkedMapOf<Int, SampleQueue>()
+    private val trackTypes = linkedMapOf<Int, Int>()
 
     val sampleQueues: Map<Int, SampleQueue>
         get() = queues.toMap()
+
+    val sampleTrackTypes: Map<Int, Int>
+        get() = trackTypes.toMap()
 
     /** True only when queues were created with a caller-owned DRM session manager. */
     val isDrmManaged: Boolean
@@ -46,6 +50,7 @@ internal class CmafSampleQueueOutput(
 
     override fun track(id: Int, type: Int): TrackOutput {
         check(!closed) { "Extractor output is already closed" }
+        trackTypes[id] = type
         return queues.getOrPut(id) {
             val manager = drmSessionManager
             val dispatcher = drmEventDispatcher
@@ -70,6 +75,7 @@ internal class CmafSampleQueueOutput(
         closed = true
         queues.values.forEach(SampleQueue::release)
         queues.clear()
+        trackTypes.clear()
         allocator.trim()
     }
 
