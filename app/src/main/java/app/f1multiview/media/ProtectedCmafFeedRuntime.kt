@@ -407,11 +407,13 @@ internal class ProtectedCmafFeedRuntime(
                 lastRenderedPtsUs = presentationTimeUs
                 lastRenderedAtNs = renderTimeNs
                 if (firstFramePresentedAtNs == null) firstFramePresentedAtNs = renderTimeNs
-                if (running && stateValue != State.PLAYING) {
-                    stateValue = State.PLAYING
-                    publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
-                } else if (!running && stateValue != State.PAUSED) {
-                    publish("FRAME_RENDERED_WHILE_NOT_RUNNING ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
+                if (stateValue != State.FAILED && stateValue != State.CLOSED) {
+                    if (running && stateValue != State.PLAYING) {
+                        stateValue = State.PLAYING
+                        publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
+                    } else if (!running && stateValue != State.PAUSED) {
+                        publish("FRAME_RENDERED_WHILE_NOT_RUNNING ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
+                    }
                 }
                 renderedFrameCount++
                 val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
