@@ -219,7 +219,10 @@ class F1TvApiClient {
     internal fun parsePlaybackResponse(response:HttpResponse,contentId:String,channelId:String?,requestedPlatform:String):PlaybackResponse{
         val root=JSONObject(response.body)
         val resultObj=root.optJSONObject("resultObj")
-        val sources=listOf(root,resultObj).filterNotNull()
+        // Prefer the actual resultObj payload when the API wraps it, while retaining
+        // top-level compatibility for older response shapes. Top-level generic metadata must
+        // not mask the nested playback profile's specific Widevine declaration.
+        val sources=listOf(resultObj,root).filterNotNull()
         val manifest=sources.asSequence().mapNotNull { firstString(it,"url","manifestUrl","manifestURL","playUrl") }.firstOrNull()
         if (manifest.isNullOrBlank()) throw F1TvException("CONTENT/PLAY returned no manifest URL")
         val license=sources.asSequence().mapNotNull { firstString(it,"laURL","laUrl","licenseUrl","licenseURL") }.firstOrNull()
