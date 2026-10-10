@@ -51,12 +51,17 @@ class AppOwnedTiledStreamDescriptorTest {
         assertTrue(validation.errors.any { it.contains("licenseUri") })
     }
 
-    @Test fun rejectsOneTileDuplicateIdsOverlapAndOutOfBounds() {
+    @Test fun rejectsOneTileLayout() {
+        val validation = descriptor(listOf(tile("main", 0.0, 0.0, 1.0, 1.0))).validate()
+        assertFalse(validation.isValid)
+        assertTrue(validation.errors.any { it.contains("tile count") })
+    }
+
+    @Test fun rejectsDuplicateIdsOverlapOutOfBoundsAndInvalidTimescale() {
         val invalid = descriptor(listOf(tile("same", 0.0, 0.0, 0.7, 1.0),
             tile("same", 0.6, 0.0, 0.5, 1.0))).copy(timescale = 0)
         val validation = invalid.validate()
         assertFalse(validation.isValid)
-        assertTrue(validation.errors.any { it.contains("tile count") })
         assertTrue(validation.errors.any { it.contains("unique") })
         assertTrue(validation.errors.any { it.contains("overlaps") })
         assertTrue(validation.errors.any { it.contains("bounds") })
