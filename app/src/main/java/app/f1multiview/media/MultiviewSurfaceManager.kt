@@ -196,11 +196,11 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     /** A stale Compose onRelease must not detach a newer binding for the same logical feed. */
-    fun detach(feedId: String, player: EnginePlayerHandle, container: FrameLayout, expectedBindingGeneration: Long? = null) {
+    fun detach(feedId: String, player: EnginePlayerHandle, container: FrameLayout, expectedBindingGeneration: Long? = null): Boolean {
         AppLogger.d("Surface", "detach request feed=$feedId player=${player.id} container=${System.identityHashCode(container)}")
         val binding = bindings[feedId] ?: run {
             AppLogger.w("Surface", "detach ignored: no binding feed=$feedId")
-            return
+            return false
         }
         val releasedGeneration = expectedBindingGeneration ?: containerGenerations[container]
         val currentIdentity = SurfaceBindingLease.Identity(
@@ -212,16 +212,18 @@ class MultiviewSurfaceManager(private val context: Context) {
             AppLogger.w(
                 "Surface",
                 "detach stale binding ignored feed=$feedId releasedGeneration=$releasedGeneration " +
-                    "currentGeneration=${binding.generation} currentContainer=${System.identityHashCode(binding.container)} " +
+                    "currentBindingGeneration=${binding.bindingGeneration} surfaceGeneration=${binding.generation} " +
+                    "currentContainer=${System.identityHashCode(binding.container)} " +
                     "releasedContainer=${System.identityHashCode(container)} currentOwner=${binding.owner.id}"
             )
-            return
+            return false
         }
         bindings.remove(feedId)
         containerGenerations.remove(container)
         renderCoordinator.unbind(feedId)
         releaseBinding(binding, unbindCoordinator = false)
-        AppLogger.d("Surface", "detach complete feed=$feedId")
+        AppLogger.d("Surface", "detach complete feed=$feedId bindingGeneration=${binding.bindingGeneration}")
+        return true
     }
 
     /**

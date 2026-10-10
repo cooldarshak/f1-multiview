@@ -435,8 +435,9 @@ class UnifiedMultiviewEngine(context: Context) {
     }
 
     fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout, expectedBindingGeneration: Long? = null) {
-        surfaceManager.detach(feedId, player, container, expectedBindingGeneration)
-        if (multiFeedBlocked) protectedRuntimes[feedId]?.pause()
+        val detached = surfaceManager.detach(feedId, player, container, expectedBindingGeneration)
+        // A stale onRelease must not pause the runtime that now owns the replacement binding.
+        if (multiFeedBlocked && detached) protectedRuntimes[feedId]?.pause()
     }
 
     fun renderSlots(): List<MultiviewRenderCoordinator.RenderSlot> = surfaceManager.renderSlots()
