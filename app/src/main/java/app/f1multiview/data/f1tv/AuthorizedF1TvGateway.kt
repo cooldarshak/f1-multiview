@@ -478,21 +478,28 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 val explicitWidevine = result.drmType?.contains("widevine", true) == true ||
                     result.streamType?.contains("DASHWV", true) == true ||
                     result.streamType?.contains("WIDEVINE", true) == true
-                val explicitlyNonWidevineDashSingle = result.manifestUrl.contains(".mpd", true) &&
-                    result.streamType?.contains("DASH_SINGLE", true) == true && !explicitWidevine
-                if (explicitlyNonWidevineDashSingle) {
-                    throw F1TvException("F1 TV profile explicitly declares DASH_SINGLE without Widevine metadata")
-                }
                 var playToken = result.playToken
                 var manifestLicense: String? = null
+                var manifestDeclaresWidevine = false
                 if (result.manifestUrl.contains(".mpd", true)) {
                     val probe = api.prepareManifest(result.manifestUrl)
                     if (!probe.successful) throw F1TvException("F1 TV playback manifest unavailable on $platform")
                     playToken = probe.playToken ?: playToken
                     manifestLicense = probe.licenseUrl
+                    manifestDeclaresWidevine = probe.hasWidevineContentProtection
                 }
-                val license = result.licenseUrl ?: manifestLicense ?: if (result.manifestUrl.contains(".mpd", true)) {
-                    api.fallbackLicense(request.contentId, request.channelId, platform, result.pipelineVersion, result.streamType, result.drmType)
+                // streamType labels such as DASH_SINGLE are not a DRM verdict. The
+                // selected MPD may carry an explicit Widevine ContentProtection element
+                // even when CONTENT/PLAY omits drmType/laURL. Only use F1's known LA
+                // endpoint when either the API or the fetched manifest declares Widevine.
+                val license = result.licenseUrl ?: manifestLicense ?: if (
+                    result.manifestUrl.contains(".mpd", true) && (explicitWidevine || manifestDeclaresWidevine)
+                ) {
+                    api.fallbackLicense(
+                        request.contentId, request.channelId, platform, result.pipelineVersion,
+                        result.streamType ?: if (manifestDeclaresWidevine) "DASHWV" else null,
+                        result.drmType ?: if (manifestDeclaresWidevine) "widevine" else null
+                    )
                 } else null
                 if (result.manifestUrl.contains(".mpd", true) && license == null) {
                     throw F1TvException("Protected DASH manifest has no Widevine license endpoint")
@@ -537,7 +544,6 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 last = failure
                 val reasonCode = when {
-                    failure.message?.contains("DASH_SINGLE without Widevine", ignoreCase = true) == true -> "PROFILE_NOT_WIDEVINE"
                     failure.message?.contains("no Widevine license endpoint", ignoreCase = true) == true -> "NO_WIDEVINE_LICENSE_ENDPOINT"
                     failure.message?.contains("manifest unavailable", ignoreCase = true) == true -> "MANIFEST_UNAVAILABLE"
                     failure.message?.contains("manifest URL", ignoreCase = true) == true -> "MANIFEST_URL_MISSING"
