@@ -305,6 +305,10 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         val selectedGroupIndex = (0 until groups.length).firstOrNull { groups[it] === group }
             ?: throw IOException("Selected video TrackGroup is no longer present in the MediaPeriod")
         val streams = arrayOfNulls<SampleStream>(groups.length)
+        selectedVideoGroup?.let { previousGroup ->
+            val previousGroupIndex = (0 until groups.length).firstOrNull { groups[it] === previousGroup }
+            if (previousGroupIndex != null) streams[previousGroupIndex] = videoStream
+        }
         val selections = arrayOfNulls<ExoTrackSelection>(groups.length)
         selections[selectedGroupIndex] = FixedTrackSelection(group, trackIndex, C.TRACK_TYPE_VIDEO)
         val mayRetainStreamFlags = BooleanArray(groups.length)
