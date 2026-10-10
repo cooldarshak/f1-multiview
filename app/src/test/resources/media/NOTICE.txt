@@ -19,4 +19,4 @@ Source path: libraries/test_data/src/test/assets/media/drm/sample_fragmented_wid
 Source URL: https://github.com/androidx/media/blob/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/test_data/src/test/assets/media/drm/sample_fragmented_widevine.mp4
 Upstream Git blob SHA-1: 942694cfcc66632973689c4d46a8f94794ba510b
 
-CI stages this exact fixture from the pinned AndroidX Media checkout and verifies its Git blob hash before running tests. The fixture validates container/DRM/sample-encryption metadata only; it does not grant a playback licence, decrypt media, or prove secure decoder/protected-surface playback.
+The fixture is committed unchanged in this repository and its Git blob hash matches the pinned upstream asset. CI verifies the hash before running tests. The fixture validates container/DRM/sample-encryption metadata only; it does not grant a playback licence, decrypt media, or prove secure decoder/protected-surface playback.
