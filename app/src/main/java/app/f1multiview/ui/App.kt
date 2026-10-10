@@ -1522,8 +1522,8 @@ private fun CanonicalMultiviewLayout(
 ) {
     val gap = 6.dp
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
-    var mainX by rememberSaveable { mutableFloatStateOf(.62f) }
+    var splitY by rememberSaveable { mutableFloatStateOf(.665f) }
+    var mainX by rememberSaveable { mutableFloatStateOf(.665f) }
     var topX by rememberSaveable { mutableFloatStateOf(.33f) }
     var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
     var fourSideH2 by rememberSaveable { mutableFloatStateOf(.34f) }
@@ -1637,11 +1637,11 @@ private fun CanonicalMultiviewLayout(
         if (referenceDashLayout) {
             // Video and circuit map stack on the left; live timing fills the right rail.
             val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
-            val leftWidth = (availableWidth * 0.665f).toInt().coerceIn(0, availableWidth)
+            val leftWidth = (availableWidth * mainX).toInt().coerceIn(0, availableWidth)
             val rightWidth = availableWidth - leftWidth
             val rightX = leftWidth + gapPx + dividerPx + gapPx
             val availableHeight = (height - 2 * gapPx - dividerPx).coerceAtLeast(0)
-            val videoHeight = (availableHeight * 0.665f).toInt().coerceIn(0, availableHeight)
+            val videoHeight = (availableHeight * splitY).toInt().coerceIn(0, availableHeight)
             val mapHeight = availableHeight - videoHeight
             placeVideo(0, 0, 0, leftWidth, videoHeight)
             place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
