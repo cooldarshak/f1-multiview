@@ -44,6 +44,40 @@ class PlaybackFailurePolicyTest {
     }
 
     @Test
+    fun nestedDrmCauseTakesPrecedenceOverGenericRendererDecoderFailure() {
+        val cause = IllegalStateException(
+            "Renderer failed",
+            IllegalArgumentException("Widevine DrmSession licence acquisition failed")
+        )
+        assertEquals(
+            PlaybackFailurePolicy.FailureKind.DRM_FATAL,
+            PlaybackFailurePolicy.classify(
+                "ERROR_CODE_DECODER_FAILED",
+                "MediaCodecVideoRenderer failed",
+                decoderFailure = true,
+                cause = cause
+            )
+        )
+    }
+
+    @Test
+    fun cyclicCauseChainDoesNotHangClassifier() {
+        val first = IllegalStateException("renderer failed")
+        val second = IllegalStateException("decoder failed")
+        first.initCause(second)
+        second.initCause(first)
+        assertEquals(
+            PlaybackFailurePolicy.FailureKind.DECODER_RECOVERY,
+            PlaybackFailurePolicy.classify(
+                "ERROR_CODE_DECODER_INIT_FAILED",
+                "codec init failed",
+                decoderFailure = true,
+                cause = first
+            )
+        )
+    }
+
+    @Test
     fun classifiesLicenceAcquisitionFailureAsNonRetryableDrmFailure() {
         assertTrue(
             PlaybackFailurePolicy.isDrmFailure(

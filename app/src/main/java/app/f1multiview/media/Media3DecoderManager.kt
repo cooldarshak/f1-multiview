@@ -128,7 +128,8 @@ class Media3DecoderManager(context: Context) {
                         when (PlaybackFailurePolicy.classify(
                             error.errorCodeName,
                             error.message,
-                            isDecoderFailure(error)
+                            isDecoderFailure(error),
+                            error.cause
                         )) {
                             PlaybackFailurePolicy.FailureKind.DRM_FATAL -> {
                                 // A licence/session failure is not a transient CDN/quality failure.
