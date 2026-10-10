@@ -47,7 +47,7 @@ class F1CmafHlsDrmFixingDataSource private constructor(
 
         val original = readUpstreamFully(dataSpec)
         val text = original.toString(StandardCharsets.UTF_8)
-        val fixed = rewritePlaylist(text).toByteArray(StandardCharsets.UTF_8)
+        val fixed = rewritePlaylistText(text).toByteArray(StandardCharsets.UTF_8)
         val start = dataSpec.position.coerceAtMost(fixed.size.toLong()).toInt()
         val end = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
             fixed.size
@@ -113,9 +113,15 @@ class F1CmafHlsDrmFixingDataSource private constructor(
         return url.contains("HDR-UHD-CMAF-WV", true) && url.contains(".m3u8", true)
     }
 
-    private fun rewritePlaylist(text: String): String {
-        if (!text.startsWith("#EXTM3U")) return text
-        if (!text.contains("KEYFORMAT=\\\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\\\"")) return text
-        return text.replace("METHOD=SAMPLE-AES-CTR", "METHOD=SAMPLE-AES")
+    internal companion object {
+        /**
+         * Rewrites only the documented F1 UHD/HDR Widevine playlist declaration.
+         * The KEYFORMAT value is ordinary quoted playlist text, not backslash-escaped text.
+         */
+        fun rewritePlaylistText(text: String): String {
+            if (!text.startsWith("#EXTM3U")) return text
+            if (!text.contains("KEYFORMAT=\\\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\\\"")) return text
+            return text.replace("METHOD=SAMPLE-AES-CTR", "METHOD=SAMPLE-AES")
+        }
     }
 }
