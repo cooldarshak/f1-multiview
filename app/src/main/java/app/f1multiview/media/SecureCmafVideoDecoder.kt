@@ -239,6 +239,9 @@ internal class SecureCmafVideoDecoder(
             throw IOException("No hardware decoder advertises secure playback for $mimeType")
         }
         val mediaFormat = MediaFormat.createVideoFormat(mimeType, format.width, format.height)
+        // Explicitly request secure playback. Merely discovering a codec that advertises the
+        // feature is not the same as enabling that feature for this MediaCodec configuration.
+        mediaFormat.setFeatureEnabled(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback, true)
         format.initializationData.forEachIndexed { index, bytes ->
             mediaFormat.setByteBuffer("csd-$index", ByteBuffer.wrap(bytes))
         }
