@@ -5,7 +5,7 @@ import org.junit.Test
 
 class F1CmafPlaylistRewriterTest {
     private val widevineKeyFormat =
-        "KEYFORMAT=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\""
+        "KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed""
 
     @Test
     fun rewritesSampleAesCtrForF1WidevinePlaylistWithNormalQuotedKeyFormat() {
