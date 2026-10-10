@@ -97,6 +97,25 @@ class AuthorizedDashManifestResolverTest {
     }
 
     @Test
+    fun protectedResolutionRejectsWidevineDeclarationWithoutPsshPayload() {
+        val declarationOnlyManifest = manifest.replace(
+            "</AdaptationSet>",
+            """<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed" value="Widevine"/></AdaptationSet>"""
+        )
+        try {
+            AuthorizedDashManifestResolver.resolve(
+                manifestUri = manifestUri,
+                manifestBytes = declarationOnlyManifest.toByteArray(),
+                requestHeaders = emptyMap(),
+                requireWidevineInitData = true
+            )
+            throw AssertionError("Widevine declaration without PSSH must not pass protected resolution")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("Widevine DRM initialization data"))
+        }
+    }
+
+    @Test
     fun protectedResolutionRejectsManifestWithoutWidevineInitData() {
         try {
             AuthorizedDashManifestResolver.resolve(
