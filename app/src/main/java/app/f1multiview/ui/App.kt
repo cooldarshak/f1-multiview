@@ -179,10 +179,19 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
     }
 
 
-    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId) {
-        val selectedIds = ui.selectedStreamIds.toSet()
+    LaunchedEffect(ui.streams, ui.selectedStreamIds, ui.mainStreamId, fullscreenStreamId, fullscreenMultiview) {
+        // Single-feed fullscreen is a distinct playback mode. Restrict the engine viewport
+        // to that feed even if the multiview selection still contains other feeds; otherwise
+        // the multiview safety gate tears down every decoder and the single player appears broken.
+        // This does not enable multi-feed playback or bypass the tiled-stream safety gate.
+        val playbackSelectionIds = if (!fullscreenMultiview && fullscreenStreamId != null) {
+            listOf(fullscreenStreamId!!)
+        } else {
+            ui.selectedStreamIds
+        }
+        val selectedIds = playbackSelectionIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
-        val videoSelectedIds = ui.selectedStreamIds.filter { id ->
+        val videoSelectedIds = playbackSelectionIds.filter { id ->
             ui.streams.firstOrNull { it.id == id }?.kind !in setOf(
                 StreamKind.TRACK_MAP,
                 StreamKind.F1_DASH_DATA,
@@ -191,7 +200,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             )
         }.toSet()
         engine.retain(videoSelectedIds)
-        val ordered = ui.selectedStreamIds.mapNotNull { id ->
+        val ordered = playbackSelectionIds.mapNotNull { id ->
             ui.streams.firstOrNull {
                 it.id == id &&
                     it.url != null &&
@@ -203,16 +212,21 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
                     )
             }
         }
-        val mainId = ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
+        val mainId = if (!fullscreenMultiview) {
+            fullscreenStreamId?.takeIf { it in videoSelectedIds }
+                ?: ui.mainStreamId?.takeIf { it in videoSelectedIds }
+                ?: ordered.firstOrNull()?.id
+        } else {
+            ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
+        }
         // Timing and Driver Tracker are native data feeds, not video decoders.
-        // UnifiedMultiviewEngine now decides which logical video feeds receive physical
-        // decoder slots based on the active viewport and reference feed.
+        // UnifiedMultiviewEngine decides which logical video feeds receive physical decoder slots.
         val playableVideoIds = videoSelectedIds.intersect(ordered.map { it.id }.toSet())
         val scheduled = engine.updateViewport(
             streams = ordered,
             visibleIds = playableVideoIds,
             referenceId = mainId,
-            autoplay = fullscreenMultiview
+            autoplay = fullscreenMultiview || fullscreenStreamId != null
         )
         startedFeeds.keys.retainAll(scheduled)
     }
@@ -239,8 +253,8 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
-    LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId) {
-        if (ui.selectedStreamIds.size > 1) {
+    LaunchedEffect(ui.selectedStreamIds, ui.mainStreamId, fullscreenMultiview, fullscreenStreamId) {
+        if (fullscreenMultiview && ui.selectedStreamIds.size > 1) {
             // Do not wait 1.5s for a one-shot sync. The UnifiedMultiviewEngine continuously watches
             // the reference and newly-ready feeds now join automatically.
             ui.mainStreamId?.let { mainId ->
