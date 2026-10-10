@@ -9,7 +9,8 @@ internal object SingleStreamTiledPlaybackPolicy {
 
     fun evaluate(
         visibleVideoFeedCount: Int,
-        descriptor: AppOwnedTiledStreamDescriptor?
+        descriptor: AppOwnedTiledStreamDescriptor?,
+        visibleVideoFeedIds: Set<String>? = null
     ): Decision {
         if (visibleVideoFeedCount <= 1) return Decision(true, "single-feed playback")
         if (visibleVideoFeedCount !in 2..4) {
@@ -24,6 +25,9 @@ internal object SingleStreamTiledPlaybackPolicy {
         }
         if (descriptor.tiles.size != visibleVideoFeedCount) {
             return Decision(false, "visible feed count does not match tiled stream tile count")
+        }
+        if (visibleVideoFeedIds != null && descriptor.tiles.map { it.sourceId }.toSet() != visibleVideoFeedIds) {
+            return Decision(false, "tiled stream source IDs do not match the selected visible feeds")
         }
         return Decision(true, "authorized single-stream tiled input validated")
     }
