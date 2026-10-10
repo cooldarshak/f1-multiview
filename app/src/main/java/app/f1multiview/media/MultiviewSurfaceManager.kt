@@ -20,7 +20,9 @@ class MultiviewSurfaceManager(private val context: Context) {
         val onTap: (() -> Unit)? = null,
         val surfaceView: SurfaceView? = null,
         val textureView: TextureView? = null,
-        val touchInterceptor: View? = null
+        val touchInterceptor: View? = null,
+        /** False while a validated own-engine decoder exclusively owns the protected Surface. */
+        val playerOutputAttached: Boolean = true
     )
 
     private val bindings = linkedMapOf<String, SurfaceBinding>()
@@ -145,9 +147,14 @@ class MultiviewSurfaceManager(private val context: Context) {
             renderCoordinator.update(feedId, source)
             if (it.owner !== player) {
                 releaseVideoOutput(it)
-                if (it.surfaceView != null) player.setVideoSurfaceView(it.surfaceView)
-                if (it.textureView != null) player.setVideoTextureView(it.textureView)
-                val updated = it.copy(owner = player, source = source)
+                val generation = nextGeneration.getAndIncrement()
+                containerGenerations[it.container] = generation
+                val updated = it.copy(
+                    owner = player,
+                    source = source,
+                    generation = generation,
+                    playerOutputAttached = true
+                )
                 bindings[feedId] = updated
                 attachExisting(updated, player, source)
             } else {
@@ -187,6 +194,76 @@ class MultiviewSurfaceManager(private val context: Context) {
         AppLogger.d("Surface", "detach complete feed=$feedId")
     }
 
+    /**
+     * Detaches Media3's video output and lends the existing secure SurfaceView surface to the
+     * app-owned protected decoder. The returned generation-bound lease becomes invalid on rebind,
+     * surface replacement, detach, or cleanup.
+     */
+    fun claimProtectedSurfaceForOwnDecoder(feedId: String): ProtectedSurfaceLease? {
+        val binding = bindings[feedId] ?: return null
+        if (!binding.protectedContent) {
+            AppLogger.e("SecureSurface", "OWN_DECODER_CLAIM_REJECTED feed=$feedId reason=surface-not-protected")
+            return null
+        }
+        val view = binding.surfaceView ?: return null
+        val surface = view.holder.surface
+        if (!view.isAttachedToWindow || !surface.isValid || view.width <= 0 || view.height <= 0) {
+            AppLogger.w(
+                "SecureSurface",
+                "OWN_DECODER_CLAIM_DEFERRED feed=$feedId attached=${view.isAttachedToWindow} " +
+                    "valid=${surface.isValid} size=${view.width}x${view.height}"
+            )
+            return null
+        }
+        if (binding.playerOutputAttached) binding.owner.clearVideoSurfaceView(view)
+        bindings[feedId] = binding.copy(playerOutputAttached = false)
+        AppLogger.i(
+            "SecureSurface",
+            "OWN_DECODER_CLAIMED feed=$feedId generation=${binding.generation} " +
+                "surfaceId=${System.identityHashCode(surface)} secureFlagRequested=true"
+        )
+        return ProtectedSurfaceLease(
+            feedId = feedId,
+            generation = binding.generation,
+            surface = surface,
+            secureFlagRequested = true,
+            width = view.width,
+            height = view.height
+        )
+    }
+
+    fun isCurrentProtectedSurfaceLease(lease: ProtectedSurfaceLease): Boolean {
+        val binding = bindings[lease.feedId]
+        val view = binding?.surfaceView
+        val currentSurface = view?.holder?.surface
+        return ProtectedSurfaceLeasePolicy.isCurrent(
+            leaseGeneration = lease.generation,
+            currentGeneration = binding?.generation,
+            leaseSurface = lease.surface,
+            currentSurface = currentSurface,
+            secureFlagRequested = lease.secureFlagRequested,
+            protectedContent = binding?.protectedContent == true,
+            playerOutputAttached = binding?.playerOutputAttached != false,
+            viewAttached = view?.isAttachedToWindow == true,
+            surfaceValid = lease.surface.isValid && currentSurface?.isValid == true
+        )
+    }
+
+    /** Restores the existing single-feed Media3 output after the own decoder has been closed. */
+    fun restorePlayerOutput(lease: ProtectedSurfaceLease): Boolean {
+        if (!isCurrentProtectedSurfaceLease(lease)) return false
+        val binding = bindings[lease.feedId] ?: return false
+        val view = binding.surfaceView ?: return false
+        val updated = binding.copy(playerOutputAttached = true)
+        bindings[lease.feedId] = updated
+        binding.owner.setVideoSurfaceView(view)
+        AppLogger.i(
+            "SecureSurface",
+            "OWN_DECODER_RELEASED feed=${lease.feedId} generation=${lease.generation} playerOutputRestored=true"
+        )
+        return true
+    }
+
     fun binding(feedId: String): SurfaceBinding? = bindings[feedId]
     fun boundFeedIds(): Set<String> = bindings.keys.toSet()
     fun renderSlot(feedId: String): MultiviewRenderCoordinator.RenderSlot? = renderCoordinator.slot(feedId)
@@ -202,6 +279,8 @@ class MultiviewSurfaceManager(private val context: Context) {
                     "containerId" to System.identityHashCode(binding.container).toString(),
                     "attached" to view.isAttachedToWindow.toString(),
                     "surfaceValid" to view.holder.surface.isValid.toString(),
+                    "playerOutputAttached" to binding.playerOutputAttached.toString(),
+                    "ownDecoderClaimed" to (!binding.playerOutputAttached && binding.protectedContent).toString(),
                     "width" to view.width.toString(),
                     "height" to view.height.toString()
                 )
@@ -229,6 +308,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     private fun releaseVideoOutput(binding: SurfaceBinding) {
+        if (!binding.playerOutputAttached) return
         binding.surfaceView?.let(binding.owner::clearVideoSurfaceView)
         binding.textureView?.let(binding.owner::clearVideoTextureView)
     }
@@ -257,6 +337,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             if (event.actionMasked == android.view.MotionEvent.ACTION_UP) binding.onTap?.invoke()
             true
         }
+        if (!binding.playerOutputAttached) return
         binding.textureView?.let(player::setVideoTextureView)
         binding.surfaceView?.let {
             player.setVideoSurfaceView(it)
