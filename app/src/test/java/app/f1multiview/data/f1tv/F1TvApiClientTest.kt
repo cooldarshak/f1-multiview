@@ -34,6 +34,27 @@ class F1TvApiClientTest {
     }
 
     @Test
+    fun doesNotInferWidevineFromPipelineVersionAlone() {
+        val response = HttpResponse(
+            200, true,
+            """{"url":"https://example.com/live.mpd","pipelineVersion":6,"streamType":"SDR_HD_DASH_SINGLE"}"""
+        )
+        val parsed = F1TvApiClient().parsePlaybackResponse(response, "content-4", null, "WEB_DASH")
+        assertEquals(null, parsed.licenseUrl)
+    }
+
+    @Test
+    fun synthesizesLicenseOnlyWhenF1ExplicitlyDeclaresWidevine() {
+        val api = F1TvApiClient()
+        assertEquals(
+            null,
+            api.fallbackLicense("content-5", null, "WEB_DASH", 6, "SDR_HD_DASH_SINGLE", "unknown")
+        )
+        val license = api.fallbackLicense("content-6", null, "WEB_DASH", 6, "SDR_HD_DASHWV_SINGLE", "widevine")
+        org.junit.Assert.assertTrue(license.orEmpty().contains("/CONTENT/LA/widevine?contentId=content-6"))
+    }
+
+    @Test
     fun acceptsManifestInResultObjectCompatibilityEnvelope() {
         val response = HttpResponse(200, true, """{"resultObj":{"manifestUrl":"https://example.com/replay.m3u8"}}""")
         val parsed = F1TvApiClient().parsePlaybackResponse(response, "content-2", null, "WEB_HLS")
