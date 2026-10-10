@@ -1617,14 +1617,14 @@ private fun CanonicalMultiviewLayout(
         val gapPx = gap.roundToPx()
         val dividerPx = 3.dp.roundToPx()
         val byId = measurables.associateBy { it.layoutId as? String }
-        val placements = mutableListOf<() -> Unit>()
+        val placements = mutableListOf<Triple<androidx.compose.ui.layout.Placeable, Int, Int>>()
 
         fun place(id: String, x: Int, y: Int, childWidth: Int, childHeight: Int) {
             val measurable = byId[id] ?: return
             val placeable = measurable.measure(
                 Constraints.fixed(childWidth.coerceAtLeast(0), childHeight.coerceAtLeast(0))
             )
-            placements += { placeable.placeRelative(x, y) }
+            placements += Triple(placeable, x, y)
         }
 
         fun placeVideo(index: Int, x: Int, y: Int, childWidth: Int, childHeight: Int) {
@@ -1710,7 +1710,7 @@ private fun CanonicalMultiviewLayout(
                 }
             }
         }
-        layout(width, height) { placements.forEach { it() } }
+        layout(width, height) { placements.forEach { (placeable, x, y) -> placeable.placeRelative(x, y) } }
     }
 }
 
