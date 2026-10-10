@@ -193,7 +193,7 @@ internal class ProtectedCmafFeedRuntime(
             drmSession = drmSession,
             surfaceLease = lease,
             isLeaseCurrent = surfaceManager::isCurrentProtectedSurfaceLease,
-            releaseTimeNsForPresentationTimeUs = clock::presentationTimeNs,
+            releaseTimeNsForPresentationTimeUs = { presentationTimeUs -> clock.presentationTimeNs(stream.id, presentationTimeUs) },
             onFrameRendered = { presentationTimeUs, renderTimeNs ->
                 if (stateValue != State.PLAYING) {
                     stateValue = State.PLAYING
