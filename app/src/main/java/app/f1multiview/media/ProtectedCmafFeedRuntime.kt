@@ -11,6 +11,8 @@ import app.f1multiview.model.StreamSource
 import app.f1multiview.core.playback.Quality
 import java.io.IOException
 
+private const val DRM_INIT_DATA_WAIT_TIMEOUT_MS = 10_000L
+
 /**
  * Drives one authorized protected feed without an ExoPlayer decoder.
  *
@@ -718,7 +720,6 @@ internal class ProtectedPresentationClock {
         const val DRIFT_TOLERANCE_US = 50_000L
         const val VOD_HARD_SEEK_THRESHOLD_US = 500_000L
         const val LIVE_HARD_SEEK_THRESHOLD_US = 1_500_000L
-        const val DRM_INIT_DATA_WAIT_TIMEOUT_MS = 10_000L
         const val PLAYBACK_RATE_CORRECTION = 0.05
         const val MIN_PLAYBACK_SPEED = 0.25f
         const val MAX_PLAYBACK_SPEED = 2.0f
