@@ -18,8 +18,6 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
 import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
-import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import android.os.Handler
 import android.os.Looper
 import app.f1multiview.core.playback.Quality
@@ -241,22 +239,8 @@ class Media3DecoderManager(context: Context) {
         } else {
             roleAwareDataSource
         }
-        val drmHeaders = buildMap {
-            putAll(stream.drmRequestHeaders.ifEmpty { stream.requestHeaders })
-            stream.playToken?.takeIf { it.isNotBlank() }?.let { put("Cookie", "playToken=" + it) }
-        }
-        val drmDataSource = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent(stream.requestHeaders["User-Agent"] ?: "Mozilla/5.0")
-            .setDefaultRequestProperties(drmHeaders)
-        val licenseUrl = stream.drmLicenseUrl
-        return if (!licenseUrl.isNullOrBlank()) {
-            val callback = HttpMediaDrmCallback(licenseUrl, true, drmDataSource)
-            drmHeaders.forEach { (name, value) -> callback.setKeyRequestProperty(name, value) }
-            // Preserve the provider/device-selected Widevine security level.
-            val drmManager = DefaultDrmSessionManager.Builder()
-                .setMultiSession(false)
-                .build(callback)
+        val drmManager = AuthorizedWidevineDrmSessionFactory.createSessionManager(stream)
+        return if (drmManager != null) {
             DefaultMediaSourceFactory(dataSource).setDrmSessionManagerProvider { drmManager }
         } else {
             DefaultMediaSourceFactory(dataSource)
