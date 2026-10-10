@@ -423,18 +423,19 @@ class UnifiedMultiviewEngine(context: Context) {
         container: android.widget.FrameLayout,
         screenshotMode: Boolean = false,
         onVideoTap: (() -> Unit)? = null
-    ) {
-        if (multiFeedBlocked && !DrmProtectionPolicy.requiresProtectedOutput(stream)) return
-        surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
+    ): Long {
+        if (multiFeedBlocked && !DrmProtectionPolicy.requiresProtectedOutput(stream)) return -1L
+        val bindingGeneration = surfaceManager.bind(feedId, player, stream, source, container, screenshotMode, onVideoTap)
         if (multiFeedBlocked) protectedRuntimes[feedId]?.play()
+        return bindingGeneration
     }
 
     fun updateSurface(feedId: String, player: EnginePlayerHandle, source: String) {
         if (!multiFeedBlocked) surfaceManager.update(feedId, player, source)
     }
 
-    fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout) {
-        surfaceManager.detach(feedId, player, container)
+    fun detachSurface(feedId: String, player: EnginePlayerHandle, container: android.widget.FrameLayout, expectedBindingGeneration: Long? = null) {
+        surfaceManager.detach(feedId, player, container, expectedBindingGeneration)
         if (multiFeedBlocked) protectedRuntimes[feedId]?.pause()
     }
 

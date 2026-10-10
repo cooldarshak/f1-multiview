@@ -1806,6 +1806,7 @@ private fun F1HdrPlayerSurface(
     val context = LocalContext.current
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
     val decoderGeneration by engine.decoderGeneration.collectAsState()
+    val bindingGeneration = remember(player.id) { longArrayOf(-1L) }
 
     if (screenshotMode) {
         ScreenshotPlaceholder(
@@ -1826,7 +1827,7 @@ private fun F1HdrPlayerSurface(
             modifier = modifier,
             factory = { FrameLayout(context) },
             update = { container ->
-                engine.attachSurface(
+                bindingGeneration[0] = engine.attachSurface(
                     feedId = player.id,
                     player = player,
                     stream = stream,
@@ -1837,7 +1838,7 @@ private fun F1HdrPlayerSurface(
                 )
             },
             onRelease = { released ->
-                engine.detachSurface(player.id, player, released)
+                engine.detachSurface(player.id, player, released, bindingGeneration[0].takeIf { it >= 0L })
             }
         )
     }

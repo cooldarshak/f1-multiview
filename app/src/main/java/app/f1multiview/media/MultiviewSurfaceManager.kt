@@ -13,6 +13,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     data class SurfaceBinding(
         val feedId: String,
         val generation: Long,
+        val bindingGeneration: Long,
         val source: String,
         val protectedContent: Boolean,
         val container: FrameLayout,
@@ -42,7 +43,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         container: FrameLayout,
         screenshotMode: Boolean = false,
         onTap: (() -> Unit)? = null
-    ) {
+    ): Long {
         AppLogger.d("Surface", "bind start feed=$feedId player=${player.id} source=$source container=${System.identityHashCode(container)}")
         val current = bindings[feedId]
         val desiredProtected = renderCoordinator.isProtected(stream)
@@ -54,7 +55,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             renderCoordinator.update(feedId, source)
             val sourceChanged = current!!.source != source
             val updated = current.copy(onTap = onTap, source = source)
-            containerGenerations[container] = current.generation
+            containerGenerations[container] = current.bindingGeneration
             bindings[feedId] = updated
             updateTouchInterceptor(updated)
             // Do not repeatedly call setVideoSurfaceView/setVideoTextureView from AndroidView.update.
@@ -62,8 +63,9 @@ class MultiviewSurfaceManager(private val context: Context) {
             // disturb Media3's output lifecycle. Source-specific HDR hints are safe to refresh.
             if (sourceChanged) applySurfaceHints(updated, source)
             AppLogger.d("Surface", "bind reused feed=$feedId generation=${current.generation} " +
-                "container=${System.identityHashCode(container)} sourceChanged=$sourceChanged outputReattached=false")
-            return
+                "bindingGeneration=${current.bindingGeneration} container=${System.identityHashCode(container)} " +
+                "sourceChanged=$sourceChanged outputReattached=false")
+            return current.bindingGeneration
         }
 
         current?.let {
@@ -75,6 +77,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         // Each concrete AndroidView container keeps its own generation. A stale release
         // from an old container cannot match the replacement binding for this feed.
         containerGenerations[container] = generation
+        val bindingGeneration = generation
         val params = FrameLayout.LayoutParams(-1, -1)
         val renderSlot = renderCoordinator.bind(stream, source, screenshotMode)
         val protectedContent = renderSlot.protectedContent
@@ -87,7 +90,7 @@ class MultiviewSurfaceManager(private val context: Context) {
             val touchInterceptor = createTouchInterceptor(onTap)
             container.addView(touchInterceptor, params)
             bindings[feedId] = SurfaceBinding(
-                feedId = feedId, generation = generation, source = source, protectedContent = protectedContent,
+                feedId = feedId, generation = generation, bindingGeneration = bindingGeneration, source = source, protectedContent = protectedContent,
                 container = container, owner = player, onTap = onTap,
                 textureView = texture, touchInterceptor = touchInterceptor
             )
@@ -107,7 +110,7 @@ class MultiviewSurfaceManager(private val context: Context) {
                 HdrSurfaceHints.applyHlg(surface, source)
             }
             bindings[feedId] = SurfaceBinding(
-                feedId = feedId, generation = generation, source = source, protectedContent = protectedContent,
+                feedId = feedId, generation = generation, bindingGeneration = bindingGeneration, source = source, protectedContent = protectedContent,
                 container = container, owner = player, onTap = onTap,
                 surfaceView = surface, touchInterceptor = touchInterceptor
             )
@@ -118,6 +121,7 @@ class MultiviewSurfaceManager(private val context: Context) {
                     "bounds=${surface.width}x${surface.height} api=${android.os.Build.VERSION.SDK_INT}"
             )
         }
+        return bindingGeneration
     }
 
     private fun installSurfaceDiagnostics(feedId: String, view: SurfaceView, protectedContent: Boolean) {
@@ -146,7 +150,7 @@ class MultiviewSurfaceManager(private val context: Context) {
                 val current = bindings[feedId]
                 if (current?.surfaceView === view) {
                     val generation = nextGeneration.getAndIncrement()
-                    containerGenerations[current.container] = generation
+                    // Keep bindingGeneration stable; only protected output leases are invalidated.
                     bindings[feedId] = current.copy(generation = generation)
                     AppLogger.w(
                         "SecureSurface",
@@ -174,6 +178,7 @@ class MultiviewSurfaceManager(private val context: Context) {
                     owner = player,
                     source = source,
                     generation = generation,
+                    bindingGeneration = generation,
                     playerOutputAttached = true
                 )
                 bindings[feedId] = updated
@@ -191,15 +196,15 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     /** A stale Compose onRelease must not detach a newer binding for the same logical feed. */
-    fun detach(feedId: String, player: EnginePlayerHandle, container: FrameLayout) {
+    fun detach(feedId: String, player: EnginePlayerHandle, container: FrameLayout, expectedBindingGeneration: Long? = null) {
         AppLogger.d("Surface", "detach request feed=$feedId player=${player.id} container=${System.identityHashCode(container)}")
         val binding = bindings[feedId] ?: run {
             AppLogger.w("Surface", "detach ignored: no binding feed=$feedId")
             return
         }
-        val releasedGeneration = containerGenerations[container]
+        val releasedGeneration = expectedBindingGeneration ?: containerGenerations[container]
         val currentIdentity = SurfaceBindingLease.Identity(
-            generation = binding.generation,
+            generation = binding.bindingGeneration,
             container = binding.container,
             owner = binding.owner
         )
