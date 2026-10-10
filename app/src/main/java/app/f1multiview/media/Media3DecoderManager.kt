@@ -112,10 +112,14 @@ class Media3DecoderManager(context: Context) {
     fun getOrNull(id: String): ExoPlayer? = players[id]
 
     private fun createPlayer(id: String): ExoPlayer = players.getOrPut(id) {
-        preloadBuilder.buildExoPlayer(
-            ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
-        )
-            .also { player ->
+        val stream = streams[id]
+        val protectedSource = stream?.drmProtected == true || !stream?.drmLicenseUrl.isNullOrBlank()
+        val builder = ExoPlayer.Builder(appContext, F1TvRenderersFactory(appContext))
+            .setLoadControl(ProductionLoadControl.create())
+        // Keep protected F1 playback on a normal ExoPlayer instance. The preload manager
+        // is for clear/ordinary sources only and must not own or substitute the DRM source.
+        val player = if (protectedSource) builder.build() else preloadBuilder.buildExoPlayer(builder)
+        player.also { player ->
                 // Multiview owns several ExoPlayers. They must not compete for Android audio focus.
                 // Only the selected main player's volume is audible; audio focus is therefore
                 // handled outside individual players.
