@@ -399,12 +399,12 @@ internal class ProtectedCmafFeedRuntime(
             surfaceLease = lease
         }
         AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_PREPARE feed=${stream.id} " +
-            "drmState=${drmSession.state} hasKeys=${drmSession.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
+            "drmState=${readyDrmSession.state} hasKeys=${readyDrmSession.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
             "mime=${format.sampleMimeType} size=${format.width}x${format.height} " +
             "surfaceGeneration=${lease.generation} surfaceId=${System.identityHashCode(lease.surface)} " +
             "surfaceValid=${lease.surface.isValid} secureFlag=${lease.secureFlagRequested} " +
             "surfaceSize=${lease.width}x${lease.height}")
-        lastDrmSessionState = drmSession.state.toString()
+        lastDrmSessionState = readyDrmSession.state.toString()
         lastSourceState = activeSource.state.name
         lastVideoMime = format.sampleMimeType
         lastVideoSize = "${format.width}x${format.height}"
@@ -470,7 +470,7 @@ internal class ProtectedCmafFeedRuntime(
         AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_CONFIGURED feed=${stream.id} " +
             "codec=${decoder?.codecName ?: "unknown"} inputEnded=${decoder?.isInputEnded} " +
             "surfaceGeneration=${lease.generation} surfaceValid=${lease.surface.isValid} " +
-            "drmState=${drmSession.state}")
+            "drmState=${readyDrmSession.state}")
         publish("WAITING_FOR_FIRST_FRAME: secure decoder configured; awaiting rendered-frame callback")
     }
 
