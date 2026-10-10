@@ -1662,8 +1662,10 @@ private fun CanonicalMultiviewLayout(
                 val rightWidth = availableWidth - leftWidth
                 val rightX = leftWidth + gapPx + dividerPx + gapPx
                 val availableHeight = (height - 4 * gapPx - 2 * dividerPx).coerceAtLeast(0)
-                val h1 = (availableHeight * fourSideH1).toInt().coerceAtLeast(0)
-                val h2 = (availableHeight * fourSideH2).toInt().coerceIn(0, availableHeight - h1)
+                val h3Weight = (1f - fourSideH1 - fourSideH2).coerceIn(.16f, .68f)
+                val totalWeight = fourSideH1 + fourSideH2 + h3Weight
+                val h1 = (availableHeight * fourSideH1 / totalWeight).toInt().coerceAtLeast(0)
+                val h2 = (availableHeight * fourSideH2 / totalWeight).toInt().coerceIn(0, availableHeight - h1)
                 val h3 = availableHeight - h1 - h2
                 placeVideo(0, 0, 0, leftWidth, height)
                 place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
