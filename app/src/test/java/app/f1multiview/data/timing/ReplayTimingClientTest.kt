@@ -63,4 +63,18 @@ class ReplayTimingClientTest {
         assertTrue(ReplayTimingClient().parsePositions("not a timing record\\n00:00:01.000\\"not-base64\\"").isEmpty())
     }
 
+    @Test
+    fun replayTimingDeltasMergeIntoPersistentDriverState() {
+        val stream = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}},"4":{"Position":2,"Tla":"NOR","GapToLeader":"+1.2"}}}
+00:00:02.000{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"4":{"GapToLeader":"+0.8"}}}
+"""
+        val snapshots = ReplayTimingClient().parse(stream)
+        assertEquals(2, snapshots.size)
+        assertEquals(2, snapshots[1].rows.size)
+        val leader = snapshots[1].rows.first { it.driver == "VER" }
+        val second = snapshots[1].rows.first { it.driver == "NOR" }
+        assertEquals("1:31.900", leader.lastLap)
+        assertEquals("+0.8", second.gap)
+    }
+
 }
