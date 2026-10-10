@@ -277,7 +277,31 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
             }
         }
         if (candidates.isEmpty()) throw IOException("Authorized F1 source has no video track")
-        val sized = candidates.filter { it.third.width > 0 && it.third.height > 0 }
+
+        // A DASH Period can expose more than one video TrackGroup (including alternate
+        // representations/roles). Do not let the resolution preference accidentally choose a
+        // clear/metadata-only representation when another candidate carries the manifest's
+        // actual Widevine init data. This is selection, not DRM synthesis: if Media3 parsed no
+        // protected candidate, we retain the best available candidate and fail closed later.
+        val protectedCandidates = candidates.filter {
+            val drm = it.third.drmInitData
+            drm != null && (0 until drm.schemeDataCount).any { index ->
+                drm.get(index).matches(C.WIDEVINE_UUID)
+            }
+        }
+        val selectionPool = protectedCandidates.ifEmpty { candidates }
+        AppLogger.i(
+            "AuthorizedCmafSource",
+            "VIDEO_TRACK_CATALOG feed=${stream.id} groups=${groups.length} " +
+                "videoCandidates=${candidates.size} widevineCandidates=${protectedCandidates.size} " +
+                "formats=" + candidates.joinToString(";") { candidate ->
+                    val drm = candidate.third.drmInitData
+                    "${candidate.third.width}x${candidate.third.height}:" +
+                        "${candidate.third.sampleMimeType}:drm=${drm != null}:" +
+                        "schemes=${drm?.schemeDataCount ?: 0}"
+                }
+        )
+        val sized = selectionPool.filter { it.third.width > 0 && it.third.height > 0 }
         val selected = when (quality) {
             Quality.AUTO -> sized.filter {
                 it.third.width <= autoMaxWidth && it.third.height <= autoMaxHeight
@@ -285,7 +309,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                 .thenBy { it.third.width }.thenBy { it.third.bitrate })
                 ?: sized.minWithOrNull(compareBy<Triple<TrackGroup, Int, Format>> { it.third.height }
                     .thenBy { it.third.width }.thenBy { it.third.bitrate })
-                ?: candidates.first()
+                ?: selectionPool.first()
             else -> {
                 val desiredHeight = qualityManager.minimumHeight(quality)
                 val near = sized.filter {
@@ -294,7 +318,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                 near.maxWithOrNull(compareBy<Triple<TrackGroup, Int, Format>> { it.third.height }
                     .thenBy { it.third.width }.thenBy { it.third.bitrate })
                     ?: sized.minByOrNull { abs(it.third.height - desiredHeight) }
-                    ?: candidates.first()
+                    ?: selectionPool.first()
             }
         }
         val (group, trackIndex, _) = selected
