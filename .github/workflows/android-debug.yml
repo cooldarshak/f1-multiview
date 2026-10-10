@@ -48,7 +48,7 @@ jobs:
             "https://raw.githubusercontent.com/androidx/media/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/test_data/src/test/assets/media/drm/sample_fragmented_widevine.mp4" \
             --output "$FIXTURE"
           test -s "$FIXTURE"
-          test "$(git -C media3-source hash-object "$FIXTURE")" = "942694cfcc66632973689c4d46a8f94794ba510b"
+          test "$(git -C media3-source hash-object sample_fragmented_widevine.mp4)" = "942694cfcc66632973689c4d46a8f94794ba510b"
           mkdir -p app/src/test/resources/media
           cp "$FIXTURE" app/src/test/resources/media/sample_fragmented_widevine.mp4
           test -s app/src/test/resources/media/sample_fragmented_widevine.mp4
