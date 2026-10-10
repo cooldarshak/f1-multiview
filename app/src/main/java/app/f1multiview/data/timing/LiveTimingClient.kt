@@ -362,6 +362,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
      */
     private val timingAppLinesState = JSONObject()
     private val timingAppLock = Any()
+    private val tyreByDriver = mutableMapOf<String, String>()
+    private val pitStopsByDriver = mutableMapOf<String, Int>()
 
     private fun parseTimingAppData(data: JSONObject?) {
         if (data == null) return
@@ -396,9 +398,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 }
                 val compound = newest?.optString("Compound").orEmpty()
                     .ifBlank { newest?.optString("compound").orEmpty() }
-                if (compound.isNotBlank() && compound != "null") tyres[number] = compound.uppercase()
+                if (compound.isNotBlank() && compound != "null") { tyres[number] = compound.uppercase(); tyreByDriver[number] = compound.uppercase() }
                 val count = line.optInt("NumberOfPitStops", line.optInt("PitStops", -1))
-                if (count >= 0) pitStops[number] = count
+                if (count >= 0) { pitStops[number] = count; pitStopsByDriver[number] = count }
                 val old = timingMeta[number] ?: TimingMeta()
                 timingMeta[number] = old.copy(
                     inPit = line.optBoolean("InPit", old.inPit) || line.optBoolean("PitIn", false),
@@ -411,8 +413,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                         driverMeta.entries.firstOrNull { it.value.acronym.equals(row.driver, true) }?.key.orEmpty()
                     }
                     row.copy(
-                        tyre = tyres[number] ?: row.tyre,
-                        pitStops = pitStops[number] ?: row.pitStops
+                        tyre = tyres[number] ?: tyreByDriver[number] ?: row.tyre,
+                        pitStops = pitStops[number] ?: pitStopsByDriver[number] ?: row.pitStops
                     )
                 }
             }
@@ -421,7 +423,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
 
     private fun parseTiming(data:JSONObject?){if(data==null)return;val incoming=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val lines=mergeTimingLines(incoming);if(lines.length()==0)return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
-        while(keys.hasNext()){val number=keys.next();val line=lines.optJSONObject(number)?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("Tla").ifBlank{driverMeta[number]?.acronym ?: ""}.ifBlank{line.optString("FullName")}.ifBlank{line.optString("RacingNumber")}.ifBlank{"P"+pos};val leaderGap=line.optString("GapToLeader").ifBlank{"-"};val interval=line.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty().ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val gap=leaderGap.ifBlank{interval};val lastObj=line.optJSONObject("LastLapTime");val bestObj=line.optJSONObject("BestLapTime");val last=lastObj?.optString("Value")?:line.optString("LastLapTime");val best=bestObj?.optString("Value")?:line.optString("BestLapTime");val tyre=bestObj?.optString("Compound")?:line.optString("Compound");val s1=sectorValue(lastObj,line,"Sector1");val s2=sectorValue(lastObj,line,"Sector2");val s3=sectorValue(lastObj,line,"Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val lapNumber=line.optInt("Lap",0).takeIf{it>0}?:line.optInt("LapNumber",0);val seg1=sectorSegments(lastObj,line,"Sector1");val seg2=sectorSegments(lastObj,line,"Sector2");val seg3=sectorSegments(lastObj,line,"Sector3");rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyre.ifBlank{"-"},line.optInt("NumberOfPitStops",0),s1.first,s2.first,s3.first,speed.ifBlank{"-"},best.ifBlank{"-"},lapNumber,s1.second,s2.second,s3.second,seg1,seg2,seg3,interval,leaderGap,driverNumber=number)}
+        while(keys.hasNext()){val number=keys.next();val line=lines.optJSONObject(number)?:continue;val pos=line.optString("Position").toIntOrNull()?:continue;val driver=line.optString("Tla").ifBlank{driverMeta[number]?.acronym ?: ""}.ifBlank{line.optString("FullName")}.ifBlank{line.optString("RacingNumber")}.ifBlank{"P"+pos};val leaderGap=line.optString("GapToLeader").ifBlank{"-"};val interval=line.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty().ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val gap=leaderGap.ifBlank{interval};val lastObj=line.optJSONObject("LastLapTime");val bestObj=line.optJSONObject("BestLapTime");val last=lastObj?.optString("Value")?:line.optString("LastLapTime");val best=bestObj?.optString("Value")?:line.optString("BestLapTime");val tyre=bestObj?.optString("Compound")?:line.optString("Compound");val s1=sectorValue(lastObj,line,"Sector1");val s2=sectorValue(lastObj,line,"Sector2");val s3=sectorValue(lastObj,line,"Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val lapNumber=line.optInt("Lap",0).takeIf{it>0}?:line.optInt("LapNumber",0);val seg1=sectorSegments(lastObj,line,"Sector1");val seg2=sectorSegments(lastObj,line,"Sector2");val seg3=sectorSegments(lastObj,line,"Sector3");rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyreByDriver[number] ?: tyre.ifBlank{"-"},pitStopsByDriver[number] ?: line.optInt("NumberOfPitStops",0),s1.first,s2.first,s3.first,speed.ifBlank{"-"},best.ifBlank{"-"},lapNumber,s1.second,s2.second,s3.second,seg1,seg2,seg3,interval,leaderGap,driverNumber=number)}
         if(rows.isNotEmpty()){
             _rows.value=rows.sortedBy{it.position}
             val keys2=lines.keys()
