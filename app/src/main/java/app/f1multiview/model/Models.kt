@@ -63,7 +63,8 @@ data class LiveSessionInfo(
     val sessionType: String = "-",
     val status: String = "-",
     val circuitKey: Int? = null,
-    val year: Int? = null
+    val year: Int? = null,
+    val circuitName: String = ""
 )
 
 
@@ -107,5 +108,7 @@ data class TrackMapGeometry(
     val circuitKey: Int,
     val year: Int,
     val rotation: Double = 0.0,
-    val corners: List<TrackCorner> = emptyList()
+    val corners: List<TrackCorner> = emptyList(),
+    /** Centreline transformed into the same track coordinate system as live Position.z. */
+    val centerline: List<TrackPoint> = emptyList()
 )
