@@ -12,9 +12,9 @@ import androidx.media3.extractor.TrackOutput
 /**
  * App-owned extractor sink that retains sample payloads in Media3 SampleQueues.
  *
- * This is an extraction boundary only. It deliberately creates queues without DRM session
- * management: the queues can expose parsed encryption metadata, but this class does not acquire a
- * Widevine session, decrypt samples, configure secure decoders, or authorize protected playback.
+ * Without a manager, queues expose parsed encryption metadata without acquiring DRM sessions.
+ * With a manager and dispatcher, SampleQueue uses that manager for per-format session references.
+ * This class does not decrypt samples, configure secure decoders, or authorize protected playback.
  */
 @OptIn(UnstableApi::class)
 internal class CmafSampleQueueOutput(
@@ -27,6 +27,10 @@ internal class CmafSampleQueueOutput(
 
     val sampleQueues: Map<Int, SampleQueue>
         get() = queues.toMap()
+
+    /** True only when queues were created with a caller-owned DRM session manager. */
+    val isDrmManaged: Boolean
+        get() = drmSessionManager != null
 
     var seekMap: SeekMap? = null
         private set
