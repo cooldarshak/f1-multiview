@@ -38,9 +38,15 @@ class F1CmafHlsDrmFixingDataSource private constructor(
     override fun open(dataSpec: DataSpec): Long {
         close()
         openedUri = dataSpec.uri
-        if (!shouldRewritePlaylist(dataSpec.uri)) {
+        // Only rewrite complete playlist GETs. Range requests must retain upstream byte
+        // semantics because the rewritten representation has a different byte length.
+        if (!shouldRewritePlaylist(dataSpec.uri) ||
+            dataSpec.position != 0L ||
+            dataSpec.length != C.LENGTH_UNSET.toLong()
+        ) {
             val length = upstream.open(dataSpec)
             upstreamOpened = true
+            openedUri = upstream.uri ?: dataSpec.uri
             responseHeaders = upstream.responseHeaders
             return length
         }
@@ -48,6 +54,14 @@ class F1CmafHlsDrmFixingDataSource private constructor(
         val original = readUpstreamFully(dataSpec)
         val text = original.toString(StandardCharsets.UTF_8)
         val fixed = rewritePlaylistText(text).toByteArray(StandardCharsets.UTF_8)
+        // This is a transformed in-memory representation: report its resolved URL and
+        // its actual byte length rather than stale upstream Content-Length/Range metadata.
+        responseHeaders = responseHeaders.entries
+            .filterNot { (name, _) ->
+                name.equals("Content-Length", ignoreCase = true) ||
+                    name.equals("Content-Range", ignoreCase = true)
+            }
+            .associate { it.key to it.value } + ("Content-Length" to listOf(fixed.size.toString()))
         val start = dataSpec.position.coerceAtMost(fixed.size.toLong()).toInt()
         val end = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
             fixed.size
@@ -91,6 +105,9 @@ class F1CmafHlsDrmFixingDataSource private constructor(
         try {
             upstream.open(dataSpec)
             upstreamOpened = true
+            // Capture the final URL before close(); HLS resolves relative segment URLs
+            // against this URI, which may differ from the originally requested URL after redirects.
+            openedUri = upstream.uri ?: dataSpec.uri
             responseHeaders = upstream.responseHeaders
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(16 * 1024)
