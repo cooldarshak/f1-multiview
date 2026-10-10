@@ -402,7 +402,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
         featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}
     }
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
-    fun updateReplayTiming(positionMs:Long){ val rows=replayTimingClient.rowsAt(positionMs); if(rows.isNotEmpty()) _ui.value=_ui.value.copy(timing=rows,timingStatus="REPLAY") }
+    fun updateReplayTiming(positionMs:Long){ val rows=replayTimingClient.rowsAt(positionMs); val positions=replayTimingClient.positionsAt(positionMs); val current=_ui.value; _ui.value=current.copy(timing=rows.ifEmpty{current.timing},trackPositions=positions,timingStatus=if(replayTimingClient.isLoaded())"REPLAY" else current.timingStatus) }
     fun loadReplayTiming(session:Session)=viewModelScope.launch{ val year=session.seasonYear ?: return@launch; val meeting=session.meetingNumber ?: return@launch; replayTimingClient.load(year,meeting,session.sessionType).onSuccess{ _ui.value=_ui.value.copy(replayChannelDiffs=replayTimingClient.sync().channelDiffs) }.onFailure{ if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found")) } }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta);replayTimingClient.nudge(delta)}
     fun setReplayTimingOffset(offsetMs:Long){_ui.value=_ui.value.copy(syncOffsetMs=offsetMs);replayTimingClient.setSyncOffset(offsetMs)}
