@@ -404,16 +404,15 @@ internal class ProtectedCmafFeedRuntime(
                 clock.presentationTimeNs(stream.id, globalPtsUs)
             },
             onFrameRendered = { presentationTimeUs, renderTimeNs ->
+                if (stateValue != State.FAILED && stateValue != State.CLOSED) {
                 lastRenderedPtsUs = presentationTimeUs
                 lastRenderedAtNs = renderTimeNs
                 if (firstFramePresentedAtNs == null) firstFramePresentedAtNs = renderTimeNs
-                if (stateValue != State.FAILED && stateValue != State.CLOSED) {
-                    if (running && stateValue != State.PLAYING) {
-                        stateValue = State.PLAYING
-                        publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
-                    } else if (!running && stateValue != State.PAUSED) {
-                        publish("FRAME_RENDERED_WHILE_NOT_RUNNING ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
-                    }
+                if (running && stateValue != State.PLAYING) {
+                    stateValue = State.PLAYING
+                    publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
+                } else if (!running && stateValue != State.PAUSED) {
+                    publish("FRAME_RENDERED_WHILE_NOT_RUNNING ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
                 }
                 renderedFrameCount++
                 val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
@@ -433,6 +432,7 @@ internal class ProtectedCmafFeedRuntime(
                     )
                 }
                 if (observation.hardResync) pendingHardResync = true
+                }
             }
         )
         lastCodecName = decoder?.codecName ?: lastCodecName
