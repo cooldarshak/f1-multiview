@@ -373,6 +373,13 @@ internal class ProtectedCmafFeedRuntime(
                 }
                 renderedFrameCount++
                 val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
+                if (renderedFrameCount == 1L && stream.id != clock.masterFeedId) {
+                    val calibratedOffsetUs = clock.calibrateFollowerOffset(stream.id, globalPtsUs, renderTimeNs)
+                    if (calibratedOffsetUs != null) {
+                        AppLogger.i("ProtectedCmafSync", "FIRST_FRAME_OFFSET_CALIBRATED feed=" + stream.id +
+                            " offsetMs=" + (calibratedOffsetUs / 1000.0))
+                    }
+                }
                 val observation = clock.observeRenderedFrame(stream.id, globalPtsUs, renderTimeNs, stream.isLive)
                 if (renderedFrameCount % 30L == 0L) {
                     AppLogger.i(
@@ -492,6 +499,8 @@ internal class ProtectedPresentationClock {
     private var baseElapsedRealtimeNs: Long? = null
     private var playbackSpeed = 1f
     private val offsetsUs = linkedMapOf<String, Long>()
+    private val explicitOffsetFeedIds = linkedSetOf<String>()
+    private val calibratedFeedIds = linkedSetOf<String>()
 
     val isReady: Boolean get() = basePresentationTimeUs != null && baseElapsedRealtimeNs != null
 
@@ -501,9 +510,36 @@ internal class ProtectedPresentationClock {
             masterFeedId = feedId
             basePresentationTimeUs = null
             baseElapsedRealtimeNs = null
+            offsetsUs.clear()
+            explicitOffsetFeedIds.clear()
+            calibratedFeedIds.clear()
         }
-        offsetsUs.clear()
-        channelOffsetsMs.forEach { (id, offsetMs) -> offsetsUs[id] = offsetMs * 1_000L }
+        val incomingIds = channelOffsetsMs.keys
+        (explicitOffsetFeedIds - incomingIds).forEach { id ->
+            explicitOffsetFeedIds.remove(id)
+            offsetsUs.remove(id)
+            calibratedFeedIds.remove(id)
+        }
+        channelOffsetsMs.forEach { (id, offsetMs) ->
+            offsetsUs[id] = offsetMs * 1_000L
+            explicitOffsetFeedIds += id
+            calibratedFeedIds.remove(id)
+        }
+    }
+
+    /**
+     * Aligns a follower's first rendered PTS to the master clock when no authoritative channel
+     * offset is available. Repeated viewport updates must not erase this calibration.
+     */
+    fun calibrateFollowerOffset(feedId: String, presentationTimeUs: Long, renderTimeNs: Long): Long? {
+        if (feedId == masterFeedId || feedId in explicitOffsetFeedIds || feedId in calibratedFeedIds) return null
+        val basePts = basePresentationTimeUs ?: return null
+        val baseNs = baseElapsedRealtimeNs ?: return null
+        val expectedPtsUs = basePts + (renderTimeNs - baseNs) / 1_000L
+        val offsetUs = presentationTimeUs - expectedPtsUs
+        offsetsUs[feedId] = offsetUs
+        calibratedFeedIds += feedId
+        return offsetUs
     }
 
     data class DriftObservation(val driftUs: Long, val correctionUs: Long, val hardResync: Boolean)

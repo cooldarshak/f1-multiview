@@ -26,6 +26,57 @@ class ProtectedPresentationClockTest {
     }
 
     @Test
+    fun firstFollowerFrameCalibratesUnknownTimestampEpoch() {
+        val clock = ProtectedPresentationClock()
+        clock.setMaster("main")
+        clock.establish(1_000_000L)
+        val renderNs = clock.presentationTimeNs("main", 1_000_000L) + 200_000_000L
+
+        val offset = clock.calibrateFollowerOffset(
+            feedId = "follower",
+            presentationTimeUs = 1_450_000L,
+            renderTimeNs = renderNs
+        )
+        assertTrue(offset != null)
+
+        val observation = clock.observeRenderedFrame(
+            feedId = "follower",
+            presentationTimeUs = 1_450_000L,
+            renderTimeNs = renderNs,
+            isLive = false
+        )
+        assertEquals(0L, observation.driftUs)
+        assertFalse(observation.hardResync)
+    }
+
+    @Test
+    fun repeatedMasterSelectionPreservesLearnedFollowerOffset() {
+        val clock = ProtectedPresentationClock()
+        clock.setMaster("main")
+        clock.establish(1_000_000L)
+        val renderNs = clock.presentationTimeNs("main", 1_000_000L) + 100_000_000L
+        clock.calibrateFollowerOffset("follower", 1_300_000L, renderNs)
+
+        clock.setMaster("main")
+        val observation = clock.observeRenderedFrame(
+            feedId = "follower",
+            presentationTimeUs = 1_300_000L,
+            renderTimeNs = renderNs,
+            isLive = false
+        )
+        assertEquals(0L, observation.driftUs)
+    }
+
+    @Test
+    fun explicitChannelOffsetIsNotOverwrittenByFirstFrameCalibration() {
+        val clock = ProtectedPresentationClock()
+        clock.setMaster("main", mapOf("follower" to 100L))
+        clock.establish(1_000_000L)
+
+        assertEquals(null, clock.calibrateFollowerOffset("follower", 1_250_000L, clock.presentationTimeNs("main", 1_000_000L)))
+    }
+
+    @Test
     fun changingMasterResetsTheSharedPresentationEpoch() {
         val clock = ProtectedPresentationClock()
         clock.setMaster("main")
