@@ -363,7 +363,19 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         val holder = androidx.media3.exoplayer.FormatHolder()
         return when (activeStream.readData(holder, sampleBuffer, /* readFlags= */ 0)) {
             C.RESULT_FORMAT_READ -> {
-                val format = holder.format ?: throw IOException("Media3 emitted a video format result without a format")
+                val emittedFormat = holder.format ?: throw IOException("Media3 emitted a video format result without a format")
+                // Some manually-driven SampleStream paths emit a downstream Format without
+                // drmInitData even though the selected manifest TrackGroup carries the MPD's
+                // ContentProtection/PSSH. Preserve that authoritative manifest metadata; never
+                // fabricate DRM init data from a license URL or downgrade to clear playback.
+                val manifestFormat = selectedVideoGroup
+                    ?.takeIf { selectedVideoTrackIndex in 0 until it.length }
+                    ?.getFormat(selectedVideoTrackIndex)
+                val format = if (emittedFormat.drmInitData == null && manifestFormat?.drmInitData != null) {
+                    emittedFormat.buildUpon().setDrmInitData(manifestFormat.drmInitData).build()
+                } else {
+                    emittedFormat
+                }
                 videoFormat = format
                 // A manually driven MediaPeriod has no ExoPlayer renderer to acquire the DRM
                 // session on our behalf. SampleStream's FormatHolder may therefore carry no
@@ -390,10 +402,17 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                     "AuthorizedCmafSource",
                     "VIDEO_FORMAT_DRM feed=${stream.id} mime=${format.sampleMimeType} " +
                         "drmInitData=${initData != null} schemeCount=${initData?.schemeDataCount ?: 0} " +
+                        "manifestDrmInitData=${manifestFormat?.drmInitData != null} " +
                         "holderSession=${streamSession != null} retainedSession=${videoDrmSession != null} " +
                         "sessionState=${videoDrmSession?.state ?: -1} " +
                         "cryptoType=${videoDrmSession?.cryptoConfig?.javaClass?.simpleName ?: "none"}"
                 )
+                if (videoDrmSession == null && initData == null) {
+                    AppLogger.e(
+                        "AuthorizedCmafSource",
+                        "DRM_INIT_DATA_MISSING feed=${stream.id}; selected manifest format has no Widevine scheme data"
+                    )
+                }
                 ReadResult(ReadKind.FORMAT, videoFormat, videoDrmSession)
             }
             C.RESULT_BUFFER_READ -> {
