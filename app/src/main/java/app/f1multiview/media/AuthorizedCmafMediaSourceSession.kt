@@ -406,14 +406,26 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                 // session even though the track is protected. Acquire it explicitly from the
                 // same Media3 manager configured for this authorized source and keep it alive
                 // until the track changes or this source session closes.
+                val initData = format.drmInitData
                 val streamSession = holder.drmSession
+                // Do not ask DefaultDrmSessionManager to open a session against a placeholder
+                // format. DASH can emit an initial downstream Format before the init segment's
+                // PSSH has been propagated by the extractor. That first format is not sufficient
+                // evidence that the authorized presentation lacks DRM metadata.
+                if (initData == null && streamSession == null) {
+                    videoFormat = format
+                    AppLogger.w(
+                        "AuthorizedCmafSource",
+                        "VIDEO_FORMAT_AWAITING_DRM_INIT_DATA feed=${stream.id} mime=${format.sampleMimeType} " +
+                            "manifestDrmInitData=${manifestFormat?.drmInitData != null}; " +
+                            "waiting for Media3 init-segment format update; clear playback remains forbidden"
+                    )
+                    return ReadResult(ReadKind.NOTHING, videoFormat, null)
+                }
                 when {
                     streamSession != null && videoDrmSession !== streamSession -> {
                         releaseVideoDrmSession()
-                        // FormatHolder exposes the session used by Media3's sample stream, but
-                        // does not transfer an acquired reference to this manually-driven
-                        // renderer. Take our own reference before retaining it or passing it to
-                        // SecureCmafVideoDecoder, which acquires a separate decoder-lifetime ref.
+                        // Keep a distinct acquired reference for this manually-driven renderer.
                         streamSession.acquire(/* eventDispatcher= */ null)
                         videoDrmSession = streamSession
                     }
@@ -421,7 +433,6 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                         videoDrmSession = drmManager.acquireSession(/* eventDispatcher= */ null, format)
                     }
                 }
-                val initData = format.drmInitData
                 AppLogger.i(
                     "AuthorizedCmafSource",
                     "VIDEO_FORMAT_DRM feed=${stream.id} mime=${format.sampleMimeType} " +
@@ -431,12 +442,6 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                         "sessionState=${videoDrmSession?.state ?: -1} " +
                         "cryptoType=${videoDrmSession?.cryptoConfig?.javaClass?.simpleName ?: "none"}"
                 )
-                if (videoDrmSession == null && initData == null) {
-                    AppLogger.e(
-                        "AuthorizedCmafSource",
-                        "DRM_INIT_DATA_MISSING feed=${stream.id}; selected manifest format has no Widevine scheme data"
-                    )
-                }
                 ReadResult(ReadKind.FORMAT, videoFormat, videoDrmSession)
             }
             C.RESULT_BUFFER_READ -> {
