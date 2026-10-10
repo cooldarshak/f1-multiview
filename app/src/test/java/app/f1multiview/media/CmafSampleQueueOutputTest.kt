@@ -5,6 +5,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.exoplayer.source.SampleQueue
+import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.extractor.DefaultExtractorInput
 import androidx.media3.common.DataReader
 import androidx.media3.extractor.Extractor
@@ -20,6 +21,12 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class CmafSampleQueueOutputTest {
+
+    @Test(expected = IllegalArgumentException::class)
+    fun drmManagerAndEventDispatcherMustBeConfiguredTogether() {
+        CmafSampleQueueOutput(drmEventDispatcher = DrmSessionEventListener.EventDispatcher())
+    }
+
     @Test
     fun encryptedCmafSamplesRetainDecoderCryptoMetadata() {
         val bytes = javaClass.classLoader!!
