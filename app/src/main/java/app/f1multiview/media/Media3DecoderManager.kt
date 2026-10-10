@@ -281,6 +281,7 @@ class Media3DecoderManager(context: Context) {
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 .build()
             preloadManager.getMediaSource(player.currentMediaItem!!)?.let { player.setMediaSource(it) }
+            applyAudioPolicy(stream.id, player)
             player.prepare()
             return true
         }
@@ -317,8 +318,18 @@ class Media3DecoderManager(context: Context) {
         }
         val playableSource = preloadManager.getMediaSource(mediaItem) ?: mediaSource
         player.setMediaSource(playableSource)
+        applyAudioPolicy(stream.id, player)
         player.prepare()
         return true
+    }
+
+    private fun applyAudioPolicy(id: String, player: ExoPlayer) {
+        val activeAudio = resourceManager.hasLease(id) || id in audioOnlyFeedIds
+        player.volume = if (id == audioPlayerId && activeAudio) 1f else 0f
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !activeAudio)
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, id in audioOnlyFeedIds)
+            .build()
     }
 
     /** Preload a logical feed without consuming a physical decoder lease. */
