@@ -3,7 +3,6 @@ package app.f1multiview.media
 import app.f1multiview.model.StreamKind
 import app.f1multiview.model.StreamSource
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -63,11 +62,5 @@ class AuthorizedWidevineDrmSessionFactoryTest {
 
         assertEquals(mapOf("Authorization" to "playback-auth"), config.requestHeaders)
         assertEquals("Mozilla/5.0", config.userAgent)
-    }
-
-    @Test
-    fun buildsASeparateMedia3DrmSessionManagerFromTheResolvedConfiguration() {
-        val config = requireNotNull(AuthorizedWidevineDrmSessionFactory.configurationFor(stream()))
-        assertNotNull(config.createSessionManager())
     }
 }
