@@ -466,6 +466,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
             listOf("WEB_DASH","BIG_SCREEN_DASH","WEB_HLS","BIG_SCREEN_HLS","MOBILE_DASH","MOBILE_HLS")
         }
         var last: Throwable? = null
+        var fallbackDashSession: PlaybackSession? = null
         for ((index, platform) in platforms.withIndex()) {
             try {
                 val result = api.contentPlay(request.contentId, request.channelId, platform)
@@ -520,7 +521,7 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                         put("Authorization", "Bearer $it")
                     }
                 }
-                return@runCatching PlaybackSession(
+                val candidateSession = PlaybackSession(
                     result.manifestUrl,
                     if (result.manifestUrl.contains(".m3u8", true)) "application/x-mpegURL" else "application/dash+xml",
                     license,
@@ -540,6 +541,32 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                         result.drmType?.contains("widevine", true) == true ||
                         result.streamType?.contains("DASHWV", true) == true
                 )
+                val isDash = result.manifestUrl.contains(".mpd", true)
+                val hasExplicitWidevineEvidence = explicitWidevine || manifestDeclaresWidevine
+                if (isDash && !hasExplicitWidevineEvidence) {
+                    // A license URL alone is not proof that the selected MPD belongs to a
+                    // Widevine-protected representation. Remember this candidate only as a
+                    // last resort (the init segment may carry PSSH) while trying other
+                    // authorised profiles that declare Widevine explicitly.
+                    if (fallbackDashSession == null) fallbackDashSession = candidateSession
+                    AppLogger.w(
+                        "F1Playback",
+                        "AUTHORIZED_PROFILE_LOW_DRM_EVIDENCE contentId=${request.contentId} platform=${platform} " +
+                            "apiVersion=${result.requestedApiVersion ?: "unknown"} licenseUrlPresent=${!license.isNullOrBlank()} " +
+                            "manifestWidevine=${manifestDeclaresWidevine}; trying next authorized profile"
+                    )
+                    if (index < platforms.lastIndex) {
+                        delay(450L)
+                        continue
+                    }
+                } else {
+                    AppLogger.i(
+                        "F1Playback",
+                        "AUTHORIZED_PROFILE_ACCEPTED contentId=${request.contentId} platform=${platform} " +
+                            "manifestWidevine=${manifestDeclaresWidevine} apiWidevine=${explicitWidevine}"
+                    )
+                    return@runCatching candidateSession
+                }
             } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 last = failure
@@ -555,6 +582,10 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
                 )
                 if (index < platforms.lastIndex) delay(450L)
             }
+        }
+        fallbackDashSession?.let { fallback ->
+            AppLogger.w("F1Playback", "AUTHORIZED_PROFILE_FALLBACK_LOW_DRM_EVIDENCE contentId=${request.contentId}; no stronger authorized profile found")
+            return@runCatching fallback
         }
         throw last ?: F1TvException("No authorized F1 TV playback profile succeeded")
         }
