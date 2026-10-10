@@ -64,6 +64,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private var videoStream: SampleStream? = null
     private var videoFormat: Format? = null
     private var videoDrmSession: DrmSession? = null
+    private var protectedSampleWaitLogged = false
     private var selectedVideoGroup: TrackGroup? = null
     private var selectedVideoTrackIndex = -1
     private val qualityManager = QualityManager()
@@ -447,7 +448,25 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
             C.RESULT_BUFFER_READ -> {
                 if (sampleBuffer.isEndOfStream) {
                     ReadResult(ReadKind.END_OF_STREAM, videoFormat, videoDrmSession, sampleBuffer)
+                } else if (
+                    DrmProtectionPolicy.requiresProtectedOutput(stream) &&
+                    (videoFormat?.drmInitData == null || videoDrmSession == null)
+                ) {
+                    // Do not let a clear-looking sample advance the master clock or occupy the
+                    // runtime's pending-sample slot while the DASH init segment is still expected
+                    // to deliver PSSH/Format updates. Discard this read and keep pumping Media3 so
+                    // a later protected Format can establish the actual Widevine session.
+                    if (!protectedSampleWaitLogged) {
+                        protectedSampleWaitLogged = true
+                        AppLogger.w(
+                            "AuthorizedCmafSource",
+                            "PROTECTED_SAMPLE_HELD feed=${stream.id} drmInitData=${videoFormat?.drmInitData != null} " +
+                                "drmSession=${videoDrmSession != null}; continuing source reads for authorized metadata"
+                        )
+                    }
+                    ReadResult(ReadKind.NOTHING, videoFormat, videoDrmSession)
                 } else {
+                    protectedSampleWaitLogged = false
                     ReadResult(ReadKind.SAMPLE, videoFormat, videoDrmSession, sampleBuffer)
                 }
             }
