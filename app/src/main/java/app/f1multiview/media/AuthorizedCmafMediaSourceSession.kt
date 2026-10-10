@@ -373,7 +373,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                     releaseVideoDrmSession()
                     videoDrmSession = streamSession
                 } else if (videoDrmSession == null) {
-                    videoDrmSession = drmManager.acquireSession(playbackLooper, /* eventDispatcher= */ null, format)
+                    videoDrmSession = drmManager.acquireSession(/* eventDispatcher= */ null, format)
                 }
                 ReadResult(ReadKind.FORMAT, videoFormat, videoDrmSession)
             }
@@ -392,7 +392,7 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
     private fun releaseVideoDrmSession() {
         val activeSession = videoDrmSession ?: return
         videoDrmSession = null
-        runCatching { drmManager.releaseSession(activeSession) }
+        runCatching { activeSession.release(/* eventDispatcher= */ null) }
     }
 
     private fun fail(error: Exception) {
