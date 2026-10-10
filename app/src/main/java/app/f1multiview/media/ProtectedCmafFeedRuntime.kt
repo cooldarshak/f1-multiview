@@ -312,6 +312,7 @@ internal class ProtectedPresentationClock {
         private set
     private var basePresentationTimeUs: Long? = null
     private var baseElapsedRealtimeNs: Long? = null
+    private var playbackSpeed = 1f
     private val offsetsUs = linkedMapOf<String, Long>()
 
     val isReady: Boolean get() = basePresentationTimeUs != null && baseElapsedRealtimeNs != null
