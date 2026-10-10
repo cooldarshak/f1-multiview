@@ -47,6 +47,11 @@ internal class ProtectedCmafFeedRuntime(
     private var pendingSeekUs: Long? = null
     private var pendingDefaultSeek = false
     private var renderedFrameCount = 0L
+    private var queuedSampleCount = 0L
+    private var lastSamplePtsUs: Long? = null
+    private var lastRenderedPtsUs: Long? = null
+    private var lastRenderedAtNs: Long? = null
+    private var lastObservedSourceState: AuthorizedCmafMediaSourceSession.State? = null
     private var stateValue = State.NEW
 
     val state: State get() = stateValue
@@ -188,7 +193,19 @@ internal class ProtectedCmafFeedRuntime(
         if (activeSource.state == AuthorizedCmafMediaSourceSession.State.FAILED) {
             throw IOException("Authorized CMAF source failed")
         }
-        if (activeSource.state != AuthorizedCmafMediaSourceSession.State.READY) return
+        if (activeSource.state != AuthorizedCmafMediaSourceSession.State.READY) {
+            if (lastObservedSourceState != activeSource.state) {
+                lastObservedSourceState = activeSource.state
+                stateValue = if (activeSource.state == AuthorizedCmafMediaSourceSession.State.FAILED) State.FAILED else State.PREPARING
+                publish("SOURCE_WAIT: ${activeSource.state}; awaiting authorized Media3 source/period preparation")
+            }
+            return
+        }
+        if (lastObservedSourceState != activeSource.state) {
+            lastObservedSourceState = activeSource.state
+            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
+            publish("SOURCE_READY: authorized Media3 sample stream is prepared")
+        }
         if (pendingDefaultSeek) {
             activeSource.seekToDefaultPosition()
             pendingDefaultSeek = false
@@ -232,6 +249,11 @@ internal class ProtectedCmafFeedRuntime(
                         clock.establish(activeSource.toGlobalPresentationTimeUs(sample.timeUs))
                     }
                     pendingSample = sample
+                    lastSamplePtsUs = sample.timeUs
+                    if (queuedSampleCount == 0L) {
+                        AppLogger.i("ProtectedCmafRuntime", "FIRST_SAMPLE_READ feed=${stream.id} ptsUs=${sample.timeUs} " +
+                            "encrypted=${sample.isEncrypted} keyFrame=${sample.isKeyFrame()} drmState=${result.drmSession?.state}")
+                    }
                 }
                 AuthorizedCmafMediaSourceSession.ReadKind.END_OF_STREAM -> {
                     if (stream.isLive) {
@@ -262,6 +284,12 @@ internal class ProtectedCmafFeedRuntime(
             pendingSample?.let { sample ->
                 if (activeDecoder.queueSample(sample)) {
                     pendingSample = null
+                    queuedSampleCount++
+                    if (queuedSampleCount == 1L || queuedSampleCount % 30L == 0L) {
+                        AppLogger.i("ProtectedCmafRuntime", "SAMPLE_QUEUED feed=${stream.id} count=$queuedSampleCount " +
+                            "lastPtsUs=${sample.timeUs} encrypted=${sample.isEncrypted} codec=${activeDecoder.codecName} " +
+                            "surfaceValid=${surfaceLease?.surface?.isValid == true}")
+                    }
                 }
             }
             activeDecoder.drainOutput()
@@ -301,6 +329,8 @@ internal class ProtectedCmafFeedRuntime(
                 clock.presentationTimeNs(stream.id, globalPtsUs)
             },
             onFrameRendered = { presentationTimeUs, renderTimeNs ->
+                lastRenderedPtsUs = presentationTimeUs
+                lastRenderedAtNs = renderTimeNs
                 if (stateValue != State.PLAYING) {
                     stateValue = State.PLAYING
                     publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
@@ -334,15 +364,24 @@ internal class ProtectedCmafFeedRuntime(
     private fun publish(message: String) {
         if (lastPublishedMessage == message) return
         lastPublishedMessage = message
-        val drmState = source?.currentVideoDrmSession?.state?.toString() ?: "unavailable"
-        val sourceState = source?.state?.toString() ?: "unavailable"
+        val activeSource = source
+        val drmSession = activeSource?.currentVideoDrmSession
+        val drmState = drmSession?.state?.toString() ?: "unavailable"
+        val sourceState = activeSource?.state?.toString() ?: "unavailable"
         val lease = surfaceLease
+        val activeDecoder = decoder
         AppLogger.i("ProtectedCmafRuntime", "FEED_STATE feed=${stream.id} state=$stateValue " +
             "message=$message sourceState=$sourceState drmState=$drmState " +
-            "keysReady=${source?.currentVideoDrmSession?.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
-            "decoder=${decoder?.codecName ?: "none"} frames=$renderedFrameCount " +
+            "keysReady=${drmSession?.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
+            "mime=${activeSource?.currentVideoFormat?.sampleMimeType ?: "unknown"} " +
+            "format=${activeSource?.currentVideoFormat?.width ?: 0}x${activeSource?.currentVideoFormat?.height ?: 0} " +
+            "codec=${activeDecoder?.codecName ?: "none"} samplesQueued=$queuedSampleCount " +
+            "lastSamplePtsUs=${lastSamplePtsUs ?: -1L} frames=${activeDecoder?.renderedFrameCount ?: 0L} " +
+            "firstFrameAtNs=${activeDecoder?.firstFrameRenderedAtNs ?: -1L} " +
+            "lastRenderedPtsUs=${lastRenderedPtsUs ?: -1L} lastRenderedAtNs=${lastRenderedAtNs ?: -1L} " +
             "surfaceGeneration=${lease?.generation ?: -1L} " +
             "surfaceValid=${lease?.surface?.isValid ?: false} secure=${lease?.secureFlagRequested ?: false} " +
+            "surfaceSize=${lease?.width ?: 0}x${lease?.height ?: 0} " +
             "surfaceId=${lease?.surface?.let(System::identityHashCode) ?: -1}")
         onStatus(stream.id, message)
     }
@@ -356,6 +395,19 @@ internal class ProtectedCmafFeedRuntime(
             frameScheduled = false
         }
         stateValue = State.FAILED
+        val failingSource = source
+        val failingDrm = failingSource?.currentVideoDrmSession
+        val failingLease = surfaceLease
+        AppLogger.e("ProtectedCmafRuntime", "FEED_FAILURE_DIAGNOSTICS feed=${stream.id} " +
+            "error=${error.javaClass.simpleName}:${error.message} sourceState=${failingSource?.state} " +
+            "drmState=${failingDrm?.state} keysReady=${failingDrm?.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
+            "mime=${failingSource?.currentVideoFormat?.sampleMimeType} " +
+            "codec=${decoder?.codecName} queuedSamples=$queuedSampleCount " +
+            "lastSamplePtsUs=${lastSamplePtsUs ?: -1L} renderedFrames=${decoder?.renderedFrameCount ?: 0L} " +
+            "firstFrameAtNs=${decoder?.firstFrameRenderedAtNs ?: -1L} " +
+            "lastRenderedPtsUs=${lastRenderedPtsUs ?: -1L} " +
+            "surfaceGeneration=${failingLease?.generation ?: -1L} surfaceValid=${failingLease?.surface?.isValid ?: false} " +
+            "surfaceSecure=${failingLease?.secureFlagRequested ?: false}")
         runCatching { decoder?.close() }
         decoder = null
         pendingSample = null
