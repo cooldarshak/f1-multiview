@@ -66,6 +66,9 @@ class Media3DecoderManager(context: Context) {
         .setLoadControl(ProductionLoadControl.create())
     private val preloadManager = preloadBuilder.build()
     private val players = linkedMapOf<String, ExoPlayer>()
+    // The protected multiview engine may keep one authorized audio-only Media3 player.
+    // Such a player never owns a video decoder lease and has video track selection disabled.
+    private val audioOnlyFeedIds = mutableSetOf<String>()
     private val resourceManager = DecoderResourceManager(maxVideoDecoders = maxVideoFeeds)
     private val qualityManager = QualityManager()
     private val selectedQualities = mutableMapOf<String, Quality>()
@@ -118,6 +121,10 @@ class Media3DecoderManager(context: Context) {
                 // main feed down to 720p on a flagship phone.
                 val isMain = id == audioPlayerId
                 player.trackSelectionParameters = qualityParameters(player, selectedQualities[id] ?: Quality.AUTO, isMain)
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, id in audioOnlyFeedIds)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .build()
 
                 player.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
@@ -249,13 +256,17 @@ class Media3DecoderManager(context: Context) {
         streamKinds[stream.id] = stream.kind
         streams[stream.id] = stream
         if (playAllRequested) desiredPlaying.add(stream.id)
-        val allocation = resourceManager.request(
-            stream = stream,
-            isReference = stream.id == audioPlayerId,
-            quality = selectedQualities[stream.id] ?: Quality.AUTO
-        )
-        val lease = allocation.lease
-        if (lease == null) {
+        val audioOnly = stream.id in audioOnlyFeedIds
+        val lease = if (audioOnly) {
+            null
+        } else {
+            resourceManager.request(
+                stream = stream,
+                isReference = stream.id == audioPlayerId,
+                quality = selectedQualities[stream.id] ?: Quality.AUTO
+            ).lease
+        }
+        if (!audioOnly && lease == null) {
             _errors.value = _errors.value + (stream.id to "No decoder resource available; feed remains logical and decoderless")
             AppLogger.i("Media3DecoderManager", "RESOURCE_WAIT feed=" + stream.id + " active=" + resourceManager.activeLeases().size + "/" + resourceManager.capacity())
             return false
@@ -266,7 +277,7 @@ class Media3DecoderManager(context: Context) {
             // Re-activate a logically retained feed. The MediaSource remains warm in the
             // preload manager, so this path avoids rebuilding the authenticated source.
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, stream.id in audioOnlyFeedIds)
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 .build()
             preloadManager.getMediaSource(player.currentMediaItem!!)?.let { player.setMediaSource(it) }
@@ -280,6 +291,10 @@ class Media3DecoderManager(context: Context) {
         // Preserve an explicit quality choice across media-source reloads.
         val isMain = stream.id == audioPlayerId
         player.trackSelectionParameters = qualityParameters(player, selectedQualities[stream.id] ?: Quality.AUTO, isMain)
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, stream.id in audioOnlyFeedIds)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            .build()
 
         startupRequestedAtMs[stream.id] = android.os.SystemClock.elapsedRealtime()
         startupFirstFrameAtMs.remove(stream.id)
@@ -538,18 +553,59 @@ class Media3DecoderManager(context: Context) {
         _errors.value = _errors.value + (id to message)
     }
 
+    /** Load the selected authorized feed for audio only; no video decoder lease is allocated. */
+    fun loadAudioOnly(stream: StreamSource): Boolean {
+        val id = stream.id
+        audioOnlyFeedIds.add(id)
+        val url = stream.url
+        if (url.isNullOrBlank()) {
+            audioOnlyFeedIds.remove(id)
+            return false
+        }
+        val forceReload = players[id]?.currentMediaItem?.localConfiguration?.uri?.toString() != url
+        val loaded = load(stream, forceReload = forceReload)
+        if (!loaded) {
+            audioOnlyFeedIds.remove(id)
+            return false
+        }
+        val player = players[id] ?: run {
+            audioOnlyFeedIds.remove(id)
+            return false
+        }
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            .build()
+        player.volume = if (audioPlayerId == id) 1f else 0f
+        player.playWhenReady = true
+        player.play()
+        AppLogger.i("Media3DecoderManager", "AUTHORIZED_AUDIO_ONLY_READY feed=$id videoDisabled=true videoLease=false")
+        return true
+    }
+
+    fun hasAudioOnlyFeed(id: String): Boolean = id in audioOnlyFeedIds
+
+    fun disableAudioOnlyMode(id: String) {
+        if (!audioOnlyFeedIds.remove(id)) return
+        players[id]?.let { player ->
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                .build()
+            player.playWhenReady = false
+            player.pause()
+        }
+    }
+
     fun setAudioPlayer(id: String?) {
         audioPlayerId = id
         resourceManager.updateReference(id)
         players.forEach { (pid, player) ->
             val isMain = pid == audioPlayerId
-            val activeDecoder = resourceManager.hasLease(pid)
-            // Active decoder feeds keep audio selected so switching the audible feed is
-            // instantaneous. Logically retained/suspended feeds keep audio disabled so
-            // the warm-feed pool does not consume audio resources.
-            player.volume = if (isMain && activeDecoder) 1f else 0f
+            val activeAudio = resourceManager.hasLease(pid) || pid in audioOnlyFeedIds
+            player.volume = if (isMain && activeAudio) 1f else 0f
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !activeDecoder)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !activeAudio)
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, pid in audioOnlyFeedIds)
                 .build()
         }
     }
@@ -663,6 +719,7 @@ class Media3DecoderManager(context: Context) {
         selectedQualities.remove(id)
         streamKinds.remove(id)
         streams.remove(id)
+        audioOnlyFeedIds.remove(id)
         decoderRecoveryAttempts.remove(id)
         startupRequestedAtMs.remove(id)
         startupFirstFrameAtMs.remove(id)
@@ -712,6 +769,7 @@ class Media3DecoderManager(context: Context) {
         resourceManager.reset()
         desiredPlaying.clear()
         audioPlayerId = null
+        audioOnlyFeedIds.clear()
         selectedQualities.clear()
         streamKinds.clear()
         streams.clear()
