@@ -5,6 +5,8 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaDrm
 import android.os.Build
+import android.view.Display
+import android.view.WindowManager
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
 import app.f1multiview.model.StreamSource
@@ -26,11 +28,16 @@ internal object ProtectedFeedCompatibility {
         val drmConfigured: Boolean,
         val widevineSecurityLevel: String,
         val secureDecoderCandidates: Int,
+        val secureDisplayOutput: Boolean,
+        val protectedBufferComposition: Boolean,
+        val displayFlags: Int,
         val protectedComposition: String
     ) {
         fun toLogFields(): String =
             "manifest=$manifestKind drmConfigured=$drmConfigured widevineSecurityLevel=$widevineSecurityLevel " +
-                "secureDecoderCandidates=$secureDecoderCandidates protectedComposition=$protectedComposition"
+                "secureDecoderCandidates=$secureDecoderCandidates secureDisplayOutput=$secureDisplayOutput " +
+                "protectedBufferComposition=$protectedBufferComposition displayFlags=$displayFlags " +
+                "protectedComposition=$protectedComposition"
     }
 
     fun inspect(context: Context, stream: StreamSource): Report {
@@ -42,12 +49,24 @@ internal object ProtectedFeedCompatibility {
             else -> "OTHER"
         }
         val drmConfigured = DrmProtectionPolicy.requiresProtectedOutput(stream)
+        val displayFlags = runCatching {
+            context.getSystemService(WindowManager::class.java)?.defaultDisplay?.flags ?: 0
+        }.getOrDefault(0)
+        val secureDisplayOutput = displayFlags and Display.FLAG_SECURE != 0
+        val protectedBufferComposition = displayFlags and Display.FLAG_SUPPORTS_PROTECTED_BUFFERS != 0
         return Report(
             manifestKind = manifestKind,
             drmConfigured = drmConfigured,
             widevineSecurityLevel = widevineSecurityLevel(),
             secureDecoderCandidates = countSecureDecoderCandidates(),
-            protectedComposition = "SECURE_SURFACEVIEW_LAYERING_CANDIDATE_NOT_RUNTIME_VERIFIED"
+            secureDisplayOutput = secureDisplayOutput,
+            protectedBufferComposition = protectedBufferComposition,
+            displayFlags = displayFlags,
+            protectedComposition = if (secureDisplayOutput && protectedBufferComposition) {
+                "DISPLAY_FLAGS_ALLOW_PROTECTED_SURFACE_LAYERING_CANDIDATE_NOT_RUNTIME_VERIFIED"
+            } else {
+                "DISPLAY_FLAGS_MISSING_OR_UNAVAILABLE_RUNTIME_OUTPUT_UNPROVEN"
+            }
         )
     }
 

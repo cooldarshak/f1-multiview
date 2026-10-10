@@ -53,6 +53,17 @@ internal class ProtectedCmafFeedRuntime(
     private var lastRenderedAtNs: Long? = null
     private var lastObservedSourceState: AuthorizedCmafMediaSourceSession.State? = null
     private var lastPlaybackError: String? = null
+    private var firstFramePresentedAtNs: Long? = null
+    private var lastCodecName: String? = null
+    private var lastDrmSessionState: String? = null
+    private var lastSourceState: String? = null
+    private var lastVideoMime: String? = null
+    private var lastVideoSize: String? = null
+    private var lastSampleGlobalPtsUs: Long? = null
+    private var lastRenderedGlobalPtsUs: Long? = null
+    private var lastSurfaceGeneration: Long? = null
+    private var lastSurfaceWidth: Int? = null
+    private var lastSurfaceHeight: Int? = null
     private var stateValue = State.NEW
 
     val state: State get() = stateValue
@@ -162,23 +173,25 @@ internal class ProtectedCmafFeedRuntime(
         val activeDecoder = decoder
         return mapOf(
             "state" to stateValue.name,
-            "sourceState" to (activeSource?.state?.name ?: "UNAVAILABLE"),
-            "drmSessionState" to (drm?.state?.toString() ?: "UNAVAILABLE"),
+            "sourceState" to (activeSource?.state?.name ?: lastSourceState ?: "UNAVAILABLE"),
+            "drmSessionState" to (drm?.state?.toString() ?: lastDrmSessionState ?: "UNAVAILABLE"),
             "drmKeysReady" to (drm?.state == DrmSession.STATE_OPENED_WITH_KEYS).toString(),
-            "videoMime" to (activeSource?.currentVideoFormat?.sampleMimeType ?: "UNAVAILABLE"),
-            "videoSize" to "${activeSource?.currentVideoFormat?.width ?: 0}x${activeSource?.currentVideoFormat?.height ?: 0}",
+            "videoMime" to (activeSource?.currentVideoFormat?.sampleMimeType ?: lastVideoMime ?: "UNAVAILABLE"),
+            "videoSize" to (activeSource?.currentVideoFormat?.let { "${it.width}x${it.height}" } ?: lastVideoSize ?: "UNAVAILABLE"),
             "decoderConfigured" to (activeDecoder?.codecName != null).toString(),
-            "decoderName" to (activeDecoder?.codecName ?: "UNAVAILABLE"),
+            "decoderName" to (activeDecoder?.codecName ?: lastCodecName ?: "UNAVAILABLE"),
             "outputSurfaceValid" to (lease?.surface?.isValid == true).toString(),
             "outputSurfaceProtected" to (lease?.secureFlagRequested == true).toString(),
-            "outputSurfaceGeneration" to (lease?.generation?.toString() ?: "UNAVAILABLE"),
-            "outputSurfaceSize" to "${lease?.width ?: 0}x${lease?.height ?: 0}",
+            "outputSurfaceGeneration" to (lease?.generation?.toString() ?: lastSurfaceGeneration?.toString() ?: "UNAVAILABLE"),
+            "outputSurfaceSize" to (lease?.let { "${it.width}x${it.height}" } ?: lastSurfaceWidth?.let { w -> "$w x ${lastSurfaceHeight ?: 0}" } ?: "UNAVAILABLE"),
             "samplesQueued" to queuedSampleCount.toString(),
             "lastSamplePtsUs" to (lastSamplePtsUs?.toString() ?: "UNAVAILABLE"),
-            "firstFramePresented" to ((activeDecoder?.renderedFrameCount ?: 0L) > 0L).toString(),
-            "renderedFrameCount" to (activeDecoder?.renderedFrameCount?.toString() ?: "0"),
-            "firstFrameRenderedAtNs" to (activeDecoder?.firstFrameRenderedAtNs?.toString() ?: "UNAVAILABLE"),
+            "lastSampleGlobalPtsUs" to (lastSampleGlobalPtsUs?.toString() ?: "UNAVAILABLE"),
+            "firstFramePresented" to (renderedFrameCount > 0L).toString(),
+            "renderedFrameCount" to renderedFrameCount.toString(),
+            "firstFrameRenderedAtNs" to (firstFramePresentedAtNs?.toString() ?: "UNAVAILABLE"),
             "lastRenderedPtsUs" to (lastRenderedPtsUs?.toString() ?: "UNAVAILABLE"),
+            "lastRenderedGlobalPtsUs" to (lastRenderedGlobalPtsUs?.toString() ?: "UNAVAILABLE"),
             "lastRenderedAtNs" to (lastRenderedAtNs?.toString() ?: "UNAVAILABLE"),
             "playbackError" to (lastPlaybackError ?: "")
         )
@@ -284,6 +297,7 @@ internal class ProtectedCmafFeedRuntime(
                     }
                     pendingSample = sample
                     lastSamplePtsUs = sample.timeUs
+                    lastSampleGlobalPtsUs = activeSource.toGlobalPresentationTimeUs(sample.timeUs)
                     if (queuedSampleCount == 0L) {
                         AppLogger.i("ProtectedCmafRuntime", "FIRST_SAMPLE_READ feed=${stream.id} ptsUs=${sample.timeUs} " +
                             "encrypted=${sample.isEncrypted} keyFrame=${sample.isKeyFrame()} drmState=${result.drmSession?.state}")
@@ -371,6 +385,13 @@ internal class ProtectedCmafFeedRuntime(
             "surfaceGeneration=${lease.generation} surfaceId=${System.identityHashCode(lease.surface)} " +
             "surfaceValid=${lease.surface.isValid} secureFlag=${lease.secureFlagRequested} " +
             "surfaceSize=${lease.width}x${lease.height}")
+        lastDrmSessionState = drmSession.state.toString()
+        lastSourceState = activeSource.state.name
+        lastVideoMime = format.sampleMimeType
+        lastVideoSize = "${format.width}x${format.height}"
+        lastSurfaceGeneration = lease.generation
+        lastSurfaceWidth = lease.width
+        lastSurfaceHeight = lease.height
         decoder = SecureCmafVideoDecoder(
             feedId = stream.id,
             format = format,
@@ -384,6 +405,7 @@ internal class ProtectedCmafFeedRuntime(
             onFrameRendered = { presentationTimeUs, renderTimeNs ->
                 lastRenderedPtsUs = presentationTimeUs
                 lastRenderedAtNs = renderTimeNs
+                if (firstFramePresentedAtNs == null) firstFramePresentedAtNs = renderTimeNs
                 if (running && stateValue != State.PLAYING) {
                     stateValue = State.PLAYING
                     publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
@@ -392,6 +414,7 @@ internal class ProtectedCmafFeedRuntime(
                 }
                 renderedFrameCount++
                 val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
+                lastRenderedGlobalPtsUs = globalPtsUs
                 if (renderedFrameCount == 1L && stream.id != clock.masterFeedId) {
                     val calibratedOffsetUs = clock.calibrateFollowerOffset(stream.id, globalPtsUs, renderTimeNs)
                     if (calibratedOffsetUs != null) {
@@ -409,6 +432,7 @@ internal class ProtectedCmafFeedRuntime(
                 if (observation.hardResync) pendingHardResync = true
             }
         )
+        lastCodecName = decoder?.codecName ?: lastCodecName
         stateValue = State.WAITING_FOR_FIRST_FRAME
         AppLogger.i("ProtectedCmafRuntime", "SECURE_DECODER_CONFIGURED feed=${stream.id} " +
             "codec=${decoder?.codecName ?: "unknown"} inputEnded=${decoder?.isInputEnded} " +
@@ -428,6 +452,8 @@ internal class ProtectedCmafFeedRuntime(
         lastPublishedMessage = message
         val activeSource = source
         val drmSession = activeSource?.currentVideoDrmSession
+        activeSource?.let { lastSourceState = it.state.name }
+        drmSession?.let { lastDrmSessionState = it.state.toString() }
         val drmState = drmSession?.state?.toString() ?: "unavailable"
         val sourceState = activeSource?.state?.toString() ?: "unavailable"
         val lease = surfaceLease
@@ -461,6 +487,18 @@ internal class ProtectedCmafFeedRuntime(
         val failingSource = source
         val failingDrm = failingSource?.currentVideoDrmSession
         val failingLease = surfaceLease
+        failingSource?.let { lastSourceState = it.state.name }
+        failingDrm?.let { lastDrmSessionState = it.state.toString() }
+        failingSource?.currentVideoFormat?.let { format ->
+            lastVideoMime = format.sampleMimeType
+            lastVideoSize = "${format.width}x${format.height}"
+        }
+        decoder?.codecName?.let { lastCodecName = it }
+        failingLease?.let { lease ->
+            lastSurfaceGeneration = lease.generation
+            lastSurfaceWidth = lease.width
+            lastSurfaceHeight = lease.height
+        }
         AppLogger.e("ProtectedCmafRuntime", "FEED_FAILURE_DIAGNOSTICS feed=${stream.id} " +
             "error=${error.javaClass.simpleName}:${error.message} sourceState=${failingSource?.state} " +
             "drmState=${failingDrm?.state} keysReady=${failingDrm?.state == DrmSession.STATE_OPENED_WITH_KEYS} " +
