@@ -295,7 +295,7 @@ class Media3DecoderManager(context: Context) {
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, stream.id in audioOnlyFeedIds)
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 .build()
-            preloadManager.getMediaSource(player.currentMediaItem!!)?.let { player.setMediaSource(it) }
+            // Keep the already configured Media3 source and its Widevine session; never replace it with a preload-manager copy.
             applyAudioPolicy(stream.id, player)
             player.prepare()
             return true
@@ -318,21 +318,29 @@ class Media3DecoderManager(context: Context) {
         firstFrameRendered.remove(stream.id)
         AppLogger.i("Media3DecoderManager", "STARTUP_LOAD id=" + stream.id + " players=" + players.size + " main=" + (stream.id == audioPlayerId))
         val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+        val protectedSource = stream.drmProtected || !stream.drmLicenseUrl.isNullOrBlank()
         preloadedMediaSources[stream.id]?.let { old ->
-            if (forceReload) {
+            if (forceReload || protectedSource) {
                 runCatching { preloadManager.remove(old) }
                 preloadedMediaSources.remove(stream.id)
             }
         }
-        if (stream.id !in preloadedMediaSources) {
-            val rank = preloadRanks[stream.id] ?: preloadRanks.size
-            preloadRanks[stream.id] = rank
-            preloadManager.add(mediaSource, rank)
-            preloadedMediaSources[stream.id] = mediaSource
-            preloadManager.invalidate()
+        if (protectedSource) {
+            // Protected F1 playback uses the direct source built with this stream's authenticated DataSource and Widevine manager.
+            // Avoid substituting a preload-manager copy with a separate DRM-session lifecycle.
+            player.setMediaSource(mediaSource)
+            AppLogger.i("Media3DecoderManager", "PROTECTED_DIRECT_MEDIA3_SOURCE id=" + stream.id + " drm=widevine")
+        } else {
+            if (stream.id !in preloadedMediaSources) {
+                val rank = preloadRanks[stream.id] ?: preloadRanks.size
+                preloadRanks[stream.id] = rank
+                preloadManager.add(mediaSource, rank)
+                preloadedMediaSources[stream.id] = mediaSource
+                preloadManager.invalidate()
+            }
+            val playableSource = preloadManager.getMediaSource(mediaItem) ?: mediaSource
+            player.setMediaSource(playableSource)
         }
-        val playableSource = preloadManager.getMediaSource(mediaItem) ?: mediaSource
-        player.setMediaSource(playableSource)
         applyAudioPolicy(stream.id, player)
         player.prepare()
         return true
@@ -351,6 +359,8 @@ class Media3DecoderManager(context: Context) {
     fun preload(stream: StreamSource, rank: Int) {
         val url = stream.url ?: return
         preloadRanks[stream.id] = rank
+        // Protected F1 sources must not be registered with the preload manager.
+        if (stream.drmProtected || !stream.drmLicenseUrl.isNullOrBlank()) return
         if (stream.id in preloadedMediaSources) return
         runCatching {
             val mediaItem = buildMediaItem(stream)
