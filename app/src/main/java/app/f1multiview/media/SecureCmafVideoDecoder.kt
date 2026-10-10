@@ -5,6 +5,8 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaCrypto
 import android.media.MediaFormat
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.util.UnstableApi
@@ -52,7 +54,8 @@ internal class SecureCmafVideoDecoder(
     private val drmSession: DrmSession,
     private val surfaceLease: ProtectedSurfaceLease,
     private val isLeaseCurrent: (ProtectedSurfaceLease) -> Boolean,
-    private val releaseTimeNsForPresentationTimeUs: (Long) -> Long
+    private val releaseTimeNsForPresentationTimeUs: (Long) -> Long,
+    private val onFrameRendered: (presentationTimeUs: Long, renderTimeNs: Long) -> Unit = { _, _ -> }
 ) : AutoCloseable {
     data class DrainResult(
         val outputBuffersReleased: Int,
@@ -69,6 +72,10 @@ internal class SecureCmafVideoDecoder(
     private var outputEnded = false
     private var selectedCodecName: String? = null
     private var outputFormat: MediaFormat? = null
+    var renderedFrameCount: Long = 0L
+        private set
+    var firstFrameRenderedAtNs: Long? = null
+        private set
     private val bufferInfo = MediaCodec.BufferInfo()
 
     val codecName: String?
@@ -250,6 +257,14 @@ internal class SecureCmafVideoDecoder(
                 candidate.configure(mediaFormat, surfaceLease.surface, candidateCrypto, /* flags= */ 0)
                 candidate.start()
                 started = true
+                candidate.setOnFrameRenderedListener(
+                    { _, presentationTimeUs, nanoTime ->
+                        renderedFrameCount++
+                        if (firstFrameRenderedAtNs == null) firstFrameRenderedAtNs = nanoTime
+                        onFrameRendered(presentationTimeUs, nanoTime)
+                    },
+                    Handler(Looper.myLooper() ?: Looper.getMainLooper())
+                )
                 codec = candidate
                 mediaCrypto = candidateCrypto
                 selectedCodecName = candidateName

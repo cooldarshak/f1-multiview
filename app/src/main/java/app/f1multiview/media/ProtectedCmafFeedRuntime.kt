@@ -156,11 +156,7 @@ internal class ProtectedCmafFeedRuntime(
                     pendingSample = null
                 }
             }
-            val drain = activeDecoder.drainOutput()
-            if (drain.outputBuffersReleased > 0 && stateValue != State.PLAYING) {
-                stateValue = State.PLAYING
-                publish("PLAYING: secure output buffers presented")
-            }
+            activeDecoder.drainOutput()
         } else if (stateValue != State.PAUSED) {
             stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
             publish("WAITING: Widevine keys, main-feed clock, or secure surface")
@@ -186,7 +182,13 @@ internal class ProtectedCmafFeedRuntime(
             drmSession = drmSession,
             surfaceLease = lease,
             isLeaseCurrent = surfaceManager::isCurrentProtectedSurfaceLease,
-            releaseTimeNsForPresentationTimeUs = clock::presentationTimeNs
+            releaseTimeNsForPresentationTimeUs = clock::presentationTimeNs,
+            onFrameRendered = { presentationTimeUs, renderTimeNs ->
+                if (stateValue != State.PLAYING) {
+                    stateValue = State.PLAYING
+                    publish("FIRST_FRAME_RENDERED ptsUs=$presentationTimeUs renderTimeNs=$renderTimeNs")
+                }
+            }
         )
         stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
         publish("READY: secure hardware decoder configured")
