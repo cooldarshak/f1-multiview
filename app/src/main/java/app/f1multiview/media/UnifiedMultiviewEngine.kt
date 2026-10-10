@@ -137,21 +137,11 @@ class UnifiedMultiviewEngine(context: Context) {
         autoplay: Boolean = false
     ): Set<String> {
         streams.forEach(feedRegistry::put)
-        val videoKinds = setOf(
-            app.f1multiview.model.StreamKind.TRACK_MAP,
-            app.f1multiview.model.StreamKind.F1_DASH_DATA,
-            app.f1multiview.model.StreamKind.TIMING,
-            app.f1multiview.model.StreamKind.TRACK
-        )
-        val visibleVideoCount = visibleIds.count { id ->
-            streams.firstOrNull { it.id == id }?.kind !in videoKinds
-        }
+        val visibleVideoCount = ProtectedMultiviewFeedPolicy.visibleVideoCount(streams, visibleIds)
         if (visibleVideoCount > 1) {
             val enteringProtectedMultiview = !multiFeedBlocked
             multiFeedBlocked = true
-            val selectedVideoStreams = streams.filter { stream ->
-                stream.id in visibleIds && stream.kind !in videoKinds
-            }
+            val selectedVideoStreams = ProtectedMultiviewFeedPolicy.selectedVideoStreams(streams, visibleIds)
             val mainFeedId = referenceId ?: selectedVideoStreams.firstOrNull()?.id
             if (mainFeedId == null) {
                 _multiviewStatus.value = "Protected multiview blocked: no selected video feeds resolved"
