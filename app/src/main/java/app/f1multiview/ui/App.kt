@@ -973,7 +973,21 @@ private fun PitWall(
     onSetMainStream: (String) -> Unit
 ) {
     val multiviewStatus by engine.multiviewStatus.collectAsState()
-    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    val selectedCandidates = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    val selected = if (
+        selectedCandidates.size == 3 &&
+        selectedCandidates.any { it.kind == StreamKind.F1_DASH_DATA } &&
+        selectedCandidates.any { it.kind == StreamKind.TRACK_MAP }
+    ) {
+        val timingFeed = selectedCandidates.first { it.kind == StreamKind.F1_DASH_DATA }
+        val mapFeed = selectedCandidates.first { it.kind == StreamKind.TRACK_MAP }
+        val mainFeed = selectedCandidates.firstOrNull {
+            it.id == ui.mainStreamId && it.kind != StreamKind.F1_DASH_DATA && it.kind != StreamKind.TRACK_MAP
+        } ?: selectedCandidates.firstOrNull {
+            it.kind != StreamKind.F1_DASH_DATA && it.kind != StreamKind.TRACK_MAP
+        }
+        listOfNotNull(mainFeed, timingFeed, mapFeed)
+    } else selectedCandidates
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
