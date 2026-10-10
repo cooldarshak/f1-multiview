@@ -275,10 +275,19 @@ class F1TvApiClient {
                 cookie.substringBefore(';').takeIf{it.startsWith("playToken=",true)}?.substringAfter('=')
             }?.takeIf{it.length>=4}?.let{playToken=it}
             val license=extractLicenseUrl(body)
-            ManifestProbe(response.isSuccessful && (headOk || response.isSuccessful),playToken,license)
+            val protected = containsWidevineUuid(body)
+            ManifestProbe(response.isSuccessful,playToken,license,protected)
         }
     }
-    data class ManifestProbe(val successful:Boolean,val playToken:String?,val licenseUrl:String?)
+    internal fun containsWidevineUuid(text:String):Boolean =
+        text.contains("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed", ignoreCase = true)
+
+    data class ManifestProbe(
+        val successful:Boolean,
+        val playToken:String?,
+        val licenseUrl:String?,
+        val hasWidevineContentProtection:Boolean = false
+    )
     private fun extractLicenseUrl(text:String):String?{
         val patterns=listOf(
             Regex("licenseServerUrl\\s*=\\s*[\"'](https?://[^\"']+)[\"']",RegexOption.IGNORE_CASE),
