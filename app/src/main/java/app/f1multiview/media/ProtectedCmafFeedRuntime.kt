@@ -358,9 +358,15 @@ internal class ProtectedCmafFeedRuntime(
             return
         }
         val drmSession = activeSource.currentVideoDrmSession ?: run {
-            stateValue = State.WAITING_FOR_SURFACE_OR_KEYS
-            publish("WAITING_FOR_WIDEVINE_SESSION: Media3 has not attached a DRM session to the video track")
-            return
+            // acquireSession() is synchronous in returning the session reference (key loading is
+            // asynchronous). A null result here is not a "wait for keys" state. Fail with the
+            // precise manifest/metadata boundary so the feed cannot spin forever at zero frames.
+            val reason = if (format.drmInitData == null) {
+                "selected DASH video format has no DRM init data / ContentProtection PSSH"
+            } else {
+                "Media3 DRM manager returned no session despite manifest DRM init data"
+            }
+            throw IOException("WIDEVINE_SESSION_UNAVAILABLE feed=${stream.id}: $reason; refusing clear playback fallback")
         }
         if (drmSession.state == DrmSession.STATE_ERROR) {
             throw IOException("Widevine session entered an error state", drmSession.error)
