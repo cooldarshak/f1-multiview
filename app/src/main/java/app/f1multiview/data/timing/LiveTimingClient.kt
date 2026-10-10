@@ -72,8 +72,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             val json=runCatching{JSONObject(frame)}.getOrNull()?:return@forEach
             if(json.optString("error").isNotBlank()){_status.value="ERROR";ws.close(1002,json.optString("error"));return@forEach}
             if(_status.value=="HANDSHAKING"){_status.value="LIVE";val subscribe=JSONObject().put("type",1).put("invocationId","1").put("target","Subscribe").put("arguments",org.json.JSONArray().put(FEEDS.toTypedArray()));ws.send(subscribe.toString()+RS);keepAlive?.cancel();keepAlive=scope.launch{while(isActive){delay(KEEPALIVE_MS);if(socket===ws)ws.send(JSONObject().put("type",6).toString()+RS)}}}
-            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=decodeFeedObject(args.opt(1));when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TeamRadio"->parseTeamRadio(data);"ExtrapolatedClock"->parseExtrapolatedClock(data)}}}
-            if(json.optInt("type")==3){val result=json.optJSONObject("result")?:return@forEach;val it=result.keys();while(it.hasNext()){val feed=it.next();val data=decodeFeedObject(result.opt(feed));when(feed){"TimingData"->parseTiming(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TimingDataF1"->parseTiming(data);"TeamRadio"->parseTeamRadio(data);"ExtrapolatedClock"->parseExtrapolatedClock(data)}}}
+            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=decodeFeedObject(args.opt(1));when(feed){"TimingData"->parseTiming(data);"TimingAppData"->parseTimingAppData(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TeamRadio"->parseTeamRadio(data);"ExtrapolatedClock"->parseExtrapolatedClock(data)}}}
+            if(json.optInt("type")==3){val result=json.optJSONObject("result")?:return@forEach;val it=result.keys();while(it.hasNext()){val feed=it.next();val data=decodeFeedObject(result.opt(feed));when(feed){"TimingData"->parseTiming(data);"TimingAppData"->parseTimingAppData(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TimingDataF1"->parseTiming(data);"TeamRadio"->parseTeamRadio(data);"ExtrapolatedClock"->parseExtrapolatedClock(data)}}}
         }}
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;_status.value="RETRYING";scheduleReconnect()}
         override fun onClosed(ws:WebSocket,code:Int,reason:String){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"}
@@ -353,6 +353,71 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 target.put(key,value)
             }
         }
+    }
+
+    /**
+     * TimingAppData is the authoritative live source for compound/stint and pit-stop
+     * information. It is a delta feed too, so merge the incoming driver lines before
+     * selecting the newest stint. Never infer tyre compound from BestLapTime.
+     */
+    private val timingAppLinesState = JSONObject()
+    private val timingAppLock = Any()
+
+    private fun parseTimingAppData(data: JSONObject?) {
+        if (data == null) return
+        val incoming = data.optJSONObject("Lines") ?: data.optJSONObject("lines") ?: return
+        synchronized(timingAppLock) {
+            val keys = incoming.keys()
+            while (keys.hasNext()) {
+                val number = keys.next()
+                val patch = incoming.optJSONObject(number) ?: continue
+                val current = timingAppLinesState.optJSONObject(number)
+                if (current == null) timingAppLinesState.put(number, JSONObject(patch.toString()))
+                else mergeJsonObject(current, patch)
+            }
+            val latest = JSONObject(timingAppLinesState.toString())
+            val tyres = mutableMapOf<String, String>()
+            val pitStops = mutableMapOf<String, Int>()
+            val appKeys = latest.keys()
+            while (appKeys.hasNext()) {
+                val number = appKeys.next()
+                val line = latest.optJSONObject(number) ?: continue
+                val stints = line.optJSONObject("Stints")
+                val stintArray = line.optJSONArray("Stints")
+                var newest: JSONObject? = null
+                if (stints != null) {
+                    val stintKeys = stints.keys().asSequence().toList()
+                    val newestKey = stintKeys.maxByOrNull { it.toIntOrNull() ?: -1 }
+                    newest = newestKey?.let(stints::optJSONObject)
+                } else if (stintArray != null && stintArray.length() > 0) {
+                    newest = stintArray.optJSONObject(stintArray.length() - 1)
+                } else {
+                    newest = line.optJSONObject("Stint")
+                }
+                val compound = newest?.optString("Compound").orEmpty()
+                    .ifBlank { newest?.optString("compound").orEmpty() }
+                if (compound.isNotBlank() && compound != "null") tyres[number] = compound.uppercase()
+                val count = line.optInt("NumberOfPitStops", line.optInt("PitStops", -1))
+                if (count >= 0) pitStops[number] = count
+                val old = timingMeta[number] ?: TimingMeta()
+                timingMeta[number] = old.copy(
+                    inPit = line.optBoolean("InPit", old.inPit) || line.optBoolean("PitIn", false),
+                    stopped = line.optBoolean("Stopped", old.stopped)
+                )
+            }
+            if (tyres.isNotEmpty() || pitStops.isNotEmpty()) {
+                _rows.value = _rows.value.map { row ->
+                    val number = row.driverNumber.ifBlank {
+                        driverMeta.entries.firstOrNull { it.value.acronym.equals(row.driver, true) }?.key.orEmpty()
+                    }
+                    row.copy(
+                        tyre = tyres[number] ?: row.tyre,
+                        pitStops = pitStops[number] ?: row.pitStops
+                    )
+                }
+            }
+        }
+        publishTrackPositions()
     }
 
     private fun parseTiming(data:JSONObject?){if(data==null)return;val incoming=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val lines=mergeTimingLines(incoming);if(lines.length()==0)return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
