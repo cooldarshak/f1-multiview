@@ -1,6 +1,5 @@
 package app.f1multiview.media
 
-import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.source.SampleQueue
 import androidx.media3.exoplayer.upstream.DefaultAllocator
@@ -20,15 +19,10 @@ internal class CmafSampleQueueOutput(
     allocationSize: Int = DEFAULT_ALLOCATION_SIZE
 ) : ExtractorOutput, AutoCloseable {
     private val allocator = DefaultAllocator(/* trimOnReset= */ true, allocationSize)
-
-    val tracks: MutableMap<Int, TrackOutput> = linkedMapOf()
-        private set
+    private val queues = linkedMapOf<Int, SampleQueue>()
 
     val sampleQueues: Map<Int, SampleQueue>
-        get() = tracks.mapValues { (_, output) ->
-            check(output is SampleQueue) { "Unexpected non-SampleQueue track output" }
-            output
-        }
+        get() = queues.toMap()
 
     var seekMap: SeekMap? = null
         private set
@@ -41,7 +35,7 @@ internal class CmafSampleQueueOutput(
 
     override fun track(id: Int, type: Int): TrackOutput {
         check(!closed) { "Extractor output is already closed" }
-        return tracks.getOrPut(id) { SampleQueue.createWithoutDrm(allocator) }
+        return queues.getOrPut(id) { SampleQueue.createWithoutDrm(allocator) }
     }
 
     override fun endTracks() = Unit
@@ -53,8 +47,8 @@ internal class CmafSampleQueueOutput(
     override fun close() {
         if (closed) return
         closed = true
-        sampleQueues.values.forEach(SampleQueue::release)
-        tracks.clear()
+        queues.values.forEach(SampleQueue::release)
+        queues.clear()
         allocator.trim()
     }
 
