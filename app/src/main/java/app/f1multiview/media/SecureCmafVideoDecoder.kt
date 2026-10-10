@@ -128,14 +128,14 @@ internal class SecureCmafVideoDecoder(
             payload.flip()
             inputBuffer.put(payload)
 
-            val flags = if ((sample.flags and C.BUFFER_FLAG_KEY_FRAME) != 0) {
+            val flags = if (sample.isKeyFrame()) {
                 MediaCodec.BUFFER_FLAG_KEY_FRAME
             } else {
                 0
             }
             if (sample.isEncrypted) {
                 val cryptoInfo = sample.cryptoInfo
-                if (cryptoInfo.numSubSamples <= 0 || cryptoInfo.iv.isNullOrEmpty() || cryptoInfo.key.isNullOrEmpty()) {
+                if (cryptoInfo.numSubSamples <= 0 || (cryptoInfo.iv == null || cryptoInfo.iv!!.isEmpty()) || (cryptoInfo.key == null || cryptoInfo.key!!.isEmpty())) {
                     throw IOException("Encrypted sample is missing valid crypto metadata")
                 }
                 if (cryptoInfo.mode != C.CRYPTO_MODE_AES_CTR && cryptoInfo.mode != C.CRYPTO_MODE_AES_CBC) {

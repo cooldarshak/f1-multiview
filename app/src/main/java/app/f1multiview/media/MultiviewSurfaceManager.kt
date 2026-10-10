@@ -211,7 +211,7 @@ class MultiviewSurfaceManager(private val context: Context) {
      * app-owned protected decoder. The returned generation-bound lease becomes invalid on rebind,
      * surface replacement, detach, or cleanup.
      */
-    fun claimProtectedSurfaceForOwnDecoder(feedId: String): ProtectedSurfaceLease? {
+    internal fun claimProtectedSurfaceForOwnDecoder(feedId: String): ProtectedSurfaceLease? {
         val binding = bindings[feedId] ?: return null
         if (!binding.protectedContent) {
             AppLogger.e("SecureSurface", "OWN_DECODER_CLAIM_REJECTED feed=$feedId reason=surface-not-protected")
@@ -244,7 +244,7 @@ class MultiviewSurfaceManager(private val context: Context) {
         )
     }
 
-    fun isCurrentProtectedSurfaceLease(lease: ProtectedSurfaceLease): Boolean {
+    internal fun isCurrentProtectedSurfaceLease(lease: ProtectedSurfaceLease): Boolean {
         val binding = bindings[lease.feedId]
         val view = binding?.surfaceView
         val currentSurface = view?.holder?.surface
@@ -262,7 +262,7 @@ class MultiviewSurfaceManager(private val context: Context) {
     }
 
     /** Restores the existing single-feed Media3 output after the own decoder has been closed. */
-    fun restorePlayerOutput(lease: ProtectedSurfaceLease): Boolean {
+    internal fun restorePlayerOutput(lease: ProtectedSurfaceLease): Boolean {
         if (!isCurrentProtectedSurfaceLease(lease)) return false
         val binding = bindings[lease.feedId] ?: return false
         val view = binding.surfaceView ?: return false
