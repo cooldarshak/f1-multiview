@@ -148,6 +148,8 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         val activePeriod = period ?: throw IOException("Media period was released")
         val activeStream = videoStream ?: throw IOException("Video sample stream is not selected")
         periodPositionUs = positionUs.coerceAtLeast(0L)
+        // Retain a bounded rolling window behind the playback clock for live sessions.
+        activePeriod.discardBuffer((periodPositionUs - LIVE_BACK_BUFFER_US).coerceAtLeast(0L), /* toKeyframe= */ true)
         activePeriod.continueLoading(LoadingInfo.Builder().setPlaybackPositionUs(periodPositionUs).build())
         activeStream.maybeThrowError()
         sampleBuffer.clear()
@@ -201,6 +203,10 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         runCatching { source.releaseSource(this) }
         runCatching { drmManager.release() }
         allocator.trim()
+    }
+
+    private companion object {
+        const val LIVE_BACK_BUFFER_US = 2_000_000L
     }
 
     companion object {

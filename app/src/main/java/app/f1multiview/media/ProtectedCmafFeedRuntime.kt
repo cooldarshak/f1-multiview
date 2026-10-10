@@ -122,7 +122,7 @@ internal class ProtectedCmafFeedRuntime(
         }
 
         if (pendingSample == null && !eosQueued) {
-            val result = activeSource.pump()
+            val result = activeSource.pump(clock.positionUsFor(stream.id))
             when (result.kind) {
                 AuthorizedCmafMediaSourceSession.ReadKind.FORMAT -> {
                     val format = result.format ?: throw IOException("Video format result had no format")
@@ -286,6 +286,14 @@ internal class ProtectedPresentationClock {
         val offsetUs = offsetsUs[feedId] ?: 0L
         val targetNs = baseNs + (presentationTimeUs - basePts - offsetUs) * 1_000L
         return maxOf(targetNs, SystemClock.elapsedRealtimeNanos() + MIN_PRESENTATION_LEAD_NS)
+    }
+
+    /** Current feed-local loading position derived from the shared main-feed clock. */
+    fun positionUsFor(feedId: String): Long {
+        val basePts = basePresentationTimeUs ?: return 0L
+        val baseNs = baseElapsedRealtimeNs ?: return 0L
+        val elapsedUs = (SystemClock.elapsedRealtimeNanos() - baseNs) / 1_000L
+        return (basePts + elapsedUs + (offsetsUs[feedId] ?: 0L)).coerceAtLeast(0L)
     }
 
     private companion object {
