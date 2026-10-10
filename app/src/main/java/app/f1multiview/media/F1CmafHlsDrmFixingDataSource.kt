@@ -95,8 +95,15 @@ class F1CmafHlsDrmFixingDataSource private constructor(
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(16 * 1024)
             while (true) {
-                val read = upstream.read(buffer, 0, buffer.size)
+                // Read at most one byte beyond the budget so unknown or dishonest
+                // Content-Length values cannot make playlist buffering unbounded.
+                val remaining = MAX_PLAYLIST_BYTES - output.size()
+                val requested = min(buffer.size.toLong(), remaining.toLong() + 1L).toInt()
+                val read = upstream.read(buffer, 0, requested)
                 if (read == C.RESULT_END_OF_INPUT) break
+                if (output.size().toLong() + read > MAX_PLAYLIST_BYTES) {
+                    throw IOException("F1 CMAF HLS playlist exceeds ${MAX_PLAYLIST_BYTES} byte limit")
+                }
                 output.write(buffer, 0, read)
             }
             return output.toByteArray()
@@ -114,6 +121,10 @@ class F1CmafHlsDrmFixingDataSource private constructor(
     }
 
     internal companion object {
+        // HLS playlists are small control documents, not media payloads. Fail closed
+        // rather than buffering an unbounded response in memory before parsing.
+        const val MAX_PLAYLIST_BYTES = 2 * 1024 * 1024
+
         /**
          * Rewrites only the documented F1 UHD/HDR Widevine playlist declaration.
          * The KEYFORMAT value is ordinary quoted playlist text, not backslash-escaped text.
