@@ -8,6 +8,7 @@ import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.exoplayer.drm.DrmSession
 import app.f1multiview.model.StreamSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -99,7 +100,7 @@ internal object AuthorizedCmafProbe {
                     states.values.all { it == DrmSession.STATE_OPENED_WITH_KEYS }
             )
         } finally {
-            withContext(Dispatchers.Main.immediate) {
+            withContext(NonCancellable + Dispatchers.Main.immediate) {
                 session.close()
             }
         }

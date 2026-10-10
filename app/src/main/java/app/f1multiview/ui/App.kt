@@ -33,7 +33,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import app.f1multiview.BuildConfig
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +69,7 @@ import app.f1multiview.media.RadioPlayer
 import app.f1multiview.media.HdrPresentationDiagnostics
 import app.f1multiview.media.DebugPresentationSettings
 import app.f1multiview.media.AuthorizedCmafProbe
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import app.f1multiview.media.AppLogger
 import app.f1multiview.BuildConfig
@@ -2190,6 +2190,8 @@ private fun FullscreenFeedControls(
                                                     } else {
                                                         "INCOMPLETE · DRM states ${result.drmSessionStates.values.joinToString()} · decode/render NOT tested"
                                                     }
+                                                } catch (cancelled: CancellationException) {
+                                                    throw cancelled
                                                 } catch (error: Exception) {
                                                     cmafProbeStatus = "FAILED · ${error.javaClass.simpleName}; decode/render NOT tested"
                                                 } finally {
