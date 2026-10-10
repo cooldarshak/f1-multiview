@@ -471,7 +471,7 @@ internal class ProtectedPresentationClock {
     }
 
     private companion object {
-        const val STARTUP_LEAD_NS = 120_000_000L
+        const val STARTUP_LEAD_NS = 0L
         const val MIN_PRESENTATION_LEAD_NS = 1_000_000L
         const val DRIFT_TOLERANCE_US = 50_000L
         const val VOD_HARD_SEEK_THRESHOLD_US = 500_000L
