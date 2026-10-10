@@ -54,7 +54,8 @@ internal class AuthorizedDashCmafPipeline(
             manifestBytes = manifest.bytes,
             requestHeaders = stream.requestHeaders,
             maxWidth = maxWidth,
-            maxHeight = maxHeight
+            maxHeight = maxHeight,
+            requireWidevineInitData = protected
         )
         val extraction = AuthorizedCmafSegmentExtractor(dataSourceFactory)
             .extractFirstSegment(plan, output)
