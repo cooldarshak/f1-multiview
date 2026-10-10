@@ -326,7 +326,9 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
         selectedVideoGroup = group
         selectedVideoTrackIndex = trackIndex
         videoFormat = null
-        videoDrmSession = null
+        // A track change invalidates the prior track's DRM reference. Release it through
+        // the same owner path rather than dropping the reference and leaking a session.
+        releaseVideoDrmSession()
         AppLogger.i(
             "AuthorizedCmafSource",
             "VIDEO_TRACK_SELECTED feed=${stream.id} group=$selectedGroupIndex/${groups.length} " +
@@ -369,12 +371,29 @@ internal class AuthorizedCmafMediaSourceSession private constructor(
                 // same Media3 manager configured for this authorized source and keep it alive
                 // until the track changes or this source session closes.
                 val streamSession = holder.drmSession
-                if (videoDrmSession !== streamSession && streamSession != null) {
-                    releaseVideoDrmSession()
-                    videoDrmSession = streamSession
-                } else if (videoDrmSession == null) {
-                    videoDrmSession = drmManager.acquireSession(/* eventDispatcher= */ null, format)
+                when {
+                    streamSession != null && videoDrmSession !== streamSession -> {
+                        releaseVideoDrmSession()
+                        // FormatHolder exposes the session used by Media3's sample stream, but
+                        // does not transfer an acquired reference to this manually-driven
+                        // renderer. Take our own reference before retaining it or passing it to
+                        // SecureCmafVideoDecoder, which acquires a separate decoder-lifetime ref.
+                        streamSession.acquire(/* eventDispatcher= */ null)
+                        videoDrmSession = streamSession
+                    }
+                    streamSession == null && videoDrmSession == null -> {
+                        videoDrmSession = drmManager.acquireSession(/* eventDispatcher= */ null, format)
+                    }
                 }
+                val initData = format.drmInitData
+                AppLogger.i(
+                    "AuthorizedCmafSource",
+                    "VIDEO_FORMAT_DRM feed=${stream.id} mime=${format.sampleMimeType} " +
+                        "drmInitData=${initData != null} schemeCount=${initData?.schemeDataCount ?: 0} " +
+                        "holderSession=${streamSession != null} retainedSession=${videoDrmSession != null} " +
+                        "sessionState=${videoDrmSession?.state ?: -1} " +
+                        "cryptoType=${videoDrmSession?.cryptoConfig?.javaClass?.simpleName ?: "none"}"
+                )
                 ReadResult(ReadKind.FORMAT, videoFormat, videoDrmSession)
             }
             C.RESULT_BUFFER_READ -> {
