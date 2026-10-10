@@ -47,5 +47,31 @@ class ProtectedSurfaceLeasePolicyTest {
         playerOutputAttached,
         viewAttached,
         surfaceValid
-    )
+    ) 
+    @Test
+    fun rejectsLateFrameCallbacksAfterSurfaceReplacementOrRuntimeTermination() {
+        assertFalse(ProtectedFrameCallbackPolicy.shouldAccept(
+            terminalState = false,
+            callbackGeneration = 9L,
+            activeGeneration = 10L,
+            surfaceLeaseCurrent = false
+        ))
+        assertFalse(ProtectedFrameCallbackPolicy.shouldAccept(
+            terminalState = true,
+            callbackGeneration = 9L,
+            activeGeneration = 9L,
+            surfaceLeaseCurrent = true
+        ))
+    }
+
+    @Test
+    fun acceptsRenderedFrameOnlyForCurrentLiveSurfaceLease() {
+        assertTrue(ProtectedFrameCallbackPolicy.shouldAccept(
+            terminalState = false,
+            callbackGeneration = 9L,
+            activeGeneration = 9L,
+            surfaceLeaseCurrent = true
+        ))
+    }
+
 }

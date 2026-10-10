@@ -33,3 +33,16 @@ internal object ProtectedSurfaceLeasePolicy {
             currentGeneration == leaseGeneration &&
             currentSurface === leaseSurface
 }
+
+/** Rejects asynchronous rendered-frame callbacks from replaced surfaces or terminal runtimes. */
+internal object ProtectedFrameCallbackPolicy {
+    fun shouldAccept(
+        terminalState: Boolean,
+        callbackGeneration: Long,
+        activeGeneration: Long?,
+        surfaceLeaseCurrent: Boolean
+    ): Boolean =
+        !terminalState &&
+            activeGeneration == callbackGeneration &&
+            surfaceLeaseCurrent
+}

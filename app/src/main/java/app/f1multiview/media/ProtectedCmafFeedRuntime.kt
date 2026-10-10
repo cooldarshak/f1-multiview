@@ -403,8 +403,21 @@ internal class ProtectedCmafFeedRuntime(
                 val globalPtsUs = source?.toGlobalPresentationTimeUs(presentationTimeUs) ?: presentationTimeUs
                 clock.presentationTimeNs(stream.id, globalPtsUs)
             },
-            onFrameRendered = { presentationTimeUs, renderTimeNs ->
-                if (stateValue != State.FAILED && stateValue != State.CLOSED) {
+            onFrameRendered = callback@{ presentationTimeUs, renderTimeNs ->
+                val callbackIsCurrent = ProtectedFrameCallbackPolicy.shouldAccept(
+                    terminalState = stateValue == State.FAILED || stateValue == State.CLOSED,
+                    callbackGeneration = lease.generation,
+                    activeGeneration = surfaceLease?.generation,
+                    surfaceLeaseCurrent = surfaceManager.isCurrentProtectedSurfaceLease(lease)
+                )
+                if (!callbackIsCurrent) {
+                    AppLogger.w(
+                        "ProtectedCmafRuntime",
+                        "STALE_FRAME_CALLBACK_IGNORED feed=${stream.id} callbackGeneration=${lease.generation} " +
+                            "activeGeneration=${surfaceLease?.generation ?: -1L} state=$stateValue"
+                    )
+                    return@callback
+                }
                 lastRenderedPtsUs = presentationTimeUs
                 lastRenderedAtNs = renderTimeNs
                 if (firstFramePresentedAtNs == null) firstFramePresentedAtNs = renderTimeNs
@@ -432,7 +445,6 @@ internal class ProtectedCmafFeedRuntime(
                     )
                 }
                 if (observation.hardResync) pendingHardResync = true
-                }
             }
         )
         lastCodecName = decoder?.codecName ?: lastCodecName
