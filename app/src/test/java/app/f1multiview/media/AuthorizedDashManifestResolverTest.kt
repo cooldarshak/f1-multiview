@@ -88,6 +88,8 @@ class AuthorizedDashManifestResolverTest {
             manifestUri = manifestUri,
             manifestBytes = protectedManifest.toByteArray(),
             requestHeaders = emptyMap(),
+            maxWidth = 640,
+            maxHeight = 360,
             requireWidevineInitData = true
         )
 
