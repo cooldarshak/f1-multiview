@@ -38,6 +38,7 @@ internal class ProtectedCmafFeedRuntime(
     private var running = false
     private var frameScheduled = false
     private var lastFormat: Format? = null
+    private var lastPublishedMessage: String? = null
     private var stateValue = State.NEW
 
     val state: State get() = stateValue
@@ -197,7 +198,13 @@ internal class ProtectedCmafFeedRuntime(
         choreographer.postFrameCallback(this)
     }
 
-    private fun publish(message: String) = onStatus(stream.id, message)
+    private fun publish(message: String) {
+        if (lastPublishedMessage == message) return
+        lastPublishedMessage = message
+        onStatus(stream.id, message)
+    }
+
+    fun matches(candidate: StreamSource): Boolean = stream == candidate
 
     private fun fail(error: Exception) {
         running = false

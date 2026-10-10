@@ -104,7 +104,12 @@ class UnifiedMultiviewEngine(context: Context) {
             val selectedVideoStreams = streams.filter { stream ->
                 stream.id in visibleIds && stream.kind !in videoKinds
             }
-            protectedPresentationClock.setMaster(referenceId ?: selectedVideoStreams.first().id)
+            val mainFeedId = referenceId ?: selectedVideoStreams.firstOrNull()?.id
+            if (mainFeedId == null) {
+                _multiviewStatus.value = "Protected multiview blocked: no selected video feeds resolved"
+                return emptySet()
+            }
+            protectedPresentationClock.setMaster(mainFeedId)
             // Release Media3 video decoders, but keep the AndroidView containers alive so each
             // authorized runtime can claim its own secure SurfaceView lease. No player fallback.
             decoderManager.retain(emptySet())
@@ -115,10 +120,11 @@ class UnifiedMultiviewEngine(context: Context) {
                 if (!DrmProtectionPolicy.requiresProtectedOutput(stream) ||
                     DrmProtectionPolicy.missingLicenseEndpoint(stream)
                 ) {
-                    protectedRuntimeStatus[stream.id] =
-                        "BLOCKED: protected feed requires an authorized Widevine license endpoint"
                     closeProtectedRuntime(stream.id)
+                    protectedRuntimeStatus[stream.id] =
+                        "BLOCKED: feed requires authorized Widevine protection and a license endpoint"
                 } else {
+                    if (protectedRuntimes[stream.id]?.matches(stream) == false) closeProtectedRuntime(stream.id)
                     protectedRuntimes.getOrPut(stream.id) {
                         ProtectedCmafFeedRuntime(
                             stream = stream,
