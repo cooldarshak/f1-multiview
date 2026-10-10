@@ -34,6 +34,18 @@ class F1TvApiClientTest {
     }
 
     @Test
+    fun prefersNestedPlaybackProfileDrmMetadataOverGenericEnvelope() {
+        val response = HttpResponse(
+            200, true,
+            """{"url":"https://example.com/live.mpd","streamType":"DASH_SINGLE","drmType":"unknown","pipelineVersion":6,"resultObj":{"streamType":"SDR_HD_DASHWV_SINGLE","drmType":"widevine"}}"""
+        )
+        val parsed = F1TvApiClient().parsePlaybackResponse(response, "content-nested", null, "WEB_DASH")
+        assertEquals("SDR_HD_DASHWV_SINGLE", parsed.streamType)
+        assertEquals("widevine", parsed.drmType)
+        org.junit.Assert.assertTrue(parsed.licenseUrl.orEmpty().contains("/CONTENT/LA/widevine?contentId=content-nested"))
+    }
+
+    @Test
     fun doesNotInferWidevineFromPipelineVersionAlone() {
         val response = HttpResponse(
             200, true,
