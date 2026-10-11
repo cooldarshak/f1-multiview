@@ -59,6 +59,14 @@ class TrackMapClientTest {
     }
 
     @Test
+    fun geometryLookupFallsBackOnlyToPublishedPublicSeasons() {
+        assertEquals(listOf(2026, 2025, 2024, 2023), TrackMapClient.geometryLookupYears(2026))
+        assertEquals(listOf(2024, 2023), TrackMapClient.geometryLookupYears(2024))
+        // Old archives are not silently mapped to a newer season's telemetry coordinate frame.
+        assertEquals(listOf(2021), TrackMapClient.geometryLookupYears(2021))
+    }
+
+    @Test
     fun parsesNativeCircuitTraceInTelemetryCoordinates() {
         val x = JSONArray()
         val y = JSONArray()

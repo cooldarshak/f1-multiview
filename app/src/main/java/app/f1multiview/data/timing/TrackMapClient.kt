@@ -127,10 +127,58 @@ class TrackMapClient {
             onFailure = { Result.failure(it) }
         )
     }
-    suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> =
+    /**
+     * Circuit data is a best-effort public endpoint. When the requested season is restricted
+     * or has no published resource, try older public geometry before giving up. Fallback is
+     * bounded to 2023 onward (or the explicitly requested earlier year) and is logged so stale
+     * layout data is never mistaken for the requested season.
+     */
+    internal fun geometryLookupYears(requestedYear: Int): List<Int> =
+        if (requestedYear >= 2023) (requestedYear downTo 2023).toList() else listOf(requestedYear)
+
+    suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
+        var lastFailure: Throwable? = null
+        val years = geometryLookupYears(year)
+        for (geometryYear in years) {
+            val result = loadSingleYear(circuitKey, geometryYear, circuitName)
+            val geometry = result.getOrNull()
+            if (geometry != null) {
+                if (geometryYear != year) {
+                    AppLogger.w(
+                        "TrackMap",
+                        "GEOMETRY_YEAR_FALLBACK requestedYear=$year geometryYear=$geometryYear circuitKey=$circuitKey"
+                    )
+                }
+                return Result.success(geometry)
+            }
+
+            val failure = result.exceptionOrNull()
+                ?: java.io.IOException("Circuit geometry unavailable for key=$circuitKey year=$geometryYear")
+            lastFailure = failure
+            val statusCode = Regex("""Circuit geometry HTTP (\d+)""")
+                .find(failure.message.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+            // Only retry older catalogues for unavailable/unauthorized resources. Network
+            // timeouts, malformed JSON, and alignment errors should surface directly.
+            if (statusCode !in setOf(401, 403, 404)) return Result.failure(failure)
+            AppLogger.w(
+                "TrackMap",
+                "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=$statusCode"
+            )
+        }
+        return Result.failure(
+            lastFailure ?: java.io.IOException("No circuit geometry versions checked for key=$circuitKey year=$year")
+        )
+    }
+
+    private suspend fun loadSingleYear(
+        circuitKey: Int,
+        geometryYear: Int,
+        circuitName: String
+    ): Result<TrackMapGeometry> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val url = "https://api.multiviewer.app/api/v1/circuits/$circuitKey/$year"
+                val url = "https://api.multiviewer.app/api/v1/circuits/$circuitKey/$geometryYear"
                 val request = Request.Builder().url(url)
                     .header("User-Agent", "F1MultiView/1.0 Android").build()
                 val root = http.newCall(request).execute().use { response ->
@@ -172,7 +220,7 @@ class TrackMapClient {
                 }
                 TrackMapGeometry(
                     circuitKey = circuitKey,
-                    year = root.optInt("year", year),
+                    year = root.optInt("year", geometryYear),
                     rotation = root.optDouble("rotation", 0.0),
                     corners = orderedCorners,
                     centerline = centerline
