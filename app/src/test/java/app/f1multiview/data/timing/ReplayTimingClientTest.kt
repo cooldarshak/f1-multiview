@@ -1,6 +1,7 @@
 package app.f1multiview.data.timing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -43,6 +44,16 @@ class ReplayTimingClientTest {
         client.setSyncOffset(offset)
         assertEquals(38 * 60_000L + 29_000L, client.archiveOffsetForVideoPosition(0L))
         assertEquals(39 * 60_000L + 29_000L, client.archiveOffsetForVideoPosition(60_000L))
+    }
+
+    @Test
+    fun replaySyncCalibrationStateDoesNotTreatRelativeNudgesAsVerified() {
+        val client = ReplayTimingClient()
+        assertFalse(client.isSyncCalibrated())
+        client.nudge(1_000L)
+        assertFalse(client.isSyncCalibrated())
+        client.setSyncOffset(15_000L)
+        assertTrue(client.isSyncCalibrated())
     }
 
     @Test
