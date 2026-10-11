@@ -179,7 +179,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 }
             }
         }
-        private fun onFeedPayload(feed:String,data:JSONObject?){            if(data==null){
+        private fun onFeedPayload(feed:String,data:JSONObject?){
+            if(data==null){
                 if(observedFeeds.add("$feed:decode-failed")) AppLogger.w("LiveTiming","FEED_DECODE_FAILED feed=$feed")
                 return
             }
@@ -357,7 +358,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         )
         AppLogger.i("LiveTiming","SESSION_INFO yearPresent=${year!=null} circuitKeyPresent=${circuitKey!=null} circuitNamePresent=${circuitName.isNotBlank()}")
     }
-    private fun parseCarData(data:JSONObject?) {        if(data==null)return
+
+    private fun parseCarData(data:JSONObject?) {
+        if(data==null)return
         var updated=false
         fun consumeCars(cars:JSONObject){
             val keys=cars.keys()
@@ -536,7 +539,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
 
     private fun parseLapCount(data:JSONObject?) {
-        if(data==null)return        val root=data.optJSONObject("LapCount") ?: data
+        if(data==null)return
+        val root=data.optJSONObject("LapCount") ?: data
         _lapCount.value=root.optInt("CurrentLap",0) to root.optInt("TotalLaps",0)
     }
     private fun parseWeather(data:JSONObject?) {
