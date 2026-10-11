@@ -46,23 +46,20 @@ class F1TvApiClientTest {
     }
 
     @Test
-    fun doesNotInferWidevineFromPipelineVersionAlone() {
-        val response = HttpResponse(
-            200, true,
-            """{"url":"https://example.com/live.mpd","pipelineVersion":6,"streamType":"SDR_HD_DASH_SINGLE"}"""
+    fun legacyDashProfileGetsProviderLicenseEndpointButStillRequiresMedia3DrmValidation() {
+        val api = F1TvApiClient()
+        val license = api.fallbackLicense("content-4", null, "WEB_DASH", 6, "SDR_HD_DASH_SINGLE", "unknown")
+        org.junit.Assert.assertTrue(license.orEmpty().contains("/CONTENT/LA/widevine?contentId=content-4"))
+        assertEquals(
+            null,
+            api.fallbackLicense("content-low-pipeline", null, "WEB_DASH", 2, "SDR_HD_DASH_SINGLE", "unknown")
         )
-        val parsed = F1TvApiClient().parsePlaybackResponse(response, "content-4", null, "WEB_DASH")
-        assertEquals(null, parsed.licenseUrl)
     }
 
     @Test
-    fun synthesizesLicenseOnlyWhenF1ExplicitlyDeclaresWidevine() {
+    fun explicitWidevineStillGetsProviderLicenseEndpoint() {
         val api = F1TvApiClient()
-        assertEquals(
-            null,
-            api.fallbackLicense("content-5", null, "WEB_DASH", 6, "SDR_HD_DASH_SINGLE", "unknown")
-        )
-        val license = api.fallbackLicense("content-6", null, "WEB_DASH", 6, "SDR_HD_DASHWV_SINGLE", "widevine")
+        val license = api.fallbackLicense("content-6", null, "WEB_DASH", 2, "SDR_HD_DASHWV_SINGLE", "widevine")
         org.junit.Assert.assertTrue(license.orEmpty().contains("/CONTENT/LA/widevine?contentId=content-6"))
     }
 
