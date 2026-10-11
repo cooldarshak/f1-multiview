@@ -271,9 +271,9 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
                 val orderedCorners = corners.sortedWith(compareBy<TrackCorner> { it.distance }.thenBy { it.number })
                 // MultiViewer's circuit response includes the sampled circuit trace as parallel
                 // x/y arrays in the same telemetry coordinate system as corner.trackPosition.
-                // Prefer that native trace: it avoids the unauthenticated OpenF1 lookup and the
-                // lossy GeoJSON-to-telemetry affine alignment. Keep GeoJSON only as a fallback
-                // for older payloads that genuinely omit the trace.
+                // Prefer that native trace so driver X/Y coordinates remain in the same
+                // telemetry frame. Keep GeoJSON only as a fallback for older payloads that
+                // genuinely omit the trace.
                 val nativeCenterline = parseTrackCoordinates(root.optJSONArray("x"), root.optJSONArray("y"))
                 val centerline = when {
                     nativeCenterline.size >= MIN_CENTERLINE_POINTS -> nativeCenterline
