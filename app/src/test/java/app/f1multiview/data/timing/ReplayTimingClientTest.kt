@@ -111,6 +111,33 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun parsesArchivedSessionCircuitMetadata() {
+        val stream = """00:00:00.000{"Name":"Qualifying 1","Type":"Qualifying","StartDate":"2026-10-10T08:00:00Z","Meeting":{"Name":"Singapore Grand Prix","Country":{"Name":"Singapore"},"Circuit":{"Key":61,"Name":"Marina Bay Street Circuit"}}}"""
+        val info = ReplayTimingClient().parseSessionInfo(stream)
+        assertEquals("Qualifying 1", info?.name)
+        assertEquals("Singapore Grand Prix", info?.meeting)
+        assertEquals("Singapore", info?.country)
+        assertEquals("Marina Bay Street Circuit", info?.circuitName)
+        assertEquals(61, info?.circuitKey)
+        assertEquals(2026, info?.year)
+    }
+
+    @Test
+    fun parsesArchivedWeatherAndTrackStatusAtSessionOffset() {
+        val weather = ReplayTimingClient().parseWeatherSnapshots(
+            """00:00:01.000{"AirTemp":"29.8","TrackTemp":"39.7","Humidity":"75.7","WindSpeed":"4.3","WindDirection":"S","Pressure":"1010.0"}"""
+        )
+        assertEquals(1, weather.size)
+        assertEquals("29.8", weather.single().weather.air)
+        assertEquals("1010.0", weather.single().weather.pressure)
+        val statuses = ReplayTimingClient().parseTrackStatusSnapshots(
+            """00:00:02.000{"Status":"1","Message":"All Clear"}"""
+        )
+        assertEquals(2_000L, statuses.single().offsetMs)
+        assertEquals("GREEN", statuses.single().trackStatus.label)
+    }
+
+    @Test
     fun parsesArchivedDriverNamesTeamColoursAndTlas() {
         val stream = """00:00:00.000{"1":{"RacingNumber":"1","FullName":"Max Verstappen","Tla":"VER","TeamName":"Red Bull Racing","TeamColour":"3671C6"},"16":{"RacingNumber":"16","FirstName":"Charles","LastName":"Leclerc","Tla":"LEC","TeamName":"Ferrari","TeamColour":"E8002D"}}"""
         val drivers = ReplayTimingClient().parseDriverInfo(stream)

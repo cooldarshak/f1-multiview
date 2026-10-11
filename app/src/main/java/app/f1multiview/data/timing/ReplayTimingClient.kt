@@ -2,6 +2,9 @@ package app.f1multiview.data.timing
 import app.f1multiview.model.TimingRow
 import app.f1multiview.model.DriverTelemetry
 import app.f1multiview.model.DriverInfo
+import app.f1multiview.model.LiveSessionInfo
+import app.f1multiview.model.TrackStatusInfo
+import app.f1multiview.model.TimingWeather
 import app.f1multiview.model.TrackDriverPosition
 import app.f1multiview.model.TrackPoint
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +23,16 @@ data class ReplayPositionSnapshot(val offsetMs:Long,val positions:List<TrackDriv
 data class ReplayTelemetrySnapshot(val offsetMs:Long,val telemetry:List<DriverTelemetry>)
 private data class ReplayStint(val compound:String,val pitStops:Int,val inPit:Boolean)
 private data class ReplayStintSnapshot(val offsetMs:Long,val stints:Map<String,ReplayStint>)
+private data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
+private data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
+private data class ReplayLapSnapshot(val offsetMs:Long,val current:Int,val total:Int)
+data class ReplayMetadataState(
+    val sessionInfo:LiveSessionInfo?,
+    val weather:TimingWeather,
+    val trackStatus:TrackStatusInfo,
+    val currentLap:Int,
+    val totalLaps:Int
+)
 data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Long>)
 class ReplayTimingClient {
     private val http=OkHttpClient()
@@ -28,6 +41,10 @@ class ReplayTimingClient {
     private var telemetrySnapshots:List<ReplayTelemetrySnapshot> = emptyList()
     private var stintSnapshots:List<ReplayStintSnapshot> = emptyList()
     private var archivedDriverInfo:List<DriverInfo> = emptyList()
+    private var archivedSessionInfo:LiveSessionInfo? = null
+    private var weatherSnapshots:List<ReplayWeatherSnapshot> = emptyList()
+    private var trackStatusSnapshots:List<ReplayTrackStatusSnapshot> = emptyList()
+    private var lapSnapshots:List<ReplayLapSnapshot> = emptyList()
     private var syncOffsetMs:Long = 0L
     private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
@@ -50,6 +67,10 @@ class ReplayTimingClient {
             val path=session.optString("Path").trim('/').ifBlank{error("Timing archive session has no path")}
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
             archivedDriverInfo=runCatching { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }.getOrDefault(emptyList())
+            archivedSessionInfo=runCatching { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }.getOrNull()
+            weatherSnapshots=runCatching { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }.getOrDefault(emptyList())
+            trackStatusSnapshots=runCatching { parseTrackStatusSnapshots(getText("https://livetiming.formula1.com/static/$path/TrackStatus.jsonStream")) }.getOrDefault(emptyList())
+            lapSnapshots=runCatching { parseLapSnapshots(getText("https://livetiming.formula1.com/static/$path/LapCount.jsonStream")) }.getOrDefault(emptyList())
             stintSnapshots=runCatching { parseTimingAppData(getText("https://livetiming.formula1.com/static/$path/TimingAppData.jsonStream")) }.getOrDefault(emptyList())
             // These two compressed feeds are needed to keep car telemetry and map markers tied to
             // the replay media clock, including backwards seeks. No live values are mixed in.
@@ -98,6 +119,18 @@ class ReplayTimingClient {
     fun positionSnapshotCount():Int = positionSnapshots.size
     fun telemetrySnapshotCount():Int = telemetrySnapshots.size
     fun driverInfo():List<DriverInfo> = archivedDriverInfo
+    fun sessionInfo():LiveSessionInfo? = archivedSessionInfo
+
+    fun metadataAt(videoPositionMs:Long):ReplayMetadataState {
+        val target=archiveOffsetForVideoPosition(videoPositionMs)
+        return ReplayMetadataState(
+            sessionInfo=archivedSessionInfo,
+            weather=findSnapshot(weatherSnapshots,target){it.offsetMs}?.weather ?: TimingWeather(),
+            trackStatus=findSnapshot(trackStatusSnapshots,target){it.offsetMs}?.trackStatus ?: TrackStatusInfo(),
+            currentLap=findSnapshot(lapSnapshots,target){it.offsetMs}?.current ?: 0,
+            totalLaps=findSnapshot(lapSnapshots,target){it.offsetMs}?.total ?: 0
+        )
+    }
 
     fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs }
 
@@ -109,6 +142,96 @@ class ReplayTimingClient {
     fun snapshotCount():Int = snapshots.size
     fun isLoaded()=snapshots.isNotEmpty()
     fun sync():ReplaySyncData=syncData
+    internal fun parseSessionInfo(text:String):LiveSessionInfo? {
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val info=root.optJSONObject("SessionInfo") ?: root
+            val meeting=info.optJSONObject("Meeting") ?: JSONObject()
+            val circuit=meeting.optJSONObject("Circuit") ?: info.optJSONObject("Circuit") ?: JSONObject()
+            val country=meeting.optJSONObject("Country") ?: JSONObject()
+            val keyRaw=circuit.opt("Key") ?: circuit.opt("CircuitKey") ?: meeting.opt("CircuitKey")
+            val key=when(keyRaw) {
+                is Number->keyRaw.toInt().takeIf{it>0}
+                is String->keyRaw.toIntOrNull()?.takeIf{it>0}
+                else->null
+            } ?: meeting.optInt("CircuitKey",0).takeIf{it>0}
+            val start=info.optString("StartDate")
+            val end=info.optString("EndDate")
+            val year=start.takeIf{it.length>=4}?.take(4)?.toIntOrNull()
+                ?: end.takeIf{it.length>=4}?.take(4)?.toIntOrNull()
+            val name=info.optString("Name").ifBlank{info.optString("SessionType")}
+            val meetingName=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{name}
+            val circuitName=circuit.optString("Name").ifBlank{circuit.optString("ShortName")}.ifBlank{meeting.optString("Location")}
+            if(name.isNotBlank()||meetingName.isNotBlank()||key!=null) {
+                return LiveSessionInfo(
+                    name=name.ifBlank{"-"},
+                    meeting=meetingName.ifBlank{"-"},
+                    country=country.optString("Name").ifBlank{country.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{"-"},
+                    sessionType=info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"},
+                    status=info.optString("Status").ifBlank{"-"},
+                    circuitKey=key,year=year,circuitName=circuitName
+                )
+            }
+        }
+        return null
+    }
+
+    internal fun parseWeatherSnapshots(text:String):List<ReplayWeatherSnapshot> {
+        val merged=JSONObject()
+        val out=ArrayList<ReplayWeatherSnapshot>()
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val delta=root.optJSONObject("WeatherData") ?: root
+            mergeObject(merged,delta)
+            fun value(vararg keys:String):String=keys.firstNotNullOfOrNull{merged.optString(it).takeIf{v->v.isNotBlank()&&v!="null"}} ?: "-"
+            out+=ReplayWeatherSnapshot(offset,TimingWeather(
+                air=value("AirTemp","AirTemperature"),
+                track=value("TrackTemp","TrackTemperature"),
+                humidity=value("Humidity"),
+                wind=value("WindSpeed","Wind"),
+                rainfall=value("Rainfall","RainfallIntensity"),
+                windDirection=value("WindDirection"),
+                pressure=value("Pressure","PressureMbar","AirPressure")
+            ))
+        }
+        return out
+    }
+
+    internal fun parseTrackStatusSnapshots(text:String):List<ReplayTrackStatusSnapshot> {
+        val out=ArrayList<ReplayTrackStatusSnapshot>()
+        var latest=TrackStatusInfo()
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val data=root.optJSONObject("TrackStatus") ?: root
+            val raw=data.optString("Status")
+            val code=raw.toIntOrNull() ?: data.optInt("Status",latest.code)
+            val label=when(code){1->"GREEN";2->"YELLOW";4->"SAFETY CAR";5->"RED";6->"VSC";7->"VSC ENDING";else->"STATUS $code"}
+            latest=TrackStatusInfo(code,label,data.optString("Message").ifBlank{latest.message})
+            out+=ReplayTrackStatusSnapshot(offset,latest)
+        }
+        return out
+    }
+
+    internal fun parseLapSnapshots(text:String):List<ReplayLapSnapshot> {
+        val out=ArrayList<ReplayLapSnapshot>()
+        var current=0;var total=0
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val data=root.optJSONObject("LapCount") ?: root
+            current=data.optInt("CurrentLap",data.optInt("CurrentLapNumber",current))
+            total=data.optInt("TotalLaps",total)
+            if(current>0||total>0)out+=ReplayLapSnapshot(offset,current,total)
+        }
+        return out
+    }
+
     internal fun parseDriverInfo(text:String):List<DriverInfo> {
         val result=linkedMapOf<String,DriverInfo>()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->

@@ -487,6 +487,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         val rows = replayTimingClient.rowsAt(positionMs)
         val telemetry = replayTimingClient.telemetryAt(positionMs)
         val positions = replayTimingClient.positionsAt(positionMs)
+        val metadataState = replayTimingClient.metadataAt(positionMs)
         val metadata = _ui.value.driverInfo.associateBy { it.number }
         val livePositions = timingClient.trackPositions.value.associateBy { it.number }
         val rowsByNumber = rows.associateBy { it.driverNumber }
@@ -507,16 +508,25 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 inPit = row?.lastLap.equals("IN PIT", true) || position.inPit
             )
         }
-        _ui.value = _ui.value.copy(timing=rows, trackPositions=enriched, telemetry=telemetry, timingStatus="REPLAY")
+        _ui.value = _ui.value.copy(
+            timing=rows, trackPositions=enriched, telemetry=telemetry,
+            liveSessionInfo=metadataState.sessionInfo ?: _ui.value.liveSessionInfo,
+            weather=metadataState.weather, trackStatus=metadataState.trackStatus,
+            currentLap=metadataState.currentLap, totalLaps=metadataState.totalLaps,
+            timingStatus="REPLAY"
+        )
     }
     fun loadReplayTiming(session:Session)=viewModelScope.launch {
         val year=session.seasonYear ?: return@launch
         val meeting=session.meetingNumber ?: return@launch
-        _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(), timingStatus="REPLAY_LOADING")
+        _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
+            liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(), currentLap=0, totalLaps=0,
+            trackGeometry=null, timingStatus="REPLAY_LOADING")
         replayTimingClient.load(year,meeting,session.sessionType)
             .onSuccess { _ui.value=_ui.value.copy(
                 replayChannelDiffs=replayTimingClient.sync().channelDiffs,
                 driverInfo=replayTimingClient.driverInfo(),
+                liveSessionInfo=replayTimingClient.sessionInfo() ?: LiveSessionInfo(),
                 timingStatus="REPLAY"
             ) }
             .onFailure { if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found"), timingStatus="REPLAY_UNAVAILABLE") }
