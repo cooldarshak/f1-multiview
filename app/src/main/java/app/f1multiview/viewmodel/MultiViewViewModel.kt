@@ -63,18 +63,18 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     init{
         _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
-        viewModelScope.launch{timingClient.rows.collect{rows->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(timing=rows)}}
+        viewModelScope.launch{timingClient.rows.collect{rows->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(timing=rows)}}
         viewModelScope.launch{timingClient.status.collect{status->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(timingStatus=status)}}
-        viewModelScope.launch{timingClient.raceControl.collect{events->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(raceControl=events)}}
-        viewModelScope.launch{timingClient.weather.collect{weather->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(weather=weather)}}
+        viewModelScope.launch{timingClient.raceControl.collect{events->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(raceControl=events)}}
+        viewModelScope.launch{timingClient.weather.collect{weather->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(weather=weather)}}
         viewModelScope.launch{timingClient.teamRadio.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(teamRadio=items)}}
-        viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(telemetry=items)}}
+        viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(telemetry=items)}}
         viewModelScope.launch{timingClient.driverInfo.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(driverInfo=items)}}
         viewModelScope.launch{timingClient.sessionInfo.collect{info->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(liveSessionInfo=info)}}
-        viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackPositions=positions)}}
-        viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackStatus=status)}}
-        viewModelScope.launch{timingClient.lapCount.collect{laps->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
-        viewModelScope.launch{timingClient.sessionClock.collect{clock->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(sessionClock=clock)}}
+        viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackPositions=positions)}}
+        viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackStatus=status)}}
+        viewModelScope.launch{timingClient.lapCount.collect{laps->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
+        viewModelScope.launch{timingClient.sessionClock.collect{clock->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(sessionClock=clock)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
@@ -504,7 +504,6 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         val positions = replayTimingClient.positionsAt(positionMs)
         val metadataState = replayTimingClient.metadataAt(positionMs)
         val metadata = _ui.value.driverInfo.associateBy { it.number }
-        val livePositions = timingClient.trackPositions.value.associateBy { it.number }
         val rowsByNumber = rows.associateBy { it.driverNumber }
         val telemetryByNumber = telemetry.associateBy { it.driver }
         val enriched = positions.map { position ->
@@ -513,10 +512,10 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             val meta = metadata[position.number]
             val livePosition = livePositions[position.number]
             position.copy(
-                name = meta?.name?.takeIf { it.isNotBlank() && it != "-" } ?: livePosition?.name ?: row?.driver ?: position.name,
-                acronym = row?.driver ?: meta?.acronym ?: livePosition?.acronym ?: position.acronym,
-                team = meta?.team ?: livePosition?.team ?: position.team,
-                teamColor = meta?.teamColor ?: livePosition?.teamColor ?: position.teamColor,
+                name = meta?.name?.takeIf { it.isNotBlank() && it != "-" } ?: row?.driver ?: position.name,
+                acronym = row?.driver ?: meta?.acronym ?: position.acronym,
+                team = meta?.team ?: position.team,
+                teamColor = meta?.teamColor ?: position.teamColor,
                 position = row?.position ?: position.position,
                 speed = car?.speed ?: row?.speed?.toIntOrNull() ?: position.speed,
                 lap = row?.lap ?: position.lap,
