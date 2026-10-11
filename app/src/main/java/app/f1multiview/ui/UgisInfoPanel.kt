@@ -365,17 +365,23 @@ private fun F1TimingRow(r: TimingRow, driver: DriverInfo?, isTv: Boolean) {
                 }
                 TimingMetric("INT", if (r.position == 1) "LEADER" else r.interval, 70.dp, InfoWhite)
                 TimingMetric("GAP", r.leaderGap, 72.dp, InfoWhite)
-                TimingMetric("LAST", r.lastLap, 76.dp, if (r.lastLap.equals("IN PIT",true)) InfoYellow else InfoWhite)
+                TimingMetric("LAST", if (r.inPit) "IN PIT" else r.lastLap, 76.dp, if (r.inPit) InfoYellow else InfoWhite)
                 TimingMetric("BEST", r.bestLap, 76.dp, timingStatusColor(r.bestLapStatus))
                 TimingMetric("KM/H", r.speed, 52.dp, InfoWhite)
                 Column(Modifier.width(54.dp), horizontalAlignment=Alignment.CenterHorizontally) {
                     Text("TYRE",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
                     Text(r.tyre.takeIf { it.isNotBlank() && it != "-" } ?: "—",
                         color=compoundStatusColor(r.tyre),fontSize=8.sp,fontWeight=FontWeight.Black,maxLines=1)
+                    if (r.stintNumber > 0) Text("STINT "+r.stintNumber,color=InfoMuted,fontSize=5.sp,fontWeight=FontWeight.Bold)
                 }
-                Column(Modifier.width(34.dp), horizontalAlignment=Alignment.CenterHorizontally) {
-                    Text("PIT",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
-                    Text(r.pitStops.toString(),color=InfoWhite,fontSize=9.sp,fontWeight=FontWeight.Black)
+                Column(Modifier.width(62.dp), horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("STOPS",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
+                    val pitLabel = buildString {
+                        append(r.pitStops)
+                        if (r.inPit) append(" · IN")
+                        if (r.stopped) append(" · STOP")
+                    }
+                    Text(pitLabel,color=if(r.inPit||r.stopped) InfoYellow else InfoWhite,fontSize=7.sp,fontWeight=FontWeight.Black,maxLines=1)
                 }
             }
             Spacer(Modifier.height(5.dp))
