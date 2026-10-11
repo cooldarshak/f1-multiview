@@ -58,9 +58,9 @@ class ReplayTimingClient {
     }
     fun rowsAt(videoPositionMs:Long):List<TimingRow> {
         val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
-        val base=findSnapshot(snapshots,target){it.offsetMs}?.rows ?: return emptyList()
+        val rows=findSnapshot(snapshots,target){it.offsetMs}?.rows ?: return emptyList()
         val stints=findSnapshot(stintSnapshots,target){it.offsetMs}?.stints.orEmpty()
-        return base.map { row ->
+        return rows.map { row ->
             val stint=stints[row.driverNumber]
             row.copy(
                 tyre=stint?.compound?.takeIf{it.isNotBlank()} ?: row.tyre,
@@ -80,22 +80,9 @@ class ReplayTimingClient {
         }
     }
 
-    /**
-     * Latest archived car positions at the requested video position. This is replay state, not
-     * live state: callers should replace the map's driver positions with this snapshot on every
-     * playback time update, including backwards seeks.
-     */
     fun positionsAt(videoPositionMs:Long):List<TrackDriverPosition> {
         val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
-        if(positionSnapshots.isEmpty()) return emptyList()
-        var lo=0
-        var hi=positionSnapshots.lastIndex
-        var best=-1
-        while(lo<=hi){
-            val mid=(lo+hi) ushr 1
-            if(positionSnapshots[mid].offsetMs<=target){best=mid;lo=mid+1}else hi=mid-1
-        }
-        return if(best>=0) positionSnapshots[best].positions else emptyList()
+        return findSnapshot(positionSnapshots,target){it.offsetMs}?.positions.orEmpty()
     }
 
     fun positionSnapshotCount():Int = positionSnapshots.size
@@ -120,30 +107,35 @@ class ReplayTimingClient {
             val json=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
             val delta=json.optJSONObject("Lines") ?: json.optJSONObject("lines") ?: return@forEachLine
             // TimingData.jsonStream records after the first snapshot are sparse deltas. Merge
-            // recursively before deriving rows; otherwise drivers disappear or retain stale gaps
-            // during replay seeks.
+            // recursively before deriving rows so the standings remain stable during replay seeks.
             mergeObject(mergedLines,delta)
             val rows=ArrayList<TimingRow>()
             val keys=mergedLines.keys()
             while(keys.hasNext()){
-                val d=mergedLines.optJSONObject(keys.next()) ?: continue
                 val number=keys.next()
                 val d=mergedLines.optJSONObject(number) ?: continue
                 val pos=d.optInt("Position",d.optInt("PositionNumber",0))
-                val driver=d.optString("Tla").ifBlank{d.optString("ShortName")}.ifBlank{d.optString("FullName").ifBlank{d.optString("Driver")}}
+                val driver=d.optString("Tla").ifBlank{d.optString("ShortName")}
+                    .ifBlank{d.optString("FullName").ifBlank{d.optString("Driver")}}
                 if(pos<=0 || driver.isBlank())continue
                 val leaderGap=d.optString("GapToLeader").ifBlank{"-"}
                 val interval=d.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty()
                     .ifBlank{d.optString("IntervalToPositionAhead")}.ifBlank{"-"}
                 val gap=if(pos==1) "LEADER" else interval.takeIf{it.isNotBlank()&&it!="-"} ?: leaderGap
                 val lastObj=d.optJSONObject("LastLapTime")
-                val lastRaw=lastObj?.optString("Value").orEmpty().ifBlank{d.optString("LastLapTime").takeIf{!it.startsWith("{")} ?: d.optString("LastLap")}
+                val lastRaw=lastObj?.optString("Value").orEmpty()
+                    .ifBlank{d.optString("LastLapTime").takeIf{!it.startsWith("{")} ?: d.optString("LastLap")}
                 val last=if(d.optBoolean("InPit",false)) "IN PIT" else lastRaw.ifBlank{"-"}
                 val bestObj=d.optJSONObject("BestLapTime")
-                val best=bestObj?.optString("Value").orEmpty().ifBlank{d.optString("BestLapTime").takeIf{!it.startsWith("{")}.orEmpty()}.ifBlank{"-"}
+                val best=bestObj?.optString("Value").orEmpty()
+                    .ifBlank{d.optString("BestLapTime").takeIf{!it.startsWith("{")}.orEmpty()}.ifBlank{"-"}
                 val tyre=d.optString("Compound").ifBlank{"-"}
-                val s1=sectorValue(lastObj,d,"Sector1");val s2=sectorValue(lastObj,d,"Sector2");val s3=sectorValue(lastObj,d,"Sector3")
-                val seg1=sectorSegments(lastObj,d,"Sector1");val seg2=sectorSegments(lastObj,d,"Sector2");val seg3=sectorSegments(lastObj,d,"Sector3")
+                val s1=sectorValue(lastObj,d,"Sector1")
+                val s2=sectorValue(lastObj,d,"Sector2")
+                val s3=sectorValue(lastObj,d,"Sector3")
+                val seg1=sectorSegments(lastObj,d,"Sector1")
+                val seg2=sectorSegments(lastObj,d,"Sector2")
+                val seg3=sectorSegments(lastObj,d,"Sector3")
                 val speed=d.optString("Speed").ifBlank{d.optString("SpeedKmh")}.ifBlank{"-"}
                 val lapNumber=d.optInt("Lap",d.optInt("LapNumber",0))
                 rows += TimingRow(
@@ -158,6 +150,155 @@ class ReplayTimingClient {
             if(rows.isNotEmpty())out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
         }
         return out
+    }
+
+    private fun sectorObject(lastLap:JSONObject?,line:JSONObject,key:String):JSONObject? {
+        lastLap?.optJSONObject(key)?.let{return it}
+        line.optJSONObject(key)?.let{return it}
+        val index=key.removePrefix("Sector").toIntOrNull()?.minus(1) ?: return null
+        val array=line.optJSONArray("Sectors")
+        if(array!=null)return array.optJSONObject(index)
+        return line.optJSONObject("Sectors")?.optJSONObject(index.toString())
+    }
+
+    private fun sectorSegments(lastLap:JSONObject?,line:JSONObject,key:String):List<String> {
+        val obj=sectorObject(lastLap,line,key) ?: return emptyList()
+        val arr=obj.optJSONArray("Segments") ?: obj.optJSONArray("segments")
+        if(arr!=null)return buildList{
+            for(i in 0 until arr.length()) add(segmentStatus(arr.optJSONObject(i)?.optInt("Status",-1) ?: -1))
+        }
+        val keyed=obj.optJSONObject("Segments") ?: obj.optJSONObject("segments") ?: return emptyList()
+        return keyed.keys().asSequence().mapNotNull{keyed.optJSONObject(it)?.optInt("Status",-1)}.map(::segmentStatus).toList()
+    }
+
+    private fun sectorStatus(obj:JSONObject?,value:String):String=when{
+        obj?.optBoolean("OverallFastest",false)==true -> "PURPLE"
+        obj?.optBoolean("PersonalFastest",false)==true -> "GREEN"
+        value=="-" || value.isBlank() -> "NORMAL"
+        else -> "YELLOW"
+    }
+
+    private fun sectorValue(lastLap:JSONObject?,line:JSONObject,key:String):Pair<String,String> {
+        val obj=sectorObject(lastLap,line,key)
+        val value=if(obj!=null) obj.optString("Value").ifBlank{obj.optString("value")}.ifBlank{"-"}
+            else (lastLap?.opt(key) ?: line.opt(key))?.toString()?.takeIf{it.isNotBlank()} ?: "-"
+        return value to sectorStatus(obj,value)
+    }
+
+    private fun segmentStatus(status:Int):String=when(status){
+        2048->"YELLOW"
+        2049->"GREEN"
+        2051->"PURPLE"
+        2064->"BLUE"
+        else->"GRAY"
+    }
+
+    private fun parseTimingAppData(text:String):List<ReplayStintSnapshot> {
+        val out=ArrayList<ReplayStintSnapshot>()
+        val merged=JSONObject()
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<12)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val delta=root.optJSONObject("Lines") ?: root.optJSONObject("lines") ?: return@forEachLine
+            mergeObject(merged,delta)
+            val stints=linkedMapOf<String,ReplayStint>()
+            val keys=merged.keys()
+            while(keys.hasNext()){
+                val driver=keys.next()
+                val item=merged.optJSONObject(driver) ?: continue
+                val stintObject=item.optJSONObject("Stints")
+                val stintArray=item.optJSONArray("Stints")
+                val latest=if(stintObject!=null){
+                    val latestKey=stintObject.keys().asSequence().maxByOrNull{it.toIntOrNull()?:-1}
+                    latestKey?.let{stintObject.optJSONObject(it)}
+                }else if(stintArray!=null && stintArray.length()>0)stintArray.optJSONObject(stintArray.length()-1)
+                else item.optJSONObject("Stint")
+                val compound=latest?.optString("Compound").orEmpty().ifBlank{latest?.optString("compound").orEmpty()}
+                stints[driver]=ReplayStint(
+                    compound=compound.uppercase(),
+                    pitStops=item.optInt("NumberOfPitStops",item.optInt("PitStops",0)),
+                    inPit=item.optBoolean("InPit",false)||item.optBoolean("PitIn",false)
+                )
+            }
+            if(stints.isNotEmpty())out+=ReplayStintSnapshot(offset,stints)
+        }
+        return out
+    }
+
+    private fun parseCarTelemetry(text:String):List<ReplayTelemetrySnapshot> {
+        val out=ArrayList<ReplayTelemetrySnapshot>()
+        val latest=linkedMapOf<String,DriverTelemetry>()
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val raw=line.substring(12).trim()
+            val root=runCatching {
+                when(val token=org.json.JSONTokener(raw).nextValue()){
+                    is JSONObject->token
+                    is String->inflatePosition(token)
+                    else->null
+                }
+            }.getOrNull() ?: return@forEachLine
+            var changed=false
+            fun numberChannel(channels:JSONObject,id:String,vararg keys:String):Int {
+                val v=channels.opt(id)
+                if(v is Number)return v.toInt()
+                if(v is String)v.toIntOrNull()?.let{return it}
+                return keys.firstNotNullOfOrNull{key->
+                    channels.opt(key)?.let{value->when(value){is Number->value.toInt();is String->value.toIntOrNull();else->null}}
+                } ?: 0
+            }
+            fun readCars(cars:JSONObject) {
+                val keys=cars.keys()
+                while(keys.hasNext()){
+                    val driver=keys.next()
+                    val car=cars.optJSONObject(driver) ?: continue
+                    val channels=car.optJSONObject("Channels") ?: car
+                    val existing=latest[driver]
+                    latest[driver]=DriverTelemetry(
+                        driver=driver,
+                        speed=numberChannel(channels,"2","Speed","SpeedKmh"),
+                        rpm=numberChannel(channels,"0","RPM","Rpm"),
+                        gear=numberChannel(channels,"3","Gear"),
+                        throttle=numberChannel(channels,"4","Throttle"),
+                        brake=numberChannel(channels,"5","Brake"),
+                        lap=existing?.lap ?: 0,
+                        lapTime=existing?.lapTime ?: "-"
+                    )
+                    changed=true
+                }
+            }
+            fun visit(value:Any?,depth:Int=0) {
+                if(depth>7||value==null)return
+                when(value){
+                    is JSONObject->{
+                        val cars=value.optJSONObject("Cars")
+                        if(cars!=null)readCars(cars)
+                        else {
+                            val keys=value.keys()
+                            while(keys.hasNext()){
+                                val child=value.opt(keys.next())
+                                if(child is JSONObject||child is JSONArray)visit(child,depth+1)
+                            }
+                        }
+                    }
+                    is JSONArray->for(i in 0 until value.length())visit(value.opt(i),depth+1)
+                }
+            }
+            visit(root)
+            if(changed)out+=ReplayTelemetrySnapshot(offset,latest.values.toList())
+        }
+        return out
+    }
+
+    private fun <T> findSnapshot(items:List<T>,target:Long,offset:(T)->Long):T? {
+        var lo=0;var hi=items.lastIndex;var best=-1
+        while(lo<=hi){
+            val mid=(lo+hi) ushr 1
+            if(offset(items[mid])<=target){best=mid;lo=mid+1}else hi=mid-1
+        }
+        return if(best>=0)items[best] else null
     }
 
     private fun mergeObject(target:JSONObject,delta:JSONObject) {
