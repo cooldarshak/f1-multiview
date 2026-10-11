@@ -3,6 +3,8 @@ package app.f1multiview.data.timing
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -64,6 +66,46 @@ class TrackMapClientTest {
         assertEquals(listOf(2024, 2023), TrackMapClient.geometryLookupYears(2024))
         // Old archives are not silently mapped to a newer season's telemetry coordinate frame.
         assertEquals(listOf(2021), TrackMapClient.geometryLookupYears(2021))
+    }
+
+
+    @Test
+    fun parsesBundledNativeGeometryWithoutNetworkAndMatchesNamesUnambiguously() {
+        val x = JSONArray()
+        val y = JSONArray()
+        repeat(TrackMapClient.MIN_CENTERLINE_POINTS) { i ->
+            x.put(i.toDouble())
+            y.put((i % 7).toDouble())
+        }
+        val corners = JSONArray()
+        repeat(3) { i ->
+            corners.put(JSONObject()
+                .put("number", i + 1)
+                .put("letter", "")
+                .put("length", (i + 1) * 100.0)
+                .put("angle", 0.0)
+                .put("trackPosition", JSONObject().put("x", i * 10.0).put("y", i * 5.0)))
+        }
+        val singapore = JSONObject()
+            .put("circuitKey", 61)
+            .put("name", "Singapore")
+            .put("aliases", JSONArray().put("Singapore").put("Singapore Grand Prix").put("Marina Bay"))
+            .put("year", 2023)
+            .put("rotation", 335.0)
+            .put("x", x)
+            .put("y", y)
+            .put("corners", corners)
+        val catalogue = JSONObject().put("circuits", JSONObject().put("61", singapore))
+
+        val geometry = TrackMapClient.parseBundledGeometry(catalogue, 61, 2026)
+        assertNotNull(geometry)
+        assertEquals(61, geometry!!.circuitKey)
+        assertEquals(2023, geometry.year)
+        assertEquals(335.0, geometry.rotation, 0.0)
+        assertEquals(TrackMapClient.MIN_CENTERLINE_POINTS, geometry.centerline.size)
+        assertEquals(3, geometry.corners.size)
+        assertEquals(61 to "Singapore", TrackMapClient.matchBundledCircuit(catalogue, "Singapore Grand Prix", ""))
+        assertNull(TrackMapClient.parseBundledGeometry(catalogue, 999, 2026))
     }
 
     @Test

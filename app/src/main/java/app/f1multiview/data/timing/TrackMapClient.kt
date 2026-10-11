@@ -1,5 +1,7 @@
 package app.f1multiview.data.timing
 
+import android.content.Context
+
 import app.f1multiview.model.TrackCorner
 import app.f1multiview.model.TrackMapGeometry
 import app.f1multiview.model.TrackPoint
@@ -19,10 +21,74 @@ import kotlin.math.*
  * system using the published corner distances/positions; corner points are annotations,
  * never used as a substitute for the track path.
  */
-class TrackMapClient {
+class TrackMapClient(private val context: Context? = null) {
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
         internal const val MIN_CENTERLINE_POINTS = 20
+internal fun geometryLookupYears(requestedYear: Int): List<Int> =
+            if (requestedYear >= 2023) (requestedYear downTo 2023).toList() else listOf(requestedYear)
+
+        /** Parse a bundled circuit only when it contains a complete, finite native centreline. */
+        internal fun parseBundledGeometry(catalogue: JSONObject, circuitKey: Int, requestedYear: Int): TrackMapGeometry? {
+            val item = catalogue.optJSONObject("circuits")?.optJSONObject(circuitKey.toString()) ?: return null
+            val client = TrackMapClient()
+            val centerline = client.parseTrackCoordinates(item.optJSONArray("x"), item.optJSONArray("y"))
+            if (centerline.size < MIN_CENTERLINE_POINTS) return null
+            val rawCorners = item.optJSONArray("corners") ?: JSONArray()
+            val corners = buildList {
+                for (i in 0 until rawCorners.length()) {
+                    val corner = rawCorners.optJSONObject(i) ?: continue
+                    val p = corner.optJSONObject("trackPosition") ?: continue
+                    val x = p.optDouble("x", Double.NaN)
+                    val y = p.optDouble("y", Double.NaN)
+                    if (!x.isFinite() || !y.isFinite()) continue
+                    add(TrackCorner(corner.optInt("number", 0), corner.optString("letter"), x, y,
+                        corner.optDouble("length", 0.0), corner.optDouble("angle", 0.0)))
+                }
+            }.sortedWith(compareBy<TrackCorner> { it.distance }.thenBy { it.number })
+            if (corners.size < 3) return null
+            return TrackMapGeometry(circuitKey, item.optInt("year", requestedYear),
+                item.optDouble("rotation", 0.0), corners, centerline)
+        }
+
+        /** Name-based fallback rejects ties; it never picks an arbitrary circuit. */
+        internal fun matchBundledCircuit(catalogue: JSONObject, meetingName: String, circuitName: String): Pair<Int, String>? {
+            val client = TrackMapClient()
+            val circuits = catalogue.optJSONObject("circuits") ?: return null
+            val wantedMeeting = client.normalize(meetingName)
+            val wantedCircuit = client.normalize(circuitName)
+            if (wantedMeeting.isBlank() && wantedCircuit.isBlank()) return null
+            val candidates = mutableListOf<Triple<Int, String, Int>>()
+            val keys = circuits.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val item = circuits.optJSONObject(key) ?: continue
+                val circuitKey = item.optInt("circuitKey", key.toIntOrNull() ?: 0)
+                if (circuitKey <= 0) continue
+                val aliases = buildList {
+                    add(item.optString("name"))
+                    val values = item.optJSONArray("aliases") ?: JSONArray()
+                    for (i in 0 until values.length()) {
+                        val alias = values.optString(i)
+                        if (alias.isNotBlank()) add(alias)
+                    }
+                }.map(client::normalize).filter(String::isNotBlank).distinct()
+                val score = aliases.maxOfOrNull { alias ->
+                    when {
+                        wantedCircuit.isNotBlank() && alias == wantedCircuit -> 100
+                        wantedMeeting.isNotBlank() && alias == wantedMeeting -> 95
+                        wantedCircuit.isNotBlank() && (alias.contains(wantedCircuit) || wantedCircuit.contains(alias)) -> 80
+                        wantedMeeting.isNotBlank() && (alias.contains(wantedMeeting) || wantedMeeting.contains(alias)) -> 70
+                        else -> 0
+                    }
+                } ?: 0
+                candidates += Triple(circuitKey, item.optString("name"), score)
+            }
+            val selectedIndex = client.uniqueBestIndex(candidates.map { it.third }, minimumScore = 70) ?: return null
+            val selected = candidates[selectedIndex]
+            return selected.first to selected.second
+        }
+
 
         /**
          * Try the requested year's catalogue first, then public historical catalogues.
@@ -122,10 +188,21 @@ class TrackMapClient {
                 )
             }
         }
-        return lookup.fold(
+return lookup.fold(
             onSuccess = { match -> load(match.first, year, match.second) },
-            onFailure = { Result.failure(it) }
+            onFailure = { failure ->
+                val catalogue = readBundledCatalogue()
+                val bundledMatch = catalogue?.let { matchBundledCircuit(it, meetingName, circuitName) }
+                if (catalogue != null && bundledMatch != null) {
+                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_MATCH circuitKey=§{bundledMatch.first} meetingNamePresent=§{meetingName.isNotBlank()} circuitNamePresent=§{circuitName.isNotBlank()}")
+                    load(bundledMatch.first, year, circuitName.ifBlank { bundledMatch.second })
+                } else {
+                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_NO_MATCH assetPresent=§{catalogue != null} meetingNamePresent=§{meetingName.isNotBlank()} circuitNamePresent=§{circuitName.isNotBlank()}")
+                    Result.failure(failure)
+                }
+            }
         )
+
     }
     /**
      * Circuit data is a best-effort public endpoint. When the requested season is restricted
@@ -133,43 +210,40 @@ class TrackMapClient {
      * bounded to 2023 onward (or the explicitly requested earlier year) and is logged so stale
      * layout data is never mistaken for the requested season.
      */
-    internal fun geometryLookupYears(requestedYear: Int): List<Int> =
-        if (requestedYear >= 2023) (requestedYear downTo 2023).toList() else listOf(requestedYear)
-
-    suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
+suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
         var lastFailure: Throwable? = null
-        val years = geometryLookupYears(year)
-        for (geometryYear in years) {
+        for (geometryYear in geometryLookupYears(year)) {
             val result = loadSingleYear(circuitKey, geometryYear, circuitName)
             val geometry = result.getOrNull()
-            if (geometry != null) {
+            if (geometry != null && geometry.centerline.size >= MIN_CENTERLINE_POINTS) {
                 if (geometryYear != year) {
-                    AppLogger.w(
-                        "TrackMap",
-                        "GEOMETRY_YEAR_FALLBACK requestedYear=$year geometryYear=$geometryYear circuitKey=$circuitKey"
-                    )
+                    AppLogger.w("TrackMap", "GEOMETRY_YEAR_FALLBACK requestedYear=$year geometryYear=$geometryYear circuitKey=$circuitKey")
                 }
                 return Result.success(geometry)
             }
-
             val failure = result.exceptionOrNull()
-                ?: java.io.IOException("Circuit geometry unavailable for key=$circuitKey year=$geometryYear")
+                ?: java.io.IOException("Circuit geometry has no validated centreline for key=$circuitKey year=$geometryYear")
             lastFailure = failure
-            val statusCode = Regex("""Circuit geometry HTTP (\d+)""")
-                .find(failure.message.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-            // Only retry older catalogues for unavailable/unauthorized resources. Network
-            // timeouts, malformed JSON, and alignment errors should surface directly.
-            if (statusCode !in setOf(401, 403, 404)) return Result.failure(failure)
-            AppLogger.w(
-                "TrackMap",
-                "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=$statusCode"
-            )
+            val statusCode = Regex("""Circuit geometry HTTP (\d+)""").find(failure.message.orEmpty())
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+            AppLogger.w("TrackMap", "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=§{statusCode ?: -1} reason=§{failure.javaClass.simpleName}")
         }
-        return Result.failure(
-            lastFailure ?: java.io.IOException("No circuit geometry versions checked for key=$circuitKey year=$year")
-        )
+
+        val bundled = readBundledCatalogue()?.let { parseBundledGeometry(it, circuitKey, year) }
+        if (bundled != null) {
+            AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_READY circuitKey=$circuitKey requestedYear=$year geometryYear=§{bundled.year} centerlinePoints=§{bundled.centerline.size}")
+            return Result.success(bundled)
+        }
+        val failure = lastFailure ?: java.io.IOException("No circuit geometry versions checked for key=$circuitKey year=$year")
+        AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_UNAVAILABLE circuitKey=$circuitKey assetPresent=§{context != null}")
+        return Result.failure(failure)
     }
+
+    private fun readBundledCatalogue(): JSONObject? = runCatching {
+        val appContext = context ?: return@runCatching null
+        appContext.assets.open("circuit_geometry_2026.json").bufferedReader().use { JSONObject(it.readText()) }
+    }.getOrNull()
+
 
     private suspend fun loadSingleYear(
         circuitKey: Int,

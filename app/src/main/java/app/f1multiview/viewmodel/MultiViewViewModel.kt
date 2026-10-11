@@ -51,7 +51,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val store=SavedSetupStore(application)
      private val continueStore=ContinueWatchingStore(application)
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
-    private val trackMapClient=TrackMapClient()
+    private val trackMapClient=TrackMapClient(application)
     private val timingClient=LiveTimingClient(viewModelScope){ provider.liveTimingHeaders() }
     private val replayTimingClient=ReplayTimingClient()
     private val featureClient=UgisFeatureClient(application)
