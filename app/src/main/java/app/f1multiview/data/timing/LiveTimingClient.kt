@@ -126,7 +126,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 }
                 // The first post-handshake frame is the SignalR handshake acknowledgement.
                 if(_status.value=="HANDSHAKING"){
-                    _status.value="LIVE"
+                    _status.value="SUBSCRIBED"
                     val feedArray=JSONArray()
                     FEEDS.forEach(feedArray::put)
                     val subscribe=JSONObject()
@@ -178,6 +178,11 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 "TeamRadio"->parseTeamRadio(data)
                 "ExtrapolatedClock"->parseExtrapolatedClock(data)
             }
+            if (
+                (feed in setOf("TimingData","TimingDataF1") && _rows.value.isNotEmpty()) ||
+                (feed in setOf("CarData.z","CarData") && telemetryByDriver.isNotEmpty()) ||
+                (feed in setOf("Position.z","Position") && positionMeta.isNotEmpty())
+            ) _status.value="LIVE"
             val now=System.currentTimeMillis()
             if(now-lastFeedSummaryAtMs>=10_000L){
                 lastFeedSummaryAtMs=now

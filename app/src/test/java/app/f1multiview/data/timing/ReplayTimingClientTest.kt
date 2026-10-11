@@ -111,6 +111,21 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun parsesArchivedDriverNamesTeamColoursAndTlas() {
+        val stream = """00:00:00.000{"1":{"RacingNumber":"1","FullName":"Max Verstappen","Tla":"VER","TeamName":"Red Bull Racing","TeamColour":"3671C6"},"16":{"RacingNumber":"16","FirstName":"Charles","LastName":"Leclerc","Tla":"LEC","TeamName":"Ferrari","TeamColour":"E8002D"}}"""
+        val drivers = ReplayTimingClient().parseDriverInfo(stream)
+        assertEquals(2, drivers.size)
+        val leader = drivers.first { it.number == "1" }
+        assertEquals("Max Verstappen", leader.name)
+        assertEquals("VER", leader.acronym)
+        assertEquals("Red Bull Racing", leader.team)
+        assertEquals("3671C6", leader.teamColor)
+        val second = drivers.first { it.number == "16" }
+        assertEquals("Charles Leclerc", second.name)
+        assertEquals("LEC", second.acronym)
+    }
+
+    @Test
     fun replayTimingDeltasMergeIntoPersistentDriverState() {
         val stream = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}},"4":{"Position":2,"Tla":"NOR","GapToLeader":"+1.2"}}}
 00:00:02.000{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"4":{"GapToLeader":"+0.8"}}}

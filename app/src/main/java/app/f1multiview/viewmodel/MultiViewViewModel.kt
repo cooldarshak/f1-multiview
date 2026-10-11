@@ -473,9 +473,13 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     fun loadReplayTiming(session:Session)=viewModelScope.launch {
         val year=session.seasonYear ?: return@launch
         val meeting=session.meetingNumber ?: return@launch
-        _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), timingStatus="REPLAY_LOADING")
+        _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(), timingStatus="REPLAY_LOADING")
         replayTimingClient.load(year,meeting,session.sessionType)
-            .onSuccess { _ui.value=_ui.value.copy(replayChannelDiffs=replayTimingClient.sync().channelDiffs, timingStatus="REPLAY") }
+            .onSuccess { _ui.value=_ui.value.copy(
+                replayChannelDiffs=replayTimingClient.sync().channelDiffs,
+                driverInfo=replayTimingClient.driverInfo(),
+                timingStatus="REPLAY"
+            ) }
             .onFailure { if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found"), timingStatus="REPLAY_UNAVAILABLE") }
     }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta);replayTimingClient.nudge(delta)}

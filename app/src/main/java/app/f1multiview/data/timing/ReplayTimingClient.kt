@@ -1,6 +1,7 @@
 package app.f1multiview.data.timing
 import app.f1multiview.model.TimingRow
 import app.f1multiview.model.DriverTelemetry
+import app.f1multiview.model.DriverInfo
 import app.f1multiview.model.TrackDriverPosition
 import app.f1multiview.model.TrackPoint
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,7 @@ class ReplayTimingClient {
     private var positionSnapshots:List<ReplayPositionSnapshot> = emptyList()
     private var telemetrySnapshots:List<ReplayTelemetrySnapshot> = emptyList()
     private var stintSnapshots:List<ReplayStintSnapshot> = emptyList()
+    private var archivedDriverInfo:List<DriverInfo> = emptyList()
     private var syncOffsetMs:Long = 0L
     private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
@@ -47,6 +49,7 @@ class ReplayTimingClient {
             val session=(0 until sessions.length()).map{sessions.getJSONObject(it)}.firstOrNull{it.optString("Name").contains(wanted,true) || it.optString("Type").equals(wanted,true)} ?: error("Timing archive session not found")
             val path=session.optString("Path").trim('/').ifBlank{error("Timing archive session has no path")}
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
+            archivedDriverInfo=runCatching { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }.getOrDefault(emptyList())
             stintSnapshots=runCatching { parseTimingAppData(getText("https://livetiming.formula1.com/static/$path/TimingAppData.jsonStream")) }.getOrDefault(emptyList())
             // These two compressed feeds are needed to keep car telemetry and map markers tied to
             // the replay media clock, including backwards seeks. No live values are mixed in.
@@ -94,6 +97,7 @@ class ReplayTimingClient {
 
     fun positionSnapshotCount():Int = positionSnapshots.size
     fun telemetrySnapshotCount():Int = telemetrySnapshots.size
+    fun driverInfo():List<DriverInfo> = archivedDriverInfo
 
     fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs }
 
@@ -105,6 +109,30 @@ class ReplayTimingClient {
     fun snapshotCount():Int = snapshots.size
     fun isLoaded()=snapshots.isNotEmpty()
     fun sync():ReplaySyncData=syncData
+    internal fun parseDriverInfo(text:String):List<DriverInfo> {
+        val result=linkedMapOf<String,DriverInfo>()
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val body=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val root=body.optJSONObject("DriverList") ?: body.optJSONObject("Drivers") ?: body
+            val keys=root.keys()
+            while(keys.hasNext()){
+                val key=keys.next()
+                val item=root.optJSONObject(key) ?: continue
+                val number=item.optString("RacingNumber").ifBlank{key}
+                val name=item.optString("FullName").ifBlank{
+                    listOf(item.optString("FirstName"),item.optString("LastName")).filter(String::isNotBlank).joinToString(" ")
+                }.ifBlank{item.optString("BroadcastName")}.ifBlank{number}
+                val acronym=item.optString("Tla").ifBlank{item.optString("ShortName")}.ifBlank{number}
+                val team=item.optString("TeamName").ifBlank{item.optString("Team")}.ifBlank{"-"}
+                val color=item.optString("TeamColour").ifBlank{item.optString("TeamColor")}.removePrefix("#").ifBlank{"FFFFFF"}
+                if(number.isNotBlank())result[number]=DriverInfo(number,name,acronym,team,color)
+            }
+            if(result.isNotEmpty())return@forEachLine
+        }
+        return result.values.sortedWith(compareBy<DriverInfo>{it.number.toIntOrNull()?:Int.MAX_VALUE}.thenBy{it.number})
+    }
+
     internal fun parse(text:String):List<ReplayTimingSnapshot> {
         val out=ArrayList<ReplayTimingSnapshot>()
         val mergedLines=JSONObject()
