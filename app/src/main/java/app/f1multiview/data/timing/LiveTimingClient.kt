@@ -67,9 +67,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val liveHistory=java.util.ArrayDeque<LiveTimingSnapshot>()
     private var lastHistorySampleAtMs=0L
     private var lastFeedSummaryAtMs = 0L
+    private var lastRowsLogAtMs = 0L
+    private var lastPositionLogAtMs = 0L
+    @Volatile private var lastTimingRowsAtMs = 0L
+    private var freshnessWatcher: Job? = null
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
-    fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
+    fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;freshnessWatcher?.cancel();freshnessWatcher=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
     fun restart(){ stop(); start() }
     // The public LiveTiming SignalR service is anonymous. F1TV playback bearer tokens belong to
     // a different backend and must not be sent to livetiming.formula1.com.
@@ -155,7 +159,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                         .put("arguments",JSONArray().put(feedArray))
                     val sent = ws.send(subscribe.toString()+RS)
                     _status.value = if (sent) "SUBSCRIBE_SENT" else "ERROR"
-                    AppLogger.i("LiveTiming","SIGNALR_SUBSCRIBE_SENT acceptedBySocket=$sent feedCount=${FEEDS.size}")
+                    AppLogger.i("LiveTiming","LIVE_TIMING_SUBSCRIPTION_SENT acceptedBySocket=$sent feedCount=${FEEDS.size}")
                     if (!sent) {
                         ws.close(1011, "Subscribe message was not queued")
                         return@forEach
