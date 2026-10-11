@@ -42,7 +42,7 @@ data class UiState(
     val standings: List<StandingRow> = emptyList(),
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
-    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(), val replayPlayheadMs: Long = 0L,
+    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(), val replayPlayheadMs: Long = 0L, val replayDataOffsetMs: Long = 0L,
     val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
@@ -249,7 +249,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
-            timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L
+            timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L,replayDataOffsetMs=0L
         )
         if (!session.live) loadReplayTiming(session)
         loadStreams(session)
@@ -404,50 +404,42 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     val info = state.liveSessionInfo
     val selectedSession = state.session
     val replay = selectedSession?.live == false
-    // Live metadata belongs to the active live timing session; for VOD/replay use the selected
-    // archive's year/title instead so a live-session circuit key cannot point at the wrong track.
+    // On replay, prefer SessionInfo parsed from that replay archive. setSession/loadReplayTiming
+    // clears the old session metadata first, so this cannot accidentally reuse a previous race's key.
     val year = if (replay) {
-        selectedSession?.seasonYear ?: info.year ?: state.selectedSeason?.year ?: java.time.Year.now().value
+        info.year?.takeIf { it > 0 } ?: selectedSession?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
     } else {
-        info.year ?: selectedSession?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
+        info.year?.takeIf { it > 0 } ?: selectedSession?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
     }
-    val meeting = if (replay) {
-        selectedSession?.name.orEmpty()
+    val metadataMeeting = info.meeting.takeUnless { it.isBlank() || it == "-" }
+    val meeting = metadataMeeting ?: selectedSession?.name.orEmpty()
+    val circuitName = info.circuitName.takeUnless { it.isBlank() || it == "-" }.orEmpty()
+    val circuitKey = info.circuitKey?.takeIf { it > 0 }
+
+    val existing = if (circuitKey != null) {
+        trackMapClient.load(circuitKey, year, circuitName.ifBlank { meeting })
     } else {
-        info.meeting.takeUnless { it.isBlank() || it == "-" } ?: selectedSession?.name.orEmpty()
+        Result.failure(IllegalStateException("Circuit key is not available; resolving by validated bundled circuit aliases"))
     }
-    val circuitName = if (replay) "" else info.circuitName
-    val existing = if (!replay && info.circuitKey != null) {
-        trackMapClient.load(info.circuitKey, year, circuitName.ifBlank { meeting })
-    } else {
-        Result.failure(IllegalStateException(
-            if (replay) "Replay circuit is resolved from the selected archive title"
-            else "Circuit key is not available for this session; use meeting lookup"
-        ))
-    }
-    // A successful circuit API response can still lack a validated centreline.
-    // Do not treat corner metadata alone as a usable map: retry through meeting lookup
-    // so the centreline matcher gets the canonical circuit name from OpenF1.
     val hasUsableGeometry = existing.getOrNull()?.centerline?.size?.let { it >= 20 } == true
-    val resolved = if (hasUsableGeometry) existing else {
-        trackMapClient.loadByName(year, meeting, circuitName)
-    }
+    val resolved = if (hasUsableGeometry) existing else trackMapClient.loadByName(year, meeting, circuitName)
     resolved.fold(
         onSuccess = { geometry ->
-            // A successful provider response can still contain only corner metadata.
-            // Never publish it as a ready map unless its centreline is validated.
             if (geometry.centerline.size < 20) {
                 val reason = "Matched circuit returned only ${geometry.centerline.size} centreline points (minimum 20)"
                 _ui.value = _ui.value.copy(trackGeometry=null, providerError="Track map geometry unavailable: " + reason)
                 AppLogger.w("TrackMap", "GEOMETRY_REJECTED circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
             } else {
                 _ui.value = _ui.value.copy(trackGeometry=geometry, providerError=null)
-                AppLogger.i("TrackMap", "GEOMETRY_READY circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
+                AppLogger.i(
+                    "TrackMap",
+                    "TRACK_GEOMETRY_COORDINATE_MAPPING_VALIDATED circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}"
+                )
             }
         },
         onFailure = { failure ->
             _ui.value = _ui.value.copy(trackGeometry=null, providerError="Track map geometry unavailable: " + (failure.message ?: "unknown error"))
-            AppLogger.w("TrackMap", "GEOMETRY_UNAVAILABLE year=${year} meetingNamePresent=${meeting.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()} reason=${failure.javaClass.simpleName}")
+            AppLogger.w("TrackMap", "TRACK_GEOMETRY_UNAVAILABLE year=$year meetingNamePresent=${meeting.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()} reason=${failure.javaClass.simpleName}")
         }
     )
 }
@@ -538,7 +530,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             currentLap=metadataState.currentLap, totalLaps=metadataState.totalLaps,
             sessionClock=metadataState.sessionClock,
             timingStatus="REPLAY",
-            replayPlayheadMs=positionMs.coerceAtLeast(0L)
+            replayPlayheadMs=positionMs.coerceAtLeast(0L),
+            replayDataOffsetMs=replayTimingClient.archiveOffsetForVideoPosition(positionMs)
         )
     }
     private fun cancelReplayTimingLoad() {
