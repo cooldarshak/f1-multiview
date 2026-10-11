@@ -188,6 +188,22 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun raceControlUiRetainsEarlierMessagesAcrossSparseUpdates() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseRaceControl(JSONObject(
+            """{"Messages":[{"Utc":"2026-10-11T12:00:00Z","Message":"First message","Flag":"GREEN"},{"Utc":"2026-10-11T12:01:00Z","Message":"Second message","Flag":"INFO"}]}"""
+        ))
+        client.parseRaceControl(JSONObject(
+            """{"Messages":{"1":{"Flag":"YELLOW"}}}"""
+        ))
+
+        val rows = client.raceControl.value
+        assertEquals(2, rows.size)
+        assertTrue(rows.any { it.message == "First message" })
+        val updated = rows.first { it.message == "Second message" }
+        assertEquals("YELLOW", updated.severity)
+    }
+    @Test
     fun numericKeyDeltasMergeIntoExistingRaceControlArraySnapshots() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val target = JSONObject(
