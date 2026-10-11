@@ -251,6 +251,22 @@ class LiveTimingClientTest {
         assertEquals("35.000", row.sector3)
     }
     @Test
+    fun parsesLapCountAsScalarsAndValueWrappedFieldsWithoutErasingPartialUpdates() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseLapCount(JSONObject("""{"CurrentLap":7,"TotalLaps":57}"""))
+        assertEquals(7 to 57, client.lapCount.value)
+
+        client.parseLapCount(JSONObject("""{"CurrentLap":{"Value":8}}"""))
+        assertEquals(8 to 57, client.lapCount.value)
+
+        client.parseLapCount(JSONObject("""{"TotalLaps":{"Value":"60"}}"""))
+        assertEquals(8 to 60, client.lapCount.value)
+
+        client.parseLapCount(JSONObject("""{"CurrentLap":0,"TotalLaps":0}"""))
+        assertEquals(8 to 60, client.lapCount.value)
+    }
+
+    @Test
     fun sparseTimingUpdatesPreserveUntouchedNestedFields() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val current = JSONObject(
