@@ -43,7 +43,7 @@ data class UiState(
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
     val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(), val replayPlayheadMs: Long = 0L, val replayDataOffsetMs: Long = 0L, val replaySyncCalibrated: Boolean = false,
-    val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
+    val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null, val trackPositionMappingValid: Boolean? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
     val pendingResume: ContinueWatchingEntry? = null
@@ -71,7 +71,14 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(telemetry=items)}}
         viewModelScope.launch{timingClient.driverInfo.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(driverInfo=items)}}
         viewModelScope.launch{timingClient.sessionInfo.collect{info->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(liveSessionInfo=info)}}
-        viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackPositions=positions)}}
+        viewModelScope.launch {
+            timingClient.trackPositions.collect { positions ->
+                if (_ui.value.session?.live == true && !livePlaybackSyncActive) {
+                    _ui.value = _ui.value.copy(trackPositions = positions)
+                    validateTrackPositionMapping(positions)
+                }
+            }
+        }
         viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackStatus=status)}}
         viewModelScope.launch{timingClient.lapCount.collect{laps->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
         viewModelScope.launch{timingClient.sessionClock.collect{clock->if(_ui.value.session?.live == true && !livePlaybackSyncActive)_ui.value=_ui.value.copy(sessionClock=clock)}}
@@ -270,8 +277,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         _ui.value=_ui.value.copy(
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
-            trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
-            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
+            trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",trackPositionMappingValid=null,
+            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,trackPositionMappingValid=null,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
         )
         if (shouldLoadReplayTiming(session)) loadReplayTiming(session) else cancelReplayTimingLoad()
         loadStreams(session)
