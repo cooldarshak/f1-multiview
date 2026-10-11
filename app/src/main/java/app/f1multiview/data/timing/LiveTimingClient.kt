@@ -55,20 +55,18 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
     fun restart(){ stop(); start() }
+    // The public LiveTiming SignalR service is anonymous. F1TV playback bearer tokens belong to
+    // a different backend and must not be sent to livetiming.formula1.com.
     private fun connect(){scope.launch(Dispatchers.IO){
         try{
             _status.value="CONNECTING"
-            val authHeaders=runCatching{authHeadersProvider()}.getOrDefault(emptyMap())
-            affinityCookie=fetchAffinityCookie(authHeaders)?:affinityCookie
-            val token=negotiate(authHeaders)?:throw IllegalStateException("Timing negotiation returned no connection token")
+            affinityCookie=fetchAffinityCookie()?:affinityCookie
+            val token=negotiate(affinityCookie)?:throw IllegalStateException("Timing negotiation returned no connection token")
             val requestBuilder=Request.Builder()
                 .url(WS+java.net.URLEncoder.encode(token,"UTF-8"))
-                .header("User-Agent","F1MultiView/1.0 Android")
-                .header("Origin","https://f1tv.formula1.com")
-                .header("Referer","https://f1tv.formula1.com/")
+                .header("User-Agent","BestHTTP")
                 .apply{affinityCookie?.let{header("Cookie",it)}}
-            authHeaders.forEach{(key,value)->requestBuilder.header(key,value)}
-            AppLogger.i("LiveTiming","SIGNALR_CONNECTING authHeaderCount=${authHeaders.size} affinityCookiePresent=${!affinityCookie.isNullOrBlank()}")
+            AppLogger.i("LiveTiming","SIGNALR_CONNECTING affinityCookiePresent=${!affinityCookie.isNullOrBlank()}")
             socket=http.newWebSocket(requestBuilder.build(),Listener())
         }catch(failure:Throwable){
             AppLogger.w("LiveTiming","SIGNALR_CONNECT_FAILED reason=${failure.javaClass.simpleName}")
@@ -76,31 +74,33 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             scheduleReconnect()
         }
     }}
-    private fun fetchAffinityCookie(authHeaders:Map<String,String>):String?{
-        val reqBuilder=Request.Builder().url("$BASE/signalrcore/negotiate")
+    private fun fetchAffinityCookie():String? {
+        val request=Request.Builder()
+            .url("$BASE/signalrcore/negotiate")
             .method("OPTIONS",null)
-            .header("User-Agent","F1MultiView/1.0 Android")
-            .header("Origin","https://f1tv.formula1.com")
-            .header("Referer","https://f1tv.formula1.com/")
-        authHeaders.forEach{(k,v)->reqBuilder.header(k,v)}
-        return runCatching{http.newCall(reqBuilder.build()).execute().use{r->
-            r.headers.values("Set-Cookie").firstNotNullOfOrNull{c->c.substringBefore(';').takeIf{it.startsWith("AWSALBCORS=",true)}}
-        }}.getOrNull()
+            .header("User-Agent","BestHTTP")
+            .build()
+        return runCatching {
+            http.newCall(request).execute().use { response ->
+                response.headers.values("Set-Cookie")
+                    .firstNotNullOfOrNull { value ->
+                        value.substringBefore(';').takeIf{it.startsWith("AWSALBCORS=",true)}
+                    }
+            }
+        }.getOrNull()
     }
-    private fun negotiate(authHeaders:Map<String,String>):String?{
-        val reqBuilder=Request.Builder().url(NEGOTIATE)
+    private fun negotiate(cookie:String?):String? {
+        val requestBuilder=Request.Builder()
+            .url(NEGOTIATE)
             .post("".toRequestBody("application/json".toMediaType()))
-            .header("User-Agent","F1MultiView/1.0 Android")
-            .header("Origin","https://f1tv.formula1.com")
-            .header("Referer","https://f1tv.formula1.com/")
-            .apply{affinityCookie?.let{header("Cookie",it)}}
-        authHeaders.forEach{(k,v)->reqBuilder.header(k,v)}
-        http.newCall(reqBuilder.build()).execute().use{r->
-            if(!r.isSuccessful){
-                AppLogger.w("LiveTiming","SIGNALR_NEGOTIATE_FAILED httpStatus=${r.code}")
+            .header("User-Agent","BestHTTP")
+            .apply{cookie?.let{header("Cookie",it)}}
+        http.newCall(requestBuilder.build()).execute().use { response ->
+            if(!response.isSuccessful){
+                AppLogger.w("LiveTiming","SIGNALR_NEGOTIATE_FAILED httpStatus=${response.code}")
                 return null
             }
-            val json=JSONObject(r.body?.string().orEmpty())
+            val json=JSONObject(response.body?.string().orEmpty())
             val token=json.optString("connectionToken").ifBlank{json.optString("connectionId")}.takeIf{it.isNotBlank()}
             AppLogger.i("LiveTiming","SIGNALR_NEGOTIATED tokenPresent=${!token.isNullOrBlank()}")
             return token
