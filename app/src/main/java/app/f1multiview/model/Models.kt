@@ -10,6 +10,7 @@ data class StreamSource(
     val playApiVersion: String? = null, val platform: String? = null, val streamType: String? = null,
     val ascendonToken: String? = null, val entitlementToken: String? = null, val drmType: String? = null, val playToken: String? = null, val drmProtected: Boolean = false
 )
+data class DriverInfo(val number: String, val name: String = "-", val acronym: String = "-", val team: String = "-", val teamColor: String = "FFFFFF")
 data class DriverTelemetry(val driver: String, val speed: Int, val rpm: Int, val gear: Int, val throttle: Int, val brake: Int, val lap: Int, val lapTime: String)
 data class TimingRow(val position: Int, val driver: String, val gap: String, val lastLap: String, val tyre: String, val pitStops: Int, val sector1: String = "-", val sector2: String = "-", val sector3: String = "-", val speed: String = "-", val bestLap: String = "-", val lap: Int = 0, val sector1Status: String = "NORMAL", val sector2Status: String = "NORMAL", val sector3Status: String = "NORMAL", val sector1Segments: List<String> = emptyList(), val sector2Segments: List<String> = emptyList(), val sector3Segments: List<String> = emptyList(), val interval: String = "-", val leaderGap: String = "-", val driverNumber: String = "")
 data class RaceControlEvent(val time: String, val message: String, val severity: String)
