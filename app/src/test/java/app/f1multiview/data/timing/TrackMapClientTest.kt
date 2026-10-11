@@ -51,6 +51,14 @@ class TrackMapClientTest {
 
 
     @Test
+    fun retriesOlderPublicCircuitCataloguesWhenCurrentSeasonLookupIsRestricted() {
+        assertEquals(listOf(2026, 2025, 2024, 2023), TrackMapClient.catalogLookupYears(2026))
+        assertEquals(listOf(2025, 2024, 2023), TrackMapClient.catalogLookupYears(2025))
+        // For archived races, recent public catalogue data is still useful for stable venue keys.
+        assertEquals(listOf(2023), TrackMapClient.catalogLookupYears(2021))
+    }
+
+    @Test
     fun parsesNativeCircuitTraceInTelemetryCoordinates() {
         val x = JSONArray()
         val y = JSONArray()

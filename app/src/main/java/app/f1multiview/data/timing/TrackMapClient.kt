@@ -22,6 +22,14 @@ class TrackMapClient {
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
         internal const val MIN_CENTERLINE_POINTS = 20
+
+        /**
+         * Try the requested year's catalogue first, then public historical catalogues.
+         * OpenF1 real-time/current-season access can be restricted, while historical circuit
+         * metadata is publicly available. Circuit keys for established venues are stable.
+         */
+        internal fun catalogLookupYears(requestedYear: Int): List<Int> =
+            (maxOf(requestedYear, 2023) downTo 2023).toList()
     }
     private val http = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -29,54 +37,88 @@ class TrackMapClient {
         .build()
 
     /**
-     * Resolve missing F1 SessionInfo circuit keys by matching the meeting/circuit name against
-     * OpenF1's public meetings catalogue. OpenF1 returns MultiViewer's circuit_key and circuit_info_url,
-     * so the resulting key is suitable for the existing authoritative MultiViewer geometry endpoint.
+     * Resolve a missing circuit key using public historical OpenF1 catalogues when the
+     * current-season catalogue is restricted. For established circuits the circuit key is
+     * stable across seasons; the MultiViewer geometry request still uses the requested year.
+     * New circuits without an unambiguous public match remain unavailable rather than guessed.
      */
     suspend fun loadByName(year: Int, meetingName: String, circuitName: String = ""): Result<TrackMapGeometry> {
         val lookup = withContext(Dispatchers.IO) {
             runCatching {
-                val request = Request.Builder()
-                    .url("https://api.openf1.org/v1/meetings?year=" + year)
-                    .header("User-Agent", "F1MultiView/1.0 Android")
-                    .build()
-                val meetings = http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) error("Circuit lookup HTTP " + response.code)
-                    JSONArray(response.body?.string().orEmpty())
-                }
                 val wantedMeeting = normalize(meetingName)
                 val wantedCircuit = normalize(circuitName)
-                if (wantedMeeting.isBlank() && wantedCircuit.isBlank()) error("Missing meeting and circuit names")
-                val scoredMeetings = mutableListOf<Pair<JSONObject, Int>>()
-                for (i in 0 until meetings.length()) {
-                    val item = meetings.optJSONObject(i) ?: continue
-                    val name = normalize(item.optString("meeting_name"))
-                    val official = normalize(item.optString("meeting_official_name"))
-                    val shortName = normalize(item.optString("circuit_short_name"))
-                    val location = normalize(item.optString("location"))
-                    val score = when {
-                        wantedMeeting.isNotBlank() && name == wantedMeeting -> 100
-                        wantedMeeting.isNotBlank() && official.contains(wantedMeeting) -> 95
-                        wantedMeeting.isNotBlank() && name.contains(wantedMeeting) -> 90
-                        wantedMeeting.isNotBlank() && wantedMeeting.contains(name) && name.isNotBlank() -> 80
-                        wantedCircuit.isNotBlank() && shortName == wantedCircuit -> 100
-                        wantedCircuit.isNotBlank() && shortName.contains(wantedCircuit) -> 90
-                        wantedCircuit.isNotBlank() && location.contains(wantedCircuit) -> 80
-                        wantedCircuit.isNotBlank() && wantedCircuit.contains(location) && location.isNotBlank() -> 70
-                        else -> 0
-                    }
-                    scoredMeetings += item to score
+                if (wantedMeeting.isBlank() && wantedCircuit.isBlank()) {
+                    error("Missing meeting and circuit names")
                 }
-                val selectedIndex = uniqueBestIndex(scoredMeetings.map { it.second }, minimumScore = 70)
-                    ?: error("No unique circuit match for meeting metadata")
-                val item = scoredMeetings[selectedIndex].first
-                val key = item.optInt("circuit_key", 0).takeIf { it > 0 }
-                    ?: error("Matched meeting has no circuit key")
-                val geometryName = item.optString("circuit_short_name")
-                    .ifBlank { item.optString("location") }
-                    .ifBlank { circuitName }
-                    .ifBlank { meetingName }
-                key to geometryName
+
+                var selected: Pair<Int, String>? = null
+                var lastFailure: Throwable? = null
+                val catalogueYears = catalogLookupYears(year)
+                for (catalogueYear in catalogueYears) {
+                    val meetings = try {
+                        val request = Request.Builder()
+                            .url("https://api.openf1.org/v1/meetings?year=" + catalogueYear)
+                            .header("User-Agent", "F1MultiView/1.0 Android")
+                            .build()
+                        http.newCall(request).execute().use { response ->
+                            if (!response.isSuccessful) {
+                                throw java.io.IOException("OpenF1 meeting catalogue HTTP " + response.code)
+                            }
+                            JSONArray(response.body?.string().orEmpty())
+                        }
+                    } catch (failure: Exception) {
+                        lastFailure = failure
+                        AppLogger.w(
+                            "TrackMap",
+                            "MEETING_CATALOGUE_UNAVAILABLE year=" + catalogueYear +
+                                " reason=" + failure.javaClass.simpleName
+                        )
+                        continue
+                    }
+
+                    val scoredMeetings = mutableListOf<Pair<JSONObject, Int>>()
+                    for (i in 0 until meetings.length()) {
+                        val item = meetings.optJSONObject(i) ?: continue
+                        val name = normalize(item.optString("meeting_name"))
+                        val official = normalize(item.optString("meeting_official_name"))
+                        val shortName = normalize(item.optString("circuit_short_name"))
+                        val location = normalize(item.optString("location"))
+                        val score = when {
+                            wantedMeeting.isNotBlank() && name == wantedMeeting -> 100
+                            wantedMeeting.isNotBlank() && official.contains(wantedMeeting) -> 95
+                            wantedMeeting.isNotBlank() && name.contains(wantedMeeting) -> 90
+                            wantedMeeting.isNotBlank() && wantedMeeting.contains(name) && name.isNotBlank() -> 80
+                            wantedCircuit.isNotBlank() && shortName == wantedCircuit -> 100
+                            wantedCircuit.isNotBlank() && shortName.contains(wantedCircuit) -> 90
+                            wantedCircuit.isNotBlank() && location.contains(wantedCircuit) -> 80
+                            wantedCircuit.isNotBlank() && wantedCircuit.contains(location) && location.isNotBlank() -> 70
+                            else -> 0
+                        }
+                        scoredMeetings += item to score
+                    }
+
+                    val selectedIndex = uniqueBestIndex(scoredMeetings.map { it.second }, minimumScore = 70)
+                        ?: continue
+                    val item = scoredMeetings[selectedIndex].first
+                    val key = item.optInt("circuit_key", 0).takeIf { it > 0 } ?: continue
+                    val geometryName = item.optString("circuit_short_name")
+                        .ifBlank { item.optString("location") }
+                        .ifBlank { circuitName }
+                        .ifBlank { meetingName }
+                    selected = key to geometryName
+                    AppLogger.i(
+                        "TrackMap",
+                        "CIRCUIT_KEY_RESOLVED requestedYear=" + year +
+                            " catalogueYear=" + catalogueYear + " circuitKey=" + key
+                    )
+                    break
+                }
+
+                selected ?: throw java.io.IOException(
+                    "No unambiguous public circuit catalogue match for meeting metadata " +
+                        "(catalogue years=" + catalogueYears.joinToString(",") + ")",
+                    lastFailure
+                )
             }
         }
         return lookup.fold(
@@ -84,7 +126,6 @@ class TrackMapClient {
             onFailure = { Result.failure(it) }
         )
     }
-
     suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> =
         withContext(Dispatchers.IO) {
             runCatching {

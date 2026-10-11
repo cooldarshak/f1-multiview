@@ -133,8 +133,36 @@ class MultiviewSurfaceManager(private val context: Context) {
                         "surfaceValid=${holder.surface.isValid} attached=${view.isAttachedToWindow} " +
                         "bounds=${view.width}x${view.height}"
                 )
-            }
 
+                // Attach only after Android has created the actual Surface. This avoids relying on
+                // toggling screenshot/capture mode (which destroys and recreates this view) to
+                // recover a protected video surface that became audible but remained black.
+                view.post {
+                    val current = bindings[feedId]
+                    if (
+                        current?.surfaceView !== view ||
+                        !current.playerOutputAttached ||
+                        !view.isAttachedToWindow ||
+                        !view.holder.surface.isValid
+                    ) {
+                        return@post
+                    }
+                    runCatching { current.owner.setVideoSurfaceView(view) }
+                        .onSuccess {
+                            AppLogger.i(
+                                "SecureSurface",
+                                "OUTPUT_REATTACHED feed=$feedId protected=$protectedContent " +
+                                    "viewId=${System.identityHashCode(view)} reason=surface-created"
+                            )
+                        }
+                        .onFailure { failure ->
+                            AppLogger.w(
+                                "SecureSurface",
+                                "OUTPUT_REATTACH_FAILED feed=$feedId reason=" + failure.javaClass.simpleName
+                            )
+                        }
+                }
+            }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 AppLogger.i(
                     "SecureSurface",
