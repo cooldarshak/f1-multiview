@@ -85,7 +85,10 @@ data class TrackDriverPosition(
     val stopped: Boolean = false,
     val retired: Boolean = false,
     val updatedAtMs: Long = 0L,
-    val trail: List<TrackPoint> = emptyList()
+    val trail: List<TrackPoint> = emptyList(),
+    val previousX: Double? = null,
+    val previousY: Double? = null,
+    val previousUpdatedAtMs: Long = 0L
 )
 
 data class TrackPoint(val x: Double, val y: Double)
