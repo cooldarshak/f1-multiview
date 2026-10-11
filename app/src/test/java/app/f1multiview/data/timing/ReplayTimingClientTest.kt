@@ -192,6 +192,47 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun exactArchiveSessionNameWinsOverBroadTypeMatch() {
+        val candidates = listOf(
+            ReplayArchiveSession("Sprint Qualifying", "Qualifying", "2026/meeting/sprint-qualifying"),
+            ReplayArchiveSession("Qualifying", "Qualifying", "2026/meeting/qualifying")
+        )
+        val result = resolveReplayArchiveSession(candidates, "Sprint Qualifying")
+        assertEquals("2026/meeting/sprint-qualifying", result.session.path)
+        assertEquals("exact-name", result.reason)
+    }
+
+    @Test
+    fun resolvesPracticeByExactNameRatherThanSharedSessionType() {
+        val candidates = listOf(
+            ReplayArchiveSession("Practice 1", "Practice", "p1"),
+            ReplayArchiveSession("Practice 2", "Practice", "p2"),
+            ReplayArchiveSession("Practice 3", "Practice", "p3")
+        )
+        assertEquals("p2", resolveReplayArchiveSession(candidates, "Practice 2").session.path)
+    }
+
+    @Test
+    fun rejectsAmbiguousArchiveSessionTypesInsteadOfChoosingFirst() {
+        val candidates = listOf(
+            ReplayArchiveSession("Practice 1", "Practice", "p1"),
+            ReplayArchiveSession("Practice 2", "Practice", "p2")
+        )
+        val failure = runCatching { resolveReplayArchiveSession(candidates, "Practice") }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message?.contains("Ambiguous") == true)
+    }
+
+    @Test
+    fun rejectsMissingArchiveSessionMatches() {
+        val failure = runCatching {
+            resolveReplayArchiveSession(listOf(ReplayArchiveSession("Race", "Race", "race")), "Sprint")
+        }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message?.contains("No archive session matches") == true)
+    }
+
+    @Test
     fun replayTimingDeltasMergeIntoPersistentDriverState() {
         val stream = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}},"4":{"Position":2,"Tla":"NOR","GapToLeader":"+1.2"}}}
 00:00:02.000{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"4":{"GapToLeader":"+0.8"}}}
