@@ -21,6 +21,7 @@ import kotlin.math.*
 class TrackMapClient {
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
+        internal const val MIN_CENTERLINE_POINTS = 20
     }
     private val http = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -112,17 +113,24 @@ class TrackMapClient {
                     )
                 }
                 val orderedCorners = corners.sortedWith(compareBy<TrackCorner> { it.distance }.thenBy { it.number })
-                val centerline = if (circuitName.isNotBlank() && orderedCorners.size >= 3) {
-                    loadAlignedCenterline(circuitName, orderedCorners)
-                } else emptyList()
-                if (centerline.size < 20) {
-                    // Do not draw a misleading corner-to-corner polygon as a circuit.
-                    // A missing/ambiguous source is explicitly represented as unavailable.
-                    if (orderedCorners.isEmpty()) error("Circuit corner catalogue was empty")
+                // MultiViewer's circuit response includes the sampled circuit trace as parallel
+                // x/y arrays in the same telemetry coordinate system as corner.trackPosition.
+                // Prefer that native trace: it avoids the unauthenticated OpenF1 lookup and the
+                // lossy GeoJSON-to-telemetry affine alignment. Keep GeoJSON only as a fallback
+                // for older payloads that genuinely omit the trace.
+                val nativeCenterline = parseTrackCoordinates(root.optJSONArray("x"), root.optJSONArray("y"))
+                val centerline = when {
+                    nativeCenterline.size >= MIN_CENTERLINE_POINTS -> nativeCenterline
+                    circuitName.isNotBlank() && orderedCorners.size >= 3 ->
+                        loadAlignedCenterline(circuitName, orderedCorners)
+                    else -> emptyList()
+                }
+                if (centerline.size < MIN_CENTERLINE_POINTS && orderedCorners.isEmpty()) {
+                    error("Circuit response has neither a valid centreline nor a corner catalogue")
                 }
                 TrackMapGeometry(
                     circuitKey = circuitKey,
-                    year = year,
+                    year = root.optInt("year", year),
                     rotation = root.optDouble("rotation", 0.0),
                     corners = orderedCorners,
                     centerline = centerline
@@ -207,6 +215,31 @@ class TrackMapClient {
         }
         if (transformed.any { !it.x.isFinite() || !it.y.isFinite() }) return emptyList()
         return transformed
+    }
+
+
+    /**
+     * Parses MultiViewer's native circuit trace. Both arrays must be complete, aligned,
+     * finite, and sufficiently dense; rejecting the whole trace is safer than drawing
+     * a truncated or fabricated circuit.
+     */
+    internal fun parseTrackCoordinates(x: JSONArray?, y: JSONArray?): List<TrackPoint> {
+        if (x == null || y == null || x.length() != y.length() || x.length() < MIN_CENTERLINE_POINTS) {
+            return emptyList()
+        }
+        val points = ArrayList<TrackPoint>(x.length())
+        for (i in 0 until x.length()) {
+            val px = x.optDouble(i, Double.NaN)
+            val py = y.optDouble(i, Double.NaN)
+            if (!px.isFinite() || !py.isFinite()) return emptyList()
+            points += TrackPoint(px, py)
+        }
+        val minX = points.minOf { it.x }
+        val maxX = points.maxOf { it.x }
+        val minY = points.minOf { it.y }
+        val maxY = points.maxOf { it.y }
+        if (maxX - minX <= 1e-9 || maxY - minY <= 1e-9) return emptyList()
+        return points
     }
 
     private data class GeoPoint(val lon: Double, val lat: Double)
