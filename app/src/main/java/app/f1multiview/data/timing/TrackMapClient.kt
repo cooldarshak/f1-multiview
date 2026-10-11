@@ -43,9 +43,7 @@ class TrackMapClient {
                 val wantedMeeting = normalize(meetingName)
                 val wantedCircuit = normalize(circuitName)
                 if (wantedMeeting.isBlank() && wantedCircuit.isBlank()) error("Missing meeting and circuit names")
-                var selected: JSONObject? = null
-                var bestScore = 0
-                var ambiguousBestMatch = false
+                val scoredMeetings = mutableListOf<Pair<JSONObject, Int>>()
                 for (i in 0 until meetings.length()) {
                     val item = meetings.optJSONObject(i) ?: continue
                     val name = normalize(item.optString("meeting_name"))
@@ -63,16 +61,11 @@ class TrackMapClient {
                         wantedCircuit.isNotBlank() && wantedCircuit.contains(location) && location.isNotBlank() -> 70
                         else -> 0
                     }
-                    if (score > bestScore) {
-                        bestScore = score
-                        selected = item
-                        ambiguousBestMatch = false
-                    } else if (score > 0 && score == bestScore) {
-                        ambiguousBestMatch = true
-                    }
+                    scoredMeetings += item to score
                 }
-                val item = selected?.takeIf { bestScore >= 70 && !ambiguousBestMatch }
-                    ?: error("No circuit match for meeting metadata")
+                val selectedIndex = uniqueBestIndex(scoredMeetings.map { it.second }, minimumScore = 70)
+                    ?: error("No unique circuit match for meeting metadata")
+                val item = scoredMeetings[selectedIndex].first
                 val key = item.optInt("circuit_key", 0).takeIf { it > 0 }
                     ?: error("Matched meeting has no circuit key")
                 val geometryName = item.optString("circuit_short_name")
@@ -149,9 +142,7 @@ class TrackMapClient {
         // Empty-string containment matches every feature, which could silently select
         // the first circuit in the catalogue and place drivers on the wrong map.
         if (wanted.isBlank()) return emptyList()
-        var best: JSONObject? = null
-        var bestScore = 0
-        var ambiguousBestMatch = false
+        val scoredFeatures = mutableListOf<Pair<JSONObject, Int>>()
         for (i in 0 until features.length()) {
             val feature = features.optJSONObject(i) ?: continue
             val props = feature.optJSONObject("properties") ?: continue
@@ -163,17 +154,12 @@ class TrackMapClient {
                 location.isNotBlank() && (wanted.contains(location) || location.contains(wanted)) -> 30
                 else -> 0
             }
-            if (score > bestScore) {
-                bestScore = score
-                best = feature
-                ambiguousBestMatch = false
-            } else if (score > 0 && score == bestScore) {
-                ambiguousBestMatch = true
-            }
+            scoredFeatures += feature to score
         }
         // Circuit labels can be shared by alternate layouts or historic venues. Never
         // silently pick whichever equal-scoring feature happens to appear first.
-        val feature = best?.takeIf { bestScore >= 80 && !ambiguousBestMatch } ?: return emptyList()
+        val selectedIndex = uniqueBestIndex(scoredFeatures.map { it.second }, minimumScore = 80) ?: return emptyList()
+        val feature = scoredFeatures[selectedIndex].first
         val properties = feature.optJSONObject("properties") ?: return emptyList()
         val geometry = feature.optJSONObject("geometry") ?: return emptyList()
         if (!geometry.optString("type").equals("LineString", true)) return emptyList()
@@ -209,6 +195,14 @@ class TrackMapClient {
     }
 
     private data class GeoPoint(val lon: Double, val lat: Double)
+
+    /** Returns the index of the sole highest-scoring candidate, or null for no match/ties. */
+    internal fun uniqueBestIndex(scores: List<Int>, minimumScore: Int): Int? {
+        if (scores.isEmpty()) return null
+        val best = scores.maxOrNull() ?: return null
+        if (best < minimumScore || scores.count { it == best } != 1) return null
+        return scores.indexOf(best)
+    }
 
     internal fun normalize(value: String): String {
         // A selected replay name may contain ": Qualifying 1" or "Race" after the meeting name.
