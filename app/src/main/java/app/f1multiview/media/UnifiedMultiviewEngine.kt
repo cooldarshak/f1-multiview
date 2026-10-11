@@ -280,8 +280,9 @@ class UnifiedMultiviewEngine(context: Context) {
         else decoderManager.qualityAvailable(id, quality)
     fun setAudioPlayer(id: String?) {
         if (!multiFeedBlocked) {
-            selectedAudioFeedId = id
-            decoderManager.setAudioPlayer(id)
+            val effectiveId = if (id != null) singleFeedFallbackMainId ?: id else null
+            selectedAudioFeedId = effectiveId
+            decoderManager.setAudioPlayer(effectiveId)
             return
         }
         if (id == null) {
