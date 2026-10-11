@@ -247,8 +247,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
             timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null
         )
-        loadStreams(session)
         if (!session.live) loadReplayTiming(session)
+        loadStreams(session)
     }
     private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
         provider.streams(session.id).fold(
