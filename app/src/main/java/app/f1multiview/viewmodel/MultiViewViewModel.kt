@@ -30,8 +30,8 @@ sealed interface AuthState {
 data class UiState(
     val auth:AuthState=AuthState.Checking,val layout:LayoutPreset=LayoutPreset.GRID_4,val session:Session?=null,
     val sessions: List<Session> =emptyList(),val streams: List<StreamSource> =emptyList(),
-    val telemetry: List<DriverTelemetry> =DemoRepository.telemetry(), val liveSessionInfo: LiveSessionInfo = LiveSessionInfo(),val timing: List<TimingRow> =DemoRepository.timing(), val currentLap:Int = 0, val totalLaps:Int = 0,
-    val raceControl: List<RaceControlEvent> =DemoRepository.raceControl(), val weather: TimingWeather = TimingWeather(),val sessionClock:String = "-",val selectedPanel:String?=null,val syncOffsetMs:Long=0,
+    val telemetry: List<DriverTelemetry> = emptyList(), val liveSessionInfo: LiveSessionInfo = LiveSessionInfo(),val timing: List<TimingRow> = emptyList(), val currentLap:Int = 0, val totalLaps:Int = 0,
+    val raceControl: List<RaceControlEvent> = emptyList(), val weather: TimingWeather = TimingWeather(),val sessionClock:String = "-",val selectedPanel:String?=null,val syncOffsetMs:Long=0,
     val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
@@ -60,17 +60,17 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     init{
         _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
-        viewModelScope.launch{timingClient.rows.collect{rows->if(rows.isNotEmpty())_ui.value=_ui.value.copy(timing=rows)}}
-        viewModelScope.launch{timingClient.status.collect{status->_ui.value=_ui.value.copy(timingStatus=status)}}
-        viewModelScope.launch{timingClient.raceControl.collect{events->if(events.isNotEmpty())_ui.value=_ui.value.copy(raceControl=events)}}
-        viewModelScope.launch{timingClient.weather.collect{weather->_ui.value=_ui.value.copy(weather=weather)}}
-        viewModelScope.launch{timingClient.teamRadio.collect{items->_ui.value=_ui.value.copy(teamRadio=items)}}
-        viewModelScope.launch{timingClient.telemetry.collect{items->if(items.isNotEmpty())_ui.value=_ui.value.copy(telemetry=items)}}
-        viewModelScope.launch{timingClient.sessionInfo.collect{info->_ui.value=_ui.value.copy(liveSessionInfo=info)}}
-        viewModelScope.launch{timingClient.trackPositions.collect{positions->_ui.value=_ui.value.copy(trackPositions=positions)}}
-        viewModelScope.launch{timingClient.trackStatus.collect{status->_ui.value=_ui.value.copy(trackStatus=status)}}
-        viewModelScope.launch{timingClient.lapCount.collect{laps->_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
-        viewModelScope.launch{timingClient.sessionClock.collect{clock->_ui.value=_ui.value.copy(sessionClock=clock)}}
+        viewModelScope.launch{timingClient.rows.collect{rows->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(timing=rows)}}
+        viewModelScope.launch{timingClient.status.collect{status->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(timingStatus=status)}}
+        viewModelScope.launch{timingClient.raceControl.collect{events->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(raceControl=events)}}
+        viewModelScope.launch{timingClient.weather.collect{weather->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(weather=weather)}}
+        viewModelScope.launch{timingClient.teamRadio.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(teamRadio=items)}}
+        viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(telemetry=items)}}
+        viewModelScope.launch{timingClient.sessionInfo.collect{info->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(liveSessionInfo=info)}}
+        viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(trackPositions=positions)}}
+        viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(trackStatus=status)}}
+        viewModelScope.launch{timingClient.lapCount.collect{laps->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
+        viewModelScope.launch{timingClient.sessionClock.collect{clock->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(sessionClock=clock)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
@@ -242,13 +242,14 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         provider.streams(session.id).fold(
             { sources ->
                 val mainSource = sources.firstOrNull { it.kind == StreamKind.WORLD } ?: sources.firstOrNull()
-                val playableSources = sources.filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
+                val nativeDataKinds = setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+                val playableSources = sources.filter { it.kind !in nativeDataKinds }
                 val selected = if (autoSelectFeeds) listOfNotNull(mainSource?.id) + playableSources.filter { it.id != mainSource?.id }.take(3).map { it.id } else listOfNotNull(mainSource?.id)
                 val selectedDistinct = selected.distinct().take(4)
                 _ui.value = _ui.value.copy(streams=sources, selectedStreamIds=selectedDistinct, mainStreamId=mainSource?.id, providerError=null)
                 val sourcesToResolve = buildList {
                     mainSource?.takeIf { it.url == null }?.let(::add)
-                    if (autoSelectFeeds) sources.filter { it.id in selectedDistinct && it.id != mainSource?.id && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }.forEach(::add)
+                    if (autoSelectFeeds) sources.filter { it.id in selectedDistinct && it.id != mainSource?.id && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK) }.forEach(::add)
                 }.distinctBy { it.id }
                 for (source in sourcesToResolve) resolveSource(source)
             },
@@ -311,9 +312,9 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
 }
 fun toggleStream(id:String)=viewModelScope.launch{
     val tapped = _ui.value.streams.firstOrNull { it.id == id } ?: return@launch
-    val isNativeDashboard = tapped.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+    val isNativeDashboard = tapped.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
     var current = _ui.value.selectedStreamIds
-    val videoKinds = setOf(StreamKind.WORLD, StreamKind.ONBOARD, StreamKind.TIMING, StreamKind.TRACK, StreamKind.HELICAM, StreamKind.DATA, StreamKind.F1_DASH)
+    val videoKinds = setOf(StreamKind.WORLD, StreamKind.ONBOARD, StreamKind.HELICAM, StreamKind.DATA, StreamKind.F1_DASH)
     val hasSelectedVideo = current.any { selectedId ->
         _ui.value.streams.firstOrNull { it.id == selectedId }?.kind in videoKinds
     }
@@ -367,7 +368,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
 
     val source = _ui.value.streams.firstOrNull { it.id == id } ?: return@launch
     if (source.url == null &&
-        source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+        source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
     ) {
         resolveSource(source)
     }
@@ -389,7 +390,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-        if (source.kind == StreamKind.TRACK_MAP || source.kind == StreamKind.F1_DASH_DATA) return@launch
+        if (source.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)) return@launch
         val current=_ui.value.selectedStreamIds
         val maxFeeds=maxLogicalFeeds()
         val oldMain = _ui.value.mainStreamId
@@ -423,8 +424,35 @@ fun loadTrackMapGeometry()=viewModelScope.launch{
         featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}
     }
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
-    fun updateReplayTiming(positionMs:Long){ val rows=replayTimingClient.rowsAt(positionMs); val positions=replayTimingClient.positionsAt(positionMs); val current=_ui.value; _ui.value=current.copy(timing=rows.ifEmpty{current.timing},trackPositions=positions,timingStatus=if(replayTimingClient.isLoaded())"REPLAY" else current.timingStatus) }
-    fun loadReplayTiming(session:Session)=viewModelScope.launch{ val year=session.seasonYear ?: return@launch; val meeting=session.meetingNumber ?: return@launch; replayTimingClient.load(year,meeting,session.sessionType).onSuccess{ _ui.value=_ui.value.copy(replayChannelDiffs=replayTimingClient.sync().channelDiffs) }.onFailure{ if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found")) } }
+    fun updateReplayTiming(positionMs:Long) {
+        if (!replayTimingClient.isLoaded()) return
+        val rows = replayTimingClient.rowsAt(positionMs)
+        val positions = replayTimingClient.positionsAt(positionMs)
+        val metadata = timingClient.trackPositions.value.associateBy { it.number }
+        val rowsByNumber = rows.associateBy { it.driverNumber }
+        val enriched = positions.map { position ->
+            val row = rowsByNumber[position.number]
+            val meta = metadata[position.number]
+            position.copy(
+                name = meta?.name ?: row?.driver ?: position.name,
+                acronym = meta?.acronym ?: row?.driver ?: position.acronym,
+                team = meta?.team ?: position.team,
+                teamColor = meta?.teamColor ?: position.teamColor,
+                position = row?.position ?: position.position,
+                speed = row?.speed?.toIntOrNull() ?: position.speed,
+                lap = row?.lap ?: position.lap
+            )
+        }
+        _ui.value = _ui.value.copy(timing=rows, trackPositions=enriched, timingStatus="REPLAY")
+    }
+    fun loadReplayTiming(session:Session)=viewModelScope.launch {
+        val year=session.seasonYear ?: return@launch
+        val meeting=session.meetingNumber ?: return@launch
+        _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), timingStatus="REPLAY_LOADING")
+        replayTimingClient.load(year,meeting,session.sessionType)
+            .onSuccess { _ui.value=_ui.value.copy(replayChannelDiffs=replayTimingClient.sync().channelDiffs, timingStatus="REPLAY") }
+            .onFailure { if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found"), timingStatus="REPLAY_UNAVAILABLE") }
+    }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta);replayTimingClient.nudge(delta)}
     fun setReplayTimingOffset(offsetMs:Long){_ui.value=_ui.value.copy(syncOffsetMs=offsetMs);replayTimingClient.setSyncOffset(offsetMs)}
     fun calibrateReplayTiming(videoPositionMs:Long,timingPositionMs:Long){setReplayTimingOffset(replayTimingClient.calibratedOffset(videoPositionMs,timingPositionMs))}
