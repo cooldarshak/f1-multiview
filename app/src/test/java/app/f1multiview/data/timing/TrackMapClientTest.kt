@@ -1,5 +1,7 @@
 package app.f1multiview.data.timing
 
+import app.f1multiview.model.TrackDriverPosition
+import app.f1multiview.model.TrackPoint
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -106,6 +108,34 @@ class TrackMapClientTest {
             TrackMapClient.parseBundledGeometry(catalogue, 61, 2026))
     }
 
+    @Test
+    fun validatesPositionCoordinatesOnlyWhenSamplesFitTheSelectedCircuit() {
+        val centerline = (0 until 40).map { TrackPoint(it.toDouble(), (it % 8).toDouble()) }
+        val onTrack = listOf(
+            TrackDriverPosition(number = "1", x = 5.0, y = 5.0, updatedAtMs = 1L),
+            TrackDriverPosition(number = "4", x = 10.0, y = 2.0, updatedAtMs = 1L),
+            TrackDriverPosition(number = "44", x = 32.0, y = 7.0, updatedAtMs = 1L)
+        )
+        val valid = TrackMapClient.validatePositionCoordinateMapping(centerline, onTrack)
+        assertEquals(true, valid.valid)
+        assertEquals(3, valid.matched)
+
+        val farAway = onTrack.map { it.copy(x = it.x + 10_000.0, y = it.y + 20_000.0) }
+        val invalid = TrackMapClient.validatePositionCoordinateMapping(centerline, farAway)
+        assertEquals(false, invalid.valid)
+        assertEquals(0, invalid.matched)
+    }
+
+    @Test
+    fun positionCoordinateMappingRemainsUnverifiedWithTooFewSamples() {
+        val centerline = (0 until 40).map { TrackPoint(it.toDouble(), (it % 8).toDouble()) }
+        val result = TrackMapClient.validatePositionCoordinateMapping(
+            centerline,
+            listOf(TrackDriverPosition(number = "1", x = 5.0, y = 3.0, updatedAtMs = 1L))
+        )
+        assertEquals(null, result.valid)
+        assertTrue(result.reason.contains("three valid position samples"))
+    }
     @Test
     fun parsesNativeCircuitTraceInTelemetryCoordinates() {
         val x = JSONArray()
