@@ -249,19 +249,30 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
                 val alpha=(index+1)/10f
                 drawCircle(color.copy(alpha=alpha),radius=2.5f,center=screen(t))
             }
+            // Square telemetry markers match the supplied MultiViewer map instead of oversized
+            // decorative bubbles. All positions remain sourced from the live timing feed.
             if(d.number==selectedNumber){
-                drawCircle(MapWhite,radius=13f,center=p,style=Stroke(width=3f))
+                drawRect(
+                    color = MapWhite,
+                    topLeft = Offset(p.x - 6.5f, p.y - 6.5f),
+                    size = androidx.compose.ui.geometry.Size(13f, 13f),
+                    style = Stroke(width = 2f)
+                )
             }
-            drawCircle(color,radius=8f,center=p)
+            drawRect(
+                color = color,
+                topLeft = Offset(p.x - 4f, p.y - 4f),
+                size = androidx.compose.ui.geometry.Size(8f, 8f)
+            )
             drawIntoCanvas{canvas->
                 val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
                     this.color=android.graphics.Color.WHITE
-                    textSize=16f
+                    textSize=13f
                     textAlign=Paint.Align.CENTER
                     typeface=android.graphics.Typeface.DEFAULT_BOLD
                     setShadowLayer(4f,0f,0f,android.graphics.Color.BLACK)
                 }
-                drawContext.canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-12f,paint)
+                drawContext.canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-7f,paint)
             }
         }
     }
