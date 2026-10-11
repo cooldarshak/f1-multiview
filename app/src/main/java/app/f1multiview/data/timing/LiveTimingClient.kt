@@ -75,10 +75,10 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     private fun clearSessionCaches() {
         synchronized(timingLock) {
-            timingLinesState.keys().asSequence().toList().forEach(timingLinesState::remove)
+            timingLinesState.keys().asSequence().toList().forEach { key -> timingLinesState.remove(key) }
         }
         synchronized(timingAppLock) {
-            timingAppLinesState.keys().asSequence().toList().forEach(timingAppLinesState::remove)
+            timingAppLinesState.keys().asSequence().toList().forEach { key -> timingAppLinesState.remove(key) }
         }
         driverMeta.clear()
         timingMeta.clear()
