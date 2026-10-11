@@ -281,7 +281,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
-            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,trackPositionMappingValid=null,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
+            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,trackPositionMappingValid=null,syncOffsetMs=0L,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
         )
         if (shouldLoadReplayTiming(session)) loadReplayTiming(session) else cancelReplayTimingLoad()
         loadStreams(session)
@@ -619,7 +619,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             _ui.value = _ui.value.copy(
                 timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
                 liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(),
-                currentLap=0, totalLaps=0, trackGeometry=null, trackPositionMappingValid=null, replayPlayheadMs=0L, replayDataOffsetMs=0L, replaySyncCalibrated=false, timingStatus="REPLAY_LOADING", providerError=null
+                currentLap=0, totalLaps=0, trackGeometry=null, trackPositionMappingValid=null, syncOffsetMs=0L, replayPlayheadMs=0L, replayDataOffsetMs=0L, replaySyncCalibrated=false, timingStatus="REPLAY_LOADING", providerError=null
             )
             if (year == null || year <= 0 || meeting == null || meeting <= 0) {
                 val missing = buildList {
@@ -644,6 +644,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                     if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onSuccess
                     _ui.value = _ui.value.copy(
                         replayChannelDiffs=client.sync().channelDiffs,
+                        syncOffsetMs=client.currentSyncOffsetMs(),
                         replaySyncCalibrated=client.isSyncCalibrated(),
                         driverInfo=client.driverInfo(),
                         liveSessionInfo=client.sessionInfo() ?: LiveSessionInfo(),
