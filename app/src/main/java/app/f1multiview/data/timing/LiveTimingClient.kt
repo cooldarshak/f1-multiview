@@ -179,7 +179,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                             val shape=when(raw) {
                                 is JSONObject -> "object"
                                 is JSONArray -> "array:" + raw.length()
-                                is String -> "string:" + raw.length()
+                                is String -> "string:" + raw.length
                                 null -> "null"
                                 JSONObject.NULL -> "json-null"
                                 else -> raw.javaClass.simpleName
