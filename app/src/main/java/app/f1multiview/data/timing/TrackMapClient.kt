@@ -141,6 +141,10 @@ class TrackMapClient {
         }
         val features = geo.optJSONArray("features") ?: return emptyList()
         val wanted = normalize(circuitName)
+        // A label made only of session/track suffixes can normalize to an empty key.
+        // Empty-string containment matches every feature, which could silently select
+        // the first circuit in the catalogue and place drivers on the wrong map.
+        if (wanted.isBlank()) return emptyList()
         var best: JSONObject? = null
         var bestScore = 0
         for (i in 0 until features.length()) {
