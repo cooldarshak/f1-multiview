@@ -458,6 +458,7 @@ class ReplayTimingClient {
                 val bestObj=d.optJSONObject("BestLapTime")
                 val best=bestObj?.optString("Value").orEmpty()
                     .ifBlank{d.optString("BestLapTime").takeIf{!it.startsWith("{")}.orEmpty()}.ifBlank{"-"}
+                val bestStatus=when{bestObj?.optBoolean("OverallFastest",false)==true->"PURPLE";bestObj?.optBoolean("PersonalFastest",false)==true->"GREEN";else->"NORMAL"}
                 val tyre=d.optString("Compound").ifBlank{"-"}
                 val s1=sectorValue(lastObj,d,"Sector1")
                 val s2=sectorValue(lastObj,d,"Sector2")
@@ -473,7 +474,7 @@ class ReplayTimingClient {
                     sector1=s1.first,sector2=s2.first,sector3=s3.first,speed=speed,bestLap=best,
                     lap=lapNumber,sector1Status=s1.second,sector2Status=s2.second,sector3Status=s3.second,
                     sector1Segments=seg1,sector2Segments=seg2,sector3Segments=seg3,
-                    interval=interval,leaderGap=leaderGap,driverNumber=number
+                    interval=interval,leaderGap=leaderGap,driverNumber=number,bestLapStatus=bestStatus
                 )
             }
             if(rows.isNotEmpty())out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
