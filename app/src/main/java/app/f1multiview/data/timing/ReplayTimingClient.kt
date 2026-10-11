@@ -680,6 +680,7 @@ class ReplayTimingClient {
     internal fun parsePositions(text:String):List<ReplayPositionSnapshot> {
         val out=ArrayList<ReplayPositionSnapshot>()
         val trails=mutableMapOf<String,MutableList<TrackPoint>>()
+        val currentPositions=linkedMapOf<String,TrackDriverPosition>()
         var recordIndex=0
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
             if(line.length<13)return@forEachLine
@@ -711,14 +712,16 @@ class ReplayTimingClient {
                     val trail=trails.getOrPut(number){mutableListOf()}
                     trail.add(TrackPoint(x,y))
                     while(trail.size>12)trail.removeAt(0)
-                    latest[number]=TrackDriverPosition(
+                    val position = TrackDriverPosition(
                         number=number, acronym=number, x=x, y=y,
                         z=p.optDouble("Z",0.0), updatedAtMs=offset,
                         trail=trail.toList()
                     )
+                    currentPositions[number] = position
+                    latest[number] = position
                 }
             }
-            if(latest.isNotEmpty())out.add(ReplayPositionSnapshot(offset,latest.values.toList()))
+            if(latest.isNotEmpty())out.add(ReplayPositionSnapshot(offset,currentPositions.values.toList()))
         }
         return out
     }
