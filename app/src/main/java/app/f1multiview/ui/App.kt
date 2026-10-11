@@ -258,7 +258,14 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
-    LaunchedEffect(ui.selectedStreamIds, ui.liveSessionInfo.circuitKey) {
+    LaunchedEffect(
+        ui.selectedStreamIds,
+        ui.liveSessionInfo.circuitKey,
+        ui.liveSessionInfo.meeting,
+        ui.liveSessionInfo.circuitName,
+        ui.liveSessionInfo.year,
+        ui.session?.id
+    ) {
         if (ui.selectedStreamIds.any { id -> ui.streams.firstOrNull { it.id == id }?.kind == StreamKind.TRACK_MAP }) {
             vm.loadTrackMapGeometry()
         }
