@@ -1283,7 +1283,8 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
             ?: ui.liveSessionInfo.sessionType.ifBlank { "Race" }
         "$meeting: $sessionName"
     } ?: ("FORMULA 1: " + ui.liveSessionInfo.sessionType.ifBlank { "Race" })
-    val status = ui.trackStatus.label.ifBlank { "GREEN" }
+    // Unknown status must remain unknown; never paint a synthetic green flag.
+    val status = ui.trackStatus.label.takeIf { it.isNotBlank() && it != "-" } ?: "—"
 
     BoxWithConstraints(modifier.background(Color(0xFF111214))) {
         val headerHeight = maxHeight.coerceIn(42.dp, 62.dp)
@@ -1314,7 +1315,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                 WeatherMetric("Air", if (ui.weather.air == "-") "-" else ui.weather.air + "°C")
                 WeatherMetric("Humidity", if (ui.weather.humidity == "-") "-" else ui.weather.humidity + "%")
                 WeatherMetric("Pressure", if (ui.weather.pressure == "-") "-" else ui.weather.pressure + " mb")
-                WeatherMetric("Rain", if (ui.weather.rainfall == "-") "No" else ui.weather.rainfall)
+                WeatherMetric("Rain", ui.weather.rainfall.takeIf { it.isNotBlank() && it != "-" } ?: "—")
             }
 
             Row(
