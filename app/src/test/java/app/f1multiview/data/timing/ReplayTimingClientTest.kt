@@ -59,6 +59,44 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun parsesCompressedCarTelemetryForSpeedGearRpmThrottleAndBrake() {
+        val json = """{"Entries":[{"Cars":{"1":{"Channels":{"0":11250,"2":318,"3":8,"4":100,"5":0}},"16":{"Channels":{"0":9800,"2":256,"3":7,"4":93,"5":0}}}}]}"""
+        val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
+        val compressed = ByteArrayOutputStream()
+        try {
+            deflater.setInput(json.toByteArray(Charsets.UTF_8))
+            deflater.finish()
+            val buffer = ByteArray(256)
+            while (!deflater.finished()) {
+                val count = deflater.deflate(buffer)
+                compressed.write(buffer, 0, count)
+            }
+        } finally {
+            deflater.end()
+        }
+        val encoded = Base64.getEncoder().encodeToString(compressed.toByteArray())
+        val stream = "00:00:01.000" + "\"" + encoded + "\"" + "\n"
+        val snapshots = ReplayTimingClient().parseCarTelemetry(stream)
+
+        assertEquals(1, snapshots.size)
+        assertEquals(1000L, snapshots.single().offsetMs)
+        val leader = snapshots.single().telemetry.first { it.driver == "1" }
+        assertEquals(318, leader.speed)
+        assertEquals(11250, leader.rpm)
+        assertEquals(8, leader.gear)
+        assertEquals(100, leader.throttle)
+        assertEquals(0, leader.brake)
+        val second = snapshots.single().telemetry.first { it.driver == "16" }
+        assertEquals(256, second.speed)
+        assertEquals(7, second.gear)
+    }
+
+    @Test
+    fun ignoresMalformedCompressedCarTelemetryRecords() {
+        assertTrue(ReplayTimingClient().parseCarTelemetry("not a timing record\n00:00:01.000\"" + "not-base64" + "\"").isEmpty())
+    }
+
+    @Test
     fun malformedPositionRecordsAreSkippedWithoutCrashing() {
         assertTrue(ReplayTimingClient().parsePositions("not a timing record" + "\n" + "00:00:01.000" + "\"" + "not-base64" + "\"").isEmpty())
     }
