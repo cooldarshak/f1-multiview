@@ -30,4 +30,53 @@ class TrackMapClientTest {
         assertEquals("", TrackMapClient().normalize("GP"))
         assertEquals("", TrackMapClient().normalize("Circuit"))
     }
+
+    @Test
+    fun acceptsAnAccuratelyAlignedCentrelineFit() {
+        val client = TrackMapClient()
+        val matches = listOf(
+            Triple(0.0, 0.0, 0.0 to 0.0),
+            Triple(1.0, 0.0, 10.0 to 0.0),
+            Triple(0.0, 1.0, 0.0 to 10.0),
+            Triple(1.0, 1.0, 10.0 to 10.0)
+        )
+        val residual = client.normalizedFitResidual(
+            matches,
+            doubleArrayOf(10.0, 0.0, 0.0),
+            doubleArrayOf(0.0, 10.0, 0.0)
+        )
+        assertEquals(0.0, residual!!, 1e-9)
+    }
+
+    @Test
+    fun reportsLargeResidualForMismatchedCircuitAlignment() {
+        val client = TrackMapClient()
+        val matches = listOf(
+            Triple(0.0, 0.0, 0.0 to 0.0),
+            Triple(1.0, 0.0, 10.0 to 0.0),
+            Triple(0.0, 1.0, 0.0 to 10.0),
+            Triple(1.0, 1.0, 0.0 to 10.0)
+        )
+        val residual = client.normalizedFitResidual(
+            matches,
+            doubleArrayOf(10.0, 0.0, 0.0),
+            doubleArrayOf(0.0, 10.0, 0.0)
+        )
+        assert(residual != null && residual > 0.12)
+    }
+
+    @Test
+    fun rejectsDegenerateCentrelineFitValidation() {
+        val client = TrackMapClient()
+        val matches = listOf(
+            Triple(0.0, 0.0, 2.0 to 2.0),
+            Triple(1.0, 0.0, 2.0 to 2.0),
+            Triple(0.0, 1.0, 2.0 to 2.0)
+        )
+        assertEquals(null, client.normalizedFitResidual(
+            matches,
+            doubleArrayOf(1.0, 0.0, 0.0),
+            doubleArrayOf(0.0, 1.0, 0.0)
+        ))
+    }
 }
