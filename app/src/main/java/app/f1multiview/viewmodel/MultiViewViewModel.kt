@@ -546,8 +546,18 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         replayTimingClient = client
         replayTimingLoadJob = viewModelScope.launch {
             client.clear()
-            val year = session.seasonYear
-            val meeting = session.meetingNumber
+            val stateAtLoad = _ui.value
+            val matchingVod = stateAtLoad.vodSessions.firstOrNull { it.contentId == session.id }
+            val eventPageId = session.eventPageId ?: matchingVod?.eventPageId
+            val matchingEvent = eventPageId?.let { pageId ->
+                stateAtLoad.vodEvents.firstOrNull { it.pageId == pageId }
+                    ?: stateAtLoad.selectedEvent?.takeIf { it.pageId == pageId }
+            }
+            val year = session.seasonYear?.takeIf { it > 0 }
+                ?: matchingVod?.let { stateAtLoad.selectedSeason?.year }
+                ?: matchingEvent?.seasonYear
+                ?: stateAtLoad.selectedSeason?.takeIf { matchingEvent != null }?.year
+            val meeting = session.meetingNumber?.takeIf { it > 0 } ?: matchingEvent?.meetingNumber
             _ui.value = _ui.value.copy(
                 timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
                 liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(),
