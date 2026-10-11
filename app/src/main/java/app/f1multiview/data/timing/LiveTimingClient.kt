@@ -473,7 +473,10 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private fun parseTrackStatus(data:JSONObject?) {
         if(data==null) return
         val root=data.optJSONObject("TrackStatus") ?: data
-        val code=root.optString("Status").toIntOrNull() ?: root.optInt("Status",1)
+        // Missing/malformed status is not evidence of a green track. Preserve the last
+        // authoritative status until a valid status packet arrives.
+        val rawStatus = root.optString("Status").takeIf { it.isNotBlank() && it != "null" } ?: return
+        val code = rawStatus.toIntOrNull() ?: return
         val label=when(code){1->"GREEN";2->"YELLOW";4->"SAFETY CAR";5->"RED";6->"VSC";7->"VSC ENDING";else->"STATUS $code"}
         _trackStatus.value=TrackStatusInfo(code,label,root.optString("Message"))
     }
