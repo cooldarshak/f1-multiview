@@ -30,6 +30,46 @@ class TrackMapClient(private val context: Context? = null) {
         internal const val MIN_CENTERLINE_POINTS = 20
 internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(requestedYear)
 
+        /**
+         * Confirm that several actual position-feed samples share the selected centreline coordinate frame.
+         * Geometry point count or circuit identity alone does not prove that live Position X/Y can be overlaid.
+         */
+        internal fun validatePositionCoordinateMapping(
+            centerline: List<TrackPoint>,
+            positions: List<TrackDriverPosition>,
+            marginRatio: Double = 0.15,
+            minimumMatchRatio: Double = 0.5
+        ): PositionMappingValidation {
+            val line = centerline.filter { it.x.isFinite() && it.y.isFinite() }
+            if (line.size < MIN_CENTERLINE_POINTS) {
+                return PositionMappingValidation(null, 0, positions.size, "validated centreline unavailable")
+            }
+            val samples = positions.filter { it.x.isFinite() && it.y.isFinite() }
+            if (samples.size < 3) {
+                return PositionMappingValidation(null, 0, samples.size, "need at least three valid position samples")
+            }
+            val minX = line.minOf { it.x }
+            val maxX = line.maxOf { it.x }
+            val minY = line.minOf { it.y }
+            val maxY = line.maxOf { it.y }
+            val span = max(maxX - minX, maxY - minY)
+            if (!span.isFinite() || span <= 1e-9) {
+                return PositionMappingValidation(false, 0, samples.size, "degenerate centreline bounds")
+            }
+            val margin = span * marginRatio.coerceIn(0.0, 1.0)
+            val matched = samples.count { point ->
+                point.x >= minX - margin && point.x <= maxX + margin &&
+                    point.y >= minY - margin && point.y <= maxY + margin
+            }
+            val ratio = matched.toDouble() / samples.size.toDouble()
+            val valid = ratio >= minimumMatchRatio.coerceIn(0.0, 1.0)
+            return PositionMappingValidation(
+                valid = valid,
+                matched = matched,
+                total = samples.size,
+                reason = if (valid) "position samples overlap selected circuit bounds" else "position samples fall outside selected circuit bounds"
+            )
+        }
         /** Parse a bundled circuit only when it contains a complete, finite native centreline. */
         internal fun parseBundledGeometry(catalogue: JSONObject, circuitKey: Int, requestedYear: Int): TrackMapGeometry? {
             val item = catalogue.optJSONObject("circuits")?.optJSONObject(circuitKey.toString()) ?: return null
