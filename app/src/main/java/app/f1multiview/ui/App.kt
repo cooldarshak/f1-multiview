@@ -1539,8 +1539,9 @@ private fun GapPill(value: String, visible: Boolean) {
 private fun DashSectorColumn(value: String, status: String, segments: List<String>) {
     Column(Modifier.widthIn(min = 56.dp, max = 76.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            val source = if (segments.isNotEmpty()) segments else List(8) { status }
-            source.take(10).forEach { seg ->
+            // Segment bars are telemetry, not decoration. Render only segments received
+            // from the timing feed; never manufacture eight bars from a sector status label.
+            segments.take(10).forEach { seg ->
                 Box(
                     Modifier.width(5.dp).height(6.dp)
                         .background(segmentColor(seg), RoundedCornerShape(1.dp))
