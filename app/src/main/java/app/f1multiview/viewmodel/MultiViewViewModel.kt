@@ -547,6 +547,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             totalLaps=snapshot.lapCount.second,
             sessionClock=snapshot.sessionClock
         )
+        validateTrackPositionMapping(snapshot.positions)
     }
 
     fun updateReplayTiming(positionMs:Long) {
@@ -562,7 +563,6 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             val row = rowsByNumber[position.number]
             val car = telemetryByNumber[position.number]
             val meta = metadata[position.number]
-            val livePosition = livePositions[position.number]
             position.copy(
                 name = meta?.name?.takeIf { it.isNotBlank() && it != "-" } ?: row?.driver ?: position.name,
                 acronym = row?.driver ?: meta?.acronym ?: position.acronym,
@@ -571,7 +571,9 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 position = row?.position ?: position.position,
                 speed = car?.speed ?: row?.speed?.toIntOrNull() ?: position.speed,
                 lap = row?.lap ?: position.lap,
-                inPit = row?.lastLap.equals("IN PIT", true) || position.inPit
+                inPit = row?.inPit ?: position.inPit,
+                stopped = row?.stopped ?: position.stopped,
+                retired = row?.retired ?: position.retired
             )
         }
         _ui.value = _ui.value.copy(
@@ -585,6 +587,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             replayPlayheadMs=positionMs.coerceAtLeast(0L),
             replayDataOffsetMs=replayTimingClient.archiveOffsetForVideoPosition(positionMs)
         )
+        validateTrackPositionMapping(enriched)
     }
     private fun cancelReplayTimingLoad() {
         replayTimingLoadJob?.cancel()
