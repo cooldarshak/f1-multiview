@@ -104,12 +104,17 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             lastHistorySampleAtMs = 0L
         }
         if (_status.value == "LIVE" || _status.value == "STALE") _status.value = "SUBSCRIBED"
-        AppLogger.i("LiveTiming", "LIVE_TIMING_SESSION_CHANGED cacheReset=true")
+        AppLogger.i("LiveTiming", "LIVE_TIMING_SESSION_CACHE_RESET cacheReset=true")
     }
 
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;freshnessWatcher?.cancel();freshnessWatcher=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
     fun restart(){ stop(); start() }
+    fun clearSessionData(){
+        currentSessionIdentity = null
+        clearSessionCaches()
+        _sessionInfo.value = app.f1multiview.model.LiveSessionInfo()
+    }
     // The public LiveTiming SignalR service is anonymous. F1TV playback bearer tokens belong to
     // a different backend and must not be sent to livetiming.formula1.com.
     private fun connect(){scope.launch(Dispatchers.IO){
@@ -454,7 +459,10 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         } else null
         if (identity != null) {
             val previousIdentity = currentSessionIdentity
-            if (previousIdentity != null && previousIdentity != identity) clearSessionCaches()
+            if (previousIdentity != null && previousIdentity != identity) {
+                AppLogger.i("LiveTiming", "LIVE_TIMING_SESSION_CHANGED identityChanged=true")
+                clearSessionCaches()
+            }
             currentSessionIdentity = identity
         }
         _sessionInfo.value=LiveSessionInfo(
