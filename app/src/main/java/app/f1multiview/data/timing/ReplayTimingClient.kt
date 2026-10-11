@@ -22,7 +22,7 @@ import org.json.JSONArray
 data class ReplayTimingSnapshot(val offsetMs:Long,val rows:List<TimingRow>)
 data class ReplayPositionSnapshot(val offsetMs:Long,val positions:List<TrackDriverPosition>)
 data class ReplayTelemetrySnapshot(val offsetMs:Long,val telemetry:List<DriverTelemetry>)
-internal data class ReplayStint(val compound:String,val pitStops:Int,val inPit:Boolean,val stopped:Boolean,val stintNumber:Int)
+internal data class ReplayStint(val compound:String,val pitStops:Int,val inPit:Boolean,val stopped:Boolean,val stintNumber:Int,val stintLaps:Int?)
 internal data class ReplayStintSnapshot(val offsetMs:Long,val stints:Map<String,ReplayStint>)
 data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
 data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
@@ -226,6 +226,7 @@ class ReplayTimingClient {
                 inPit=stint?.inPit ?: row.inPit,
                 stopped=stint?.stopped ?: row.stopped,
                 stintNumber=stint?.stintNumber?.takeIf { it > 0 } ?: row.stintNumber,
+                stintLaps=stint?.stintLaps ?: row.stintLaps,
                 gear=car?.gear ?: row.gear,
                 rpm=car?.rpm ?: row.rpm,
                 speed=car?.speed?.takeIf { it > 0 }?.toString() ?: row.speed,
@@ -563,12 +564,20 @@ class ReplayTimingClient {
                     latest != null -> latest.optInt("StintNumber", item.optInt("StintNumber", 0))
                     else -> item.optInt("StintNumber", 0)
                 }
+                val stintLaps = when {
+                    latest?.has("TotalLaps") == true -> latest.optInt("TotalLaps", -1)
+                    latest?.has("StintLaps") == true -> latest.optInt("StintLaps", -1)
+                    latest?.has("Laps") == true -> latest.optInt("Laps", -1)
+                    item.has("StintLaps") -> item.optInt("StintLaps", -1)
+                    else -> -1
+                }.takeIf { it >= 0 }
                 stints[driver]=ReplayStint(
                     compound=compound.uppercase(),
                     pitStops=item.optInt("NumberOfPitStops",item.optInt("PitStops",0)),
                     inPit=item.optBoolean("InPit",false)||item.optBoolean("PitIn",false),
                     stopped=item.optBoolean("Stopped",false),
-                    stintNumber=stintNumber
+                    stintNumber=stintNumber,
+                    stintLaps=stintLaps
                 )
             }
             if(stints.isNotEmpty())out+=ReplayStintSnapshot(offset,stints)
