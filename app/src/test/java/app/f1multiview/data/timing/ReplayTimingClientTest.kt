@@ -125,7 +125,8 @@ class ReplayTimingClientTest {
     @Test
     fun parsesExtrapolatedClockSnapshotsForReplayPlayhead() {
         val clocks = ReplayTimingClient().parseClockSnapshots(
-            """00:00:01.000{"Remaining":"00:59:12"}\n00:00:02.000{"Remaining":"00:59:11"}"""
+            """00:00:01.000{"Remaining":"00:59:12"}
+00:00:02.000{"Remaining":"00:59:11"}"""
         )
         assertEquals(2, clocks.size)
         assertEquals("00:59:12", clocks.first().clock)
