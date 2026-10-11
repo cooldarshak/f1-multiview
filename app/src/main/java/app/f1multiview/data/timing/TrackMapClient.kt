@@ -45,6 +45,7 @@ class TrackMapClient {
                 if (wantedMeeting.isBlank() && wantedCircuit.isBlank()) error("Missing meeting and circuit names")
                 var selected: JSONObject? = null
                 var bestScore = 0
+                var ambiguousBestMatch = false
                 for (i in 0 until meetings.length()) {
                     val item = meetings.optJSONObject(i) ?: continue
                     val name = normalize(item.optString("meeting_name"))
@@ -65,9 +66,12 @@ class TrackMapClient {
                     if (score > bestScore) {
                         bestScore = score
                         selected = item
+                        ambiguousBestMatch = false
+                    } else if (score > 0 && score == bestScore) {
+                        ambiguousBestMatch = true
                     }
                 }
-                val item = selected?.takeIf { bestScore >= 70 }
+                val item = selected?.takeIf { bestScore >= 70 && !ambiguousBestMatch }
                     ?: error("No circuit match for meeting metadata")
                 val key = item.optInt("circuit_key", 0).takeIf { it > 0 }
                     ?: error("Matched meeting has no circuit key")
@@ -147,6 +151,7 @@ class TrackMapClient {
         if (wanted.isBlank()) return emptyList()
         var best: JSONObject? = null
         var bestScore = 0
+        var ambiguousBestMatch = false
         for (i in 0 until features.length()) {
             val feature = features.optJSONObject(i) ?: continue
             val props = feature.optJSONObject("properties") ?: continue
@@ -158,9 +163,17 @@ class TrackMapClient {
                 location.isNotBlank() && (wanted.contains(location) || location.contains(wanted)) -> 30
                 else -> 0
             }
-            if (score > bestScore) { bestScore = score; best = feature }
+            if (score > bestScore) {
+                bestScore = score
+                best = feature
+                ambiguousBestMatch = false
+            } else if (score > 0 && score == bestScore) {
+                ambiguousBestMatch = true
+            }
         }
-        val feature = best?.takeIf { bestScore >= 80 } ?: return emptyList()
+        // Circuit labels can be shared by alternate layouts or historic venues. Never
+        // silently pick whichever equal-scoring feature happens to appear first.
+        val feature = best?.takeIf { bestScore >= 80 && !ambiguousBestMatch } ?: return emptyList()
         val properties = feature.optJSONObject("properties") ?: return emptyList()
         val geometry = feature.optJSONObject("geometry") ?: return emptyList()
         if (!geometry.optString("type").equals("LineString", true)) return emptyList()
