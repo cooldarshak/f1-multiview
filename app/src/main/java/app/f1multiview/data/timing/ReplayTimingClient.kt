@@ -22,7 +22,7 @@ import org.json.JSONArray
 data class ReplayTimingSnapshot(val offsetMs:Long,val rows:List<TimingRow>)
 data class ReplayPositionSnapshot(val offsetMs:Long,val positions:List<TrackDriverPosition>)
 data class ReplayTelemetrySnapshot(val offsetMs:Long,val telemetry:List<DriverTelemetry>)
-private data class ReplayStint(val compound:String,val pitStops:Int,val inPit:Boolean)
+private data class ReplayStint(val compound:String,val pitStops:Int,val inPit:Boolean,val stopped:Boolean,val stintNumber:Int)
 private data class ReplayStintSnapshot(val offsetMs:Long,val stints:Map<String,ReplayStint>)
 data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
 data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
@@ -219,7 +219,10 @@ class ReplayTimingClient {
             row.copy(
                 tyre=stint?.compound?.takeIf{it.isNotBlank()} ?: row.tyre,
                 pitStops=stint?.pitStops ?: row.pitStops,
-                lastLap=if(stint?.inPit==true) "IN PIT" else row.lastLap
+                lastLap=if(stint?.inPit==true) "IN PIT" else row.lastLap,
+                inPit=stint?.inPit ?: row.inPit,
+                stopped=stint?.stopped ?: row.stopped,
+                stintNumber=stint?.stintNumber?.takeIf { it > 0 } ?: row.stintNumber
             )
         }
     }
@@ -474,7 +477,7 @@ class ReplayTimingClient {
                     sector1=s1.first,sector2=s2.first,sector3=s3.first,speed=speed,bestLap=best,
                     lap=lapNumber,sector1Status=s1.second,sector2Status=s2.second,sector3Status=s3.second,
                     sector1Segments=seg1,sector2Segments=seg2,sector3Segments=seg3,
-                    interval=interval,leaderGap=leaderGap,driverNumber=number,bestLapStatus=bestStatus
+                    interval=interval,leaderGap=leaderGap,driverNumber=number,bestLapStatus=bestStatus,inPit=d.optBoolean("InPit",false),stopped=d.optBoolean("Stopped",false)
                 )
             }
             if(rows.isNotEmpty())out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
@@ -523,7 +526,7 @@ class ReplayTimingClient {
         else->"GRAY"
     }
 
-    private fun parseTimingAppData(text:String):List<ReplayStintSnapshot> {
+    internal fun parseTimingAppData(text:String):List<ReplayStintSnapshot> {
         val out=ArrayList<ReplayStintSnapshot>()
         val merged=JSONObject()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
@@ -545,10 +548,18 @@ class ReplayTimingClient {
                 }else if(stintArray!=null && stintArray.length()>0)stintArray.optJSONObject(stintArray.length()-1)
                 else item.optJSONObject("Stint")
                 val compound=latest?.optString("Compound").orEmpty().ifBlank{latest?.optString("compound").orEmpty()}
+                val stintNumber = when {
+                    stintObject != null -> stintObject.length()
+                    stintArray != null -> stintArray.length()
+                    latest != null -> latest.optInt("StintNumber", item.optInt("StintNumber", 0))
+                    else -> item.optInt("StintNumber", 0)
+                }
                 stints[driver]=ReplayStint(
                     compound=compound.uppercase(),
                     pitStops=item.optInt("NumberOfPitStops",item.optInt("PitStops",0)),
-                    inPit=item.optBoolean("InPit",false)||item.optBoolean("PitIn",false)
+                    inPit=item.optBoolean("InPit",false)||item.optBoolean("PitIn",false),
+                    stopped=item.optBoolean("Stopped",false),
+                    stintNumber=stintNumber
                 )
             }
             if(stints.isNotEmpty())out+=ReplayStintSnapshot(offset,stints)
