@@ -193,14 +193,29 @@ class TrackMapClient {
 
     private data class GeoPoint(val lon: Double, val lat: Double)
 
-    private fun normalize(value: String): String =
-        value.lowercase().filter { it.isLetterOrDigit() }
+    internal fun normalize(value: String): String {
+        // A selected replay name may contain ": Qualifying 1" or "Race" after the meeting name.
+        // Strip session labels first; then normalize "Singapore GP" and "Singapore Grand Prix"
+        // to the same key so a missing circuit key can still resolve to the correct circuit.
+        return value.lowercase()
+            .substringBefore(":")
+            .substringBefore(" — ")
+            .substringBefore(" - ")
+            .filter { it.isLetterOrDigit() }
             .replace("grandprix", "")
+            .replace("qualifying", "")
+            .replace("practice", "")
+            .replace("sprint", "")
+            .replace("race", "")
+            .replace(Regex("fp[123]"), "")
+            .replace(Regex("[0-9]+"), "")
+            .replace("gp", "")
             .replace("international", "")
             .replace("streetcircuit", "")
             .replace("circuit", "")
             .replace("autodromo", "")
             .replace("raceway", "")
+    }
 
     private fun cumulativeDistances(points: List<GeoPoint>): List<Double> {
         val out = ArrayList<Double>(points.size)
