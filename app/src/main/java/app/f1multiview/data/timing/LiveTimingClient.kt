@@ -253,12 +253,6 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 "TeamRadio"->parseTeamRadio(data)
                 "ExtrapolatedClock"->parseExtrapolatedClock(data)
             }
-            // A healthy WebSocket or unrelated telemetry packet is not proof that the timing
-            // tower is live. Promote status only after a valid TimingData update yields rows.
-            if (feed in setOf("TimingData","TimingDataF1") && _rows.value.isNotEmpty()) {
-                lastTimingRowsAtMs=System.currentTimeMillis()
-                _status.value="LIVE"
-            }
             recordLiveSnapshot()
             val now=System.currentTimeMillis()
             if(now-lastFeedSummaryAtMs>=10_000L){
@@ -828,6 +822,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         if(rows.isNotEmpty()){
             _rows.value=rows.distinctBy{it.driverNumber}.sortedBy{it.position}
             val rowsNow = System.currentTimeMillis()
+            lastTimingRowsAtMs=rowsNow
+            _status.value="LIVE"
             if (rowsNow-lastRowsLogAtMs>=2_000L) {
                 lastRowsLogAtMs=rowsNow
                 AppLogger.i("LiveTiming","LIVE_TIMING_ROWS_UPDATED count=${_rows.value.size} source=TimingData timestampMs=$rowsNow")
