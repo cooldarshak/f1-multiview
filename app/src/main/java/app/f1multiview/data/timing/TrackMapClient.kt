@@ -221,6 +221,8 @@ return lookup.fold(
             val statusCode = Regex("""Circuit geometry HTTP (\d+)""").find(failure.message.orEmpty())
                 ?.groupValues?.getOrNull(1)?.toIntOrNull()
             AppLogger.w("TrackMap", "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=${statusCode ?: -1} reason=${failure.javaClass.simpleName}")
+            val hasNoCenterline = failure.message.orEmpty().contains("no validated centreline", ignoreCase = true)
+            if (statusCode !in setOf(401, 403, 404) && !hasNoCenterline) break
         }
 
         val bundled = readBundledCatalogue()?.let { parseBundledGeometry(it, circuitKey, year) }
