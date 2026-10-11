@@ -310,8 +310,11 @@ class UnifiedMultiviewEngine(context: Context) {
             protectedRuntimeStatus.toSortedMap().entries.joinToString(" | ") { "${it.key}: ${it.value}" }
     }
     fun setMuted(id: String, muted: Boolean) {
-        if (!multiFeedBlocked) decoderManager.setMuted(id, muted)
-        else if (!muted) setAudioPlayer(id)
+        if (!multiFeedBlocked) {
+            if (singleFeedFallbackMainId == null || id == singleFeedFallbackMainId) {
+                decoderManager.setMuted(id, muted)
+            }
+        } else if (!muted) setAudioPlayer(id)
         else if (selectedAudioFeedId == id) decoderManager.setMuted(id, true)
     }
     fun isMuted(id: String): Boolean =
@@ -324,7 +327,7 @@ class UnifiedMultiviewEngine(context: Context) {
     fun syncToMain(mainId: String) = syncToMain(mainId, emptyMap())
     fun syncToMain(mainId: String, channelOffsetsMs: Map<String, Long>) {
         if (multiFeedBlocked) protectedPresentationClock.setMaster(mainId, channelOffsetsMs)
-        else decoderManager.syncToMain(mainId, channelOffsetsMs)
+        else decoderManager.syncToMain(singleFeedFallbackMainId ?: mainId, channelOffsetsMs)
     }
     fun prepare(id: String) { if (!multiFeedBlocked) decoderManager.prepare(id) }
     fun seekTo(id: String, positionMs: Long) {
