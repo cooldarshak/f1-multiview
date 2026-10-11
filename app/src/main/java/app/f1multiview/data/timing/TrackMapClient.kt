@@ -32,7 +32,6 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
             val item = catalogue.optJSONObject("circuits")?.optJSONObject(circuitKey.toString()) ?: return null
             if (item.optInt("circuitKey", circuitKey) != circuitKey) return null
             val itemYear = item.optInt("year", 0)
-            if (itemYear > 0 && itemYear < requestedYear) return null
             val client = TrackMapClient()
             val centerline = client.parseTrackCoordinates(item.optJSONArray("x"), item.optJSONArray("y"))
             if (centerline.size < MIN_CENTERLINE_POINTS) return null
