@@ -127,6 +127,26 @@ class TrackMapClientTest {
     }
 
     @Test
+    fun rejectsPositionSamplesInsideBoundsButFarFromTrackPath() {
+        val centerline = buildList {
+            for (i in 0..6) add(TrackPoint(i * 20.0, 0.0))
+            for (i in 1..6) add(TrackPoint(120.0, i * 20.0))
+            for (i in 5 downTo 0) add(TrackPoint(i * 20.0, 120.0))
+            for (i in 5 downTo 1) add(TrackPoint(0.0, i * 20.0))
+        }
+        assertTrue(centerline.size >= TrackMapClient.MIN_CENTERLINE_POINTS)
+        val insideBoundsButNotOnTrack = listOf(
+            TrackDriverPosition(number = "1", x = 55.0, y = 55.0, updatedAtMs = 1L),
+            TrackDriverPosition(number = "4", x = 60.0, y = 55.0, updatedAtMs = 1L),
+            TrackDriverPosition(number = "44", x = 55.0, y = 60.0, updatedAtMs = 1L)
+        )
+
+        val result = TrackMapClient.validatePositionCoordinateMapping(centerline, insideBoundsButNotOnTrack)
+
+        assertEquals(false, result.valid)
+        assertEquals(0, result.matched)
+    }
+    @Test
     fun positionCoordinateMappingRemainsUnverifiedWithTooFewSamples() {
         val centerline = (0 until 40).map { TrackPoint(it.toDouble(), (it % 8).toDouble()) }
         val result = TrackMapClient.validatePositionCoordinateMapping(
