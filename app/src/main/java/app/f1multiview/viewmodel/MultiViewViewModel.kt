@@ -550,7 +550,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             weather=metadataState.weather, trackStatus=metadataState.trackStatus,
             currentLap=metadataState.currentLap, totalLaps=metadataState.totalLaps,
             sessionClock=metadataState.sessionClock,
-            timingStatus="REPLAY",
+            timingStatus=if (replayTimingClient.isSyncCalibrated()) "REPLAY" else "REPLAY_UNCALIBRATED",
+            replaySyncCalibrated=replayTimingClient.isSyncCalibrated(),
             replayPlayheadMs=positionMs.coerceAtLeast(0L),
             replayDataOffsetMs=replayTimingClient.archiveOffsetForVideoPosition(positionMs)
         )
@@ -608,9 +609,10 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                     if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onSuccess
                     _ui.value = _ui.value.copy(
                         replayChannelDiffs=client.sync().channelDiffs,
+                        replaySyncCalibrated=client.isSyncCalibrated(),
                         driverInfo=client.driverInfo(),
                         liveSessionInfo=client.sessionInfo() ?: LiveSessionInfo(),
-                        timingStatus="REPLAY", providerError=null
+                        timingStatus=if (client.isSyncCalibrated()) "REPLAY" else "REPLAY_UNCALIBRATED", providerError=null
                     )
                     AppLogger.i(
                         "ReplayTiming",
