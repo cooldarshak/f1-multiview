@@ -194,23 +194,17 @@ return lookup.fold(
                 val catalogue = readBundledCatalogue()
                 val bundledMatch = catalogue?.let { matchBundledCircuit(it, meetingName, circuitName) }
                 if (catalogue != null && bundledMatch != null) {
-                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_MATCH circuitKey=§{bundledMatch.first} meetingNamePresent=§{meetingName.isNotBlank()} circuitNamePresent=§{circuitName.isNotBlank()}")
+                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_MATCH circuitKey=${bundledMatch.first} meetingNamePresent=${meetingName.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()}")
                     load(bundledMatch.first, year, circuitName.ifBlank { bundledMatch.second })
                 } else {
-                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_NO_MATCH assetPresent=§{catalogue != null} meetingNamePresent=§{meetingName.isNotBlank()} circuitNamePresent=§{circuitName.isNotBlank()}")
+                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_NO_MATCH assetPresent=${catalogue != null} meetingNamePresent=${meetingName.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()}")
                     Result.failure(failure)
                 }
             }
         )
 
     }
-    /**
-     * Circuit data is a best-effort public endpoint. When the requested season is restricted
-     * or has no published resource, try older public geometry before giving up. Fallback is
-     * bounded to 2023 onward (or the explicitly requested earlier year) and is logged so stale
-     * layout data is never mistaken for the requested season.
-     */
-suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
+    suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
         var lastFailure: Throwable? = null
         for (geometryYear in geometryLookupYears(year)) {
             val result = loadSingleYear(circuitKey, geometryYear, circuitName)
@@ -226,16 +220,16 @@ suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<T
             lastFailure = failure
             val statusCode = Regex("""Circuit geometry HTTP (\d+)""").find(failure.message.orEmpty())
                 ?.groupValues?.getOrNull(1)?.toIntOrNull()
-            AppLogger.w("TrackMap", "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=§{statusCode ?: -1} reason=§{failure.javaClass.simpleName}")
+            AppLogger.w("TrackMap", "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=${statusCode ?: -1} reason=${failure.javaClass.simpleName}")
         }
 
         val bundled = readBundledCatalogue()?.let { parseBundledGeometry(it, circuitKey, year) }
         if (bundled != null) {
-            AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_READY circuitKey=$circuitKey requestedYear=$year geometryYear=§{bundled.year} centerlinePoints=§{bundled.centerline.size}")
+            AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_READY circuitKey=$circuitKey requestedYear=$year geometryYear=${bundled.year} centerlinePoints=${bundled.centerline.size}")
             return Result.success(bundled)
         }
         val failure = lastFailure ?: java.io.IOException("No circuit geometry versions checked for key=$circuitKey year=$year")
-        AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_UNAVAILABLE circuitKey=$circuitKey assetPresent=§{context != null}")
+        AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_UNAVAILABLE circuitKey=$circuitKey assetPresent=${context != null}")
         return Result.failure(failure)
     }
 
