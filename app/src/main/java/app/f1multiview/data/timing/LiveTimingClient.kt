@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import android.util.Base64
 import app.f1multiview.model.*
 import java.util.zip.Inflater
 import org.json.JSONObject
@@ -123,11 +122,15 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             return token
         }
     }
-    private fun scheduleReconnect(){if(reconnect?.isActive==true)return;reconnect=scope.launch{delay(2000);if(isActive)connect()}}
+    private fun scheduleReconnect(){
+        if(reconnect?.isActive==true)return
+        AppLogger.w("LiveTiming","LIVE_TIMING_RECONNECT scheduled=true delayMs=2000")
+        reconnect=scope.launch{delay(2000);if(isActive)connect()}
+    }
     private inner class Listener:WebSocketListener(){
         override fun onOpen(ws:WebSocket,response:Response){
             _status.value="HANDSHAKING"
-            AppLogger.i("LiveTiming","SIGNALR_WEBSOCKET_OPEN httpStatus=${response.code}")
+            AppLogger.i("LiveTiming","LIVE_TIMING_CONNECTED websocket=true httpStatus=${response.code}")
             ws.send("{\"protocol\":\"json\",\"version\":1}$RS")
         }
         override fun onMessage(ws:WebSocket,text:String){
@@ -197,6 +200,14 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                     }
                 }
                 if(json.optInt("type")==3){
+                    val invocationId = json.optString("invocationId")
+                    if (invocationId == "1" && json.optString("error").isBlank()) {
+                        _status.value = "SUBSCRIBED"
+                        AppLogger.i("LiveTiming","LIVE_TIMING_SUBSCRIPTION_ACKNOWLEDGED invocationId=1")
+                    } else if (json.optString("error").isNotBlank()) {
+                        _status.value = "ERROR"
+                        AppLogger.w("LiveTiming","LIVE_TIMING_SUBSCRIPTION_FAILED invocationId=$invocationId")
+                    }
                     val result=json.optJSONObject("result")?:return@forEach
                     val it=result.keys()
                     while(it.hasNext()){
@@ -211,7 +222,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 if(observedFeeds.add("$feed:decode-failed")) AppLogger.w("LiveTiming","FEED_DECODE_FAILED feed=$feed")
                 return
             }
-            if(observedFeeds.add(feed)) AppLogger.i("LiveTiming","FEED_FIRST_PAYLOAD feed=$feed keys=${data.length()}")
+            if(observedFeeds.add(feed)) AppLogger.i("LiveTiming","LIVE_TIMING_FEED_RECEIVED feed=$feed keys=${data.length()}")
+            if(feed in setOf("TimingData","TimingDataF1")) AppLogger.i("LiveTiming","LIVE_TIMING_DECODE_SUCCESS feed=$feed keys=${data.length()}")
             when(feed){
                 "TimingData","TimingDataF1"->parseTiming(data)
                 "TimingAppData"->parseTimingAppData(data)
@@ -226,11 +238,11 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 "TeamRadio"->parseTeamRadio(data)
                 "ExtrapolatedClock"->parseExtrapolatedClock(data)
             }
-            if (
-                (feed in setOf("TimingData","TimingDataF1") && _rows.value.isNotEmpty()) ||
-                (feed in setOf("CarData.z","CarData") && telemetryByDriver.isNotEmpty()) ||
-                (feed in setOf("Position.z","Position") && positionMeta.isNotEmpty())
-            ) _status.value="LIVE"
+            // A healthy WebSocket or unrelated telemetry packet is not proof that the timing
+            // tower is live. Promote status only after a valid TimingData update yields rows.
+            if (feed in setOf("TimingData","TimingDataF1") && _rows.value.isNotEmpty()) {
+                _status.value="LIVE"
+            }
             recordLiveSnapshot()
             val now=System.currentTimeMillis()
             if(now-lastFeedSummaryAtMs>=10_000L){
@@ -288,13 +300,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         sessionClock=_sessionClock.value
     )
 
-    private fun decodeFeedObject(raw:Any?):JSONObject? {
+    internal fun decodeFeedObject(raw:Any?):JSONObject? {
         if(raw is JSONObject)return raw
         if(raw is JSONArray)return JSONObject().put("Position",raw)
         val encoded=raw as? String ?: return null
         if(encoded.isBlank())return null
         jsonObjectFromText(encoded)?.let{return it}
-        val bytes=runCatching{Base64.decode(encoded,Base64.DEFAULT)}.getOrNull() ?: return null
+        val bytes=runCatching{java.util.Base64.getMimeDecoder().decode(encoded)}.getOrNull() ?: return null
         inflateFeedBytes(bytes)?.let{jsonObjectFromText(it)?.let{return it}}
         // Some feed messages are base64-wrapped JSON rather than raw-deflate compressed JSON.
         return jsonObjectFromText(runCatching{String(bytes,Charsets.UTF_8)}.getOrDefault(""))
@@ -657,7 +669,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             return JSONObject(timingLinesState.toString())
         }
     }
-    private fun mergeJsonObject(target:JSONObject, patch:JSONObject) {
+    internal fun mergeJsonObject(target:JSONObject, patch:JSONObject) {
         val keys=patch.keys()
         while(keys.hasNext()){
             val key=keys.next()
@@ -741,7 +753,11 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private fun parseTiming(data:JSONObject?){if(data==null)return;val incoming=data.optJSONObject("Lines")?:data.optJSONObject("lines")?:return;val lines=mergeTimingLines(incoming);if(lines.length()==0)return;val rows=mutableListOf<TimingRow>();val keys=lines.keys()
         while(keys.hasNext()){val number=keys.next();val line=lines.optJSONObject(number)?:JSONObject();val pos=line.optString("Position").toIntOrNull()?.takeIf{it>0} ?: driverMeta[number]?.line?.takeIf{it>0} ?: timingMeta[number]?.position?.takeIf{it>0} ?: number.toIntOrNull() ?: continue;val driver=line.optString("Tla").ifBlank{driverMeta[number]?.acronym ?: ""}.ifBlank{line.optString("FullName")}.ifBlank{line.optString("RacingNumber")}.ifBlank{driverMeta[number]?.name.orEmpty()}.ifBlank{"P"+pos};val leaderGap=line.optString("GapToLeader").ifBlank{"-"};val interval=line.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty().ifBlank{line.optString("IntervalToPositionAhead")}.ifBlank{"-"};val gap=if(pos==1)"LEADER" else interval.takeIf{it.isNotBlank()&&it!="-"} ?: leaderGap;val lastObj=line.optJSONObject("LastLapTime");val bestObj=line.optJSONObject("BestLapTime");val lastRaw=lastObj?.optString("Value").orEmpty().ifBlank{line.optString("LastLapTime")};val last=if(line.optBoolean("InPit",false))"IN PIT" else lastRaw;val best=bestObj?.optString("Value").orEmpty().ifBlank{line.optString("BestLapTime")};val tyre=line.optString("Compound").ifBlank{"-"};val s1=sectorValue(lastObj,line,"Sector1");val s2=sectorValue(lastObj,line,"Sector2");val s3=sectorValue(lastObj,line,"Sector3");val speed=line.optString("Speed").ifBlank{line.optString("SpeedKmh")};val lapNumber=line.optInt("Lap",0).takeIf{it>0}?:line.optInt("LapNumber",0);val seg1=sectorSegments(lastObj,line,"Sector1");val seg2=sectorSegments(lastObj,line,"Sector2");val seg3=sectorSegments(lastObj,line,"Sector3");rows+=TimingRow(pos,driver,gap,last.ifBlank{"-"},tyreByDriver[number] ?: tyre.ifBlank{"-"},pitStopsByDriver[number] ?: line.optInt("NumberOfPitStops",0),s1.first,s2.first,s3.first,speed.ifBlank{"-"},best.ifBlank{"-"},lapNumber,s1.second,s2.second,s3.second,seg1,seg2,seg3,interval,leaderGap,driverNumber=number)}
         if(rows.isNotEmpty()){
+            val previousCount = _rows.value.size
             _rows.value=rows.distinctBy{it.driverNumber}.sortedBy{it.position}
+            if (_rows.value.size != previousCount) {
+                AppLogger.i("LiveTiming","LIVE_TIMING_ROWS_UPDATED count=${_rows.value.size} source=TimingData")
+            }
             val keys2=lines.keys()
             while(keys2.hasNext()){
                 val number=keys2.next();val line=lines.optJSONObject(number) ?: continue
