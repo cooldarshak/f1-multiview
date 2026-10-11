@@ -256,6 +256,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             // A healthy WebSocket or unrelated telemetry packet is not proof that the timing
             // tower is live. Promote status only after a valid TimingData update yields rows.
             if (feed in setOf("TimingData","TimingDataF1") && _rows.value.isNotEmpty()) {
+                lastTimingRowsAtMs=System.currentTimeMillis()
                 _status.value="LIVE"
             }
             recordLiveSnapshot()
