@@ -203,24 +203,14 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         val selectedIds = playbackSelectionIds.toSet()
         startedFeeds.keys.filterNot { it in selectedIds }.toList().forEach { startedFeeds.remove(it) }
         val videoSelectedIds = playbackSelectionIds.filter { id ->
-            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(
-                StreamKind.TRACK_MAP,
-                StreamKind.F1_DASH_DATA,
-                StreamKind.TIMING,
-                StreamKind.TRACK
-            )
+            ui.streams.firstOrNull { it.id == id }?.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
         }.toSet()
         engine.retain(videoSelectedIds)
         val ordered = playbackSelectionIds.mapNotNull { id ->
             ui.streams.firstOrNull {
                 it.id == id &&
                     it.url != null &&
-                    it.kind !in setOf(
-                        StreamKind.TRACK_MAP,
-                        StreamKind.F1_DASH_DATA,
-                        StreamKind.TIMING,
-                        StreamKind.TRACK
-                    )
+                    it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
             }
         }
         val mainId = if (!fullscreenMultiview) {
@@ -250,7 +240,7 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
             val playableIds = ui.streams.filter {
                 it.id in ui.selectedStreamIds &&
                     it.url != null &&
-                    it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+                    it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
             }.map { it.id }.toSet()
             val mainId = ui.mainStreamId?.takeIf { it in playableIds } ?: ui.selectedStreamIds.firstOrNull { it in playableIds }
             if (mainId != null) engine.syncToMain(mainId)
@@ -1024,9 +1014,7 @@ private fun PitWall(
         }
         listOfNotNull(mainFeed, timingFeed, mapFeed)
     } else selectedCandidates
-    val selectedVideoFeedCount = selected.count {
-        it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
-    }
+    val selectedVideoFeedCount = selected.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -2480,9 +2468,7 @@ private fun FullscreenMultiview(
 ) {
     val multiviewStatus by engine.multiviewStatus.collectAsState()
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
-    val selectedVideoFeedCount = selected.count {
-        it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
-    }
+    val selectedVideoFeedCount = selected.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
 
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
@@ -2524,13 +2510,7 @@ private fun FullscreenMultiview(
     LaunchedEffect(activeFeedId, ui.streams) {
         val id = activeFeedId ?: return@LaunchedEffect
         val stream = ui.streams.firstOrNull { it.id == id } ?: return@LaunchedEffect
-        if (stream.kind !in setOf(
-                StreamKind.TRACK_MAP,
-                StreamKind.F1_DASH_DATA,
-                StreamKind.TIMING,
-                StreamKind.TRACK
-            )
-        ) {
+        if (stream.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) {
             engine.setAudioPlayer(id)
         }
     }
@@ -2539,15 +2519,7 @@ private fun FullscreenMultiview(
         ?: selected.firstOrNull { it.id == ui.mainStreamId }
         ?: selected.firstOrNull()
 
-    val activePlayer = active?.takeIf {
-        it.kind !in setOf(
-            StreamKind.TIMING,
-            StreamKind.TRACK,
-            StreamKind.TRACK_MAP,
-            StreamKind.F1_DASH,
-            StreamKind.F1_DASH_DATA
-        )
-    }?.let { engine.player(it.id) }
+    val activePlayer = active?.takeIf { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }?.let { engine.player(it.id) }
 
     DisposableEffect(activePlayer) {
         if (activePlayer == null) return@DisposableEffect onDispose {}
@@ -2800,7 +2772,7 @@ private fun FullscreenMultiview(
                     onPauseAll = { engine.pauseAll() },
                     onSeekAll = { delta ->
                         selected
-                            .filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK) }
+                            .filter { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
                             .forEach { stream ->
                                 val p = engine.player(stream.id)
                                 p.seekTo((p.currentPosition + delta).coerceAtLeast(0L))

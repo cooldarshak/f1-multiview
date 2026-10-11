@@ -243,14 +243,14 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         provider.streams(session.id).fold(
             { sources ->
                 val mainSource = sources.firstOrNull { it.kind == StreamKind.WORLD } ?: sources.firstOrNull()
-                val nativeDataKinds = setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+                val nativeDataKinds = setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
                 val playableSources = sources.filter { it.kind !in nativeDataKinds }
                 val selected = if (autoSelectFeeds) listOfNotNull(mainSource?.id) + playableSources.filter { it.id != mainSource?.id }.take(3).map { it.id } else listOfNotNull(mainSource?.id)
                 val selectedDistinct = selected.distinct().take(4)
                 _ui.value = _ui.value.copy(streams=sources, selectedStreamIds=selectedDistinct, mainStreamId=mainSource?.id, providerError=null)
                 val sourcesToResolve = buildList {
                     mainSource?.takeIf { it.url == null }?.let(::add)
-                    if (autoSelectFeeds) sources.filter { it.id in selectedDistinct && it.id != mainSource?.id && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK) }.forEach(::add)
+                    if (autoSelectFeeds) sources.filter { it.id in selectedDistinct && it.id != mainSource?.id && it.url == null && it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }.forEach(::add)
                 }.distinctBy { it.id }
                 for (source in sourcesToResolve) resolveSource(source)
             },
@@ -313,7 +313,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
 }
 fun toggleStream(id:String)=viewModelScope.launch{
     val tapped = _ui.value.streams.firstOrNull { it.id == id } ?: return@launch
-    val isNativeDashboard = tapped.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+    val isNativeDashboard = tapped.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
     var current = _ui.value.selectedStreamIds
     val videoKinds = setOf(StreamKind.WORLD, StreamKind.ONBOARD, StreamKind.HELICAM, StreamKind.DATA, StreamKind.F1_DASH)
     val hasSelectedVideo = current.any { selectedId ->
@@ -369,7 +369,7 @@ fun toggleStream(id:String)=viewModelScope.launch{
 
     val source = _ui.value.streams.firstOrNull { it.id == id } ?: return@launch
     if (source.url == null &&
-        source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+        source.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
     ) {
         resolveSource(source)
     }
@@ -407,7 +407,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
-        if (source.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)) return@launch
+        if (source.kind in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)) return@launch
         val current=_ui.value.selectedStreamIds
         val maxFeeds=maxLogicalFeeds()
         val oldMain = _ui.value.mainStreamId
