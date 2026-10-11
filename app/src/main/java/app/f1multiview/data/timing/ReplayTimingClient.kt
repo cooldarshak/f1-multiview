@@ -226,7 +226,7 @@ class ReplayTimingClient {
         return out
     }
 
-    private fun parseCarTelemetry(text:String):List<ReplayTelemetrySnapshot> {
+    internal fun parseCarTelemetry(text:String):List<ReplayTelemetrySnapshot> {
         val out=ArrayList<ReplayTelemetrySnapshot>()
         val latest=linkedMapOf<String,DriverTelemetry>()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
