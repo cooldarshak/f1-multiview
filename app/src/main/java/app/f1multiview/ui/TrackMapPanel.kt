@@ -93,7 +93,8 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
             panY = panY,
             modifier = Modifier.fillMaxSize().padding(if (isTv) 10.dp else 4.dp),
             isLive = ui.session?.live == true,
-            replayPlayheadMs = ui.replayPlayheadMs
+            replayPlayheadMs = ui.replayPlayheadMs,
+            replayDataOffsetMs = ui.replayDataOffsetMs
         )
         if (ui.trackGeometry?.centerline.isNullOrEmpty()) {
             Column(
@@ -200,7 +201,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
     panY:Float,
     modifier:Modifier,
     isLive:Boolean = false,
-    replayPlayheadMs:Long = 0L
+    replayPlayheadMs:Long = 0L, replayDataOffsetMs:Long = 0L
 ){
     var frameTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(isLive, drivers.isNotEmpty()) {
@@ -273,7 +274,7 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             val stale = if (isLive) {
                 isLivePositionStale(source, frameTimeMs)
             } else {
-                replayPlayheadMs > source.updatedAtMs && replayPlayheadMs - source.updatedAtMs > 2_500L
+                replayDataOffsetMs > source.updatedAtMs && replayDataOffsetMs - source.updatedAtMs > 2_500L
             }
             val p=screen(TrackPoint(d.x,d.y))
             val color=teamColor(d.teamColor).copy(alpha=if (stale) 0.35f else 1f)
@@ -408,7 +409,8 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
                     panY = 0f,
                     modifier = Modifier.fillMaxSize().padding(4.dp),
                     isLive = ui.session?.live == true,
-                    replayPlayheadMs = ui.replayPlayheadMs
+                    replayPlayheadMs = ui.replayPlayheadMs,
+                    replayDataOffsetMs = ui.replayDataOffsetMs
                 )
             }
             Spacer(Modifier.height(4.dp))
