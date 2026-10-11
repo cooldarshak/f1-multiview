@@ -15,4 +15,10 @@ class TrackMapClientTest {
         assertEquals("marinabay", TrackMapClient().normalize("Marina Bay Street Circuit"))
         assertEquals("albertpark", TrackMapClient().normalize("Albert Park Grand Prix Circuit"))
     }
+
+    @Test
+    fun suffixOnlyCircuitLabelDoesNotProduceAMatchableName() {
+        assertEquals("", TrackMapClient().normalize("GP"))
+        assertEquals("", TrackMapClient().normalize("Circuit"))
+    }
 }
