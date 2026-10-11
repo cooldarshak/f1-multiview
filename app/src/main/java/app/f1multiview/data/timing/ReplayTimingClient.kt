@@ -93,6 +93,34 @@ internal fun resolveReplayArchiveSession(
     return ReplaySessionResolution(selected.first, selected.third)
 }
 
+internal fun interpolateReplayPositionSnapshots(
+    snapshots: List<ReplayPositionSnapshot>,
+    targetOffsetMs: Long,
+    maxGapMs: Long = 1_500L
+): List<TrackDriverPosition> {
+    if (snapshots.isEmpty()) return emptyList()
+    val ordered = snapshots.sortedBy { it.offsetMs }
+    val before = ordered.lastOrNull { it.offsetMs <= targetOffsetMs } ?: return ordered.first().positions
+    val after = ordered.firstOrNull { it.offsetMs > targetOffsetMs } ?: return before.positions
+    val gap = after.offsetMs - before.offsetMs
+    if (gap !in 1L..maxGapMs) return before.positions
+
+    val fraction = ((targetOffsetMs - before.offsetMs).toDouble() / gap.toDouble()).coerceIn(0.0, 1.0)
+    val nextByNumber = after.positions.associateBy { it.number }
+    return before.positions.map { current ->
+        val next = nextByNumber[current.number] ?: return@map current
+        current.copy(
+            x = current.x + (next.x - current.x) * fraction,
+            y = current.y + (next.y - current.y) * fraction,
+            z = current.z + (next.z - current.z) * fraction,
+            previousX = current.x,
+            previousY = current.y,
+            previousUpdatedAtMs = before.offsetMs,
+            updatedAtMs = before.offsetMs
+        )
+    }
+}
+
 class ReplayTimingClient {
     fun clear() {
         snapshots=emptyList(); positionSnapshots=emptyList(); telemetrySnapshots=emptyList(); stintSnapshots=emptyList()
@@ -208,7 +236,7 @@ class ReplayTimingClient {
 
     fun positionsAt(videoPositionMs:Long):List<TrackDriverPosition> {
         val target=archiveOffsetForVideoPosition(videoPositionMs)
-        return findSnapshot(positionSnapshots,target){it.offsetMs}?.positions.orEmpty()
+        return interpolateReplayPositionSnapshots(positionSnapshots, target)
     }
 
     fun positionSnapshotCount():Int = positionSnapshots.size
