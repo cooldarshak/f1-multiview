@@ -701,10 +701,35 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         if(remaining.isNotBlank()) _sessionClock.value=remaining
     }
 
-    private fun parseLapCount(data:JSONObject?) {
-        if(data==null)return
-        val root=data.optJSONObject("LapCount") ?: data
-        _lapCount.value=root.optInt("CurrentLap",0) to root.optInt("TotalLaps",0)
+    internal fun parseLapCount(data: JSONObject?) {
+        if (data == null) return
+        val root = data.optJSONObject("LapCount") ?: data
+        fun readLap(vararg keys: String): Int? {
+            for (key in keys) {
+                val raw = root.opt(key)
+                val value = when (raw) {
+                    is Number -> raw.toInt()
+                    is String -> raw.toIntOrNull()
+                    is JSONObject -> {
+                        val nested = raw.opt("Value") ?: raw.opt("value")
+                        when (nested) {
+                            is Number -> nested.toInt()
+                            is String -> nested.toIntOrNull()
+                            else -> null
+                        }
+                    }
+                    else -> null
+                }
+                if (value != null && value > 0) return value
+            }
+            return null
+        }
+        val current = readLap("CurrentLap", "CurrentLapNumber")
+        val total = readLap("TotalLaps", "NumberOfLaps")
+        val previous = _lapCount.value
+        if (current != null || total != null) {
+            _lapCount.value = (current ?: previous.first) to (total ?: previous.second)
+        }
     }
     private fun parseWeather(data:JSONObject?) {
         if(data==null)return
