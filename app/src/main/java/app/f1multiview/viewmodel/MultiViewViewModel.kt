@@ -387,14 +387,25 @@ fun activateRaceMap(){
 fun loadTrackMapGeometry()=viewModelScope.launch {
     val state = _ui.value
     val info = state.liveSessionInfo
-    val year = info.year ?: state.session?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
-    val meeting = info.meeting.takeUnless { it.isBlank() || it == "-" }
-        ?: state.session?.name.orEmpty()
-    val circuitName = info.circuitName.ifBlank { meeting }
-    val existing = if (info.circuitKey != null) {
-        trackMapClient.load(info.circuitKey, year, circuitName)
+    val selectedSession = state.session
+    val replay = selectedSession?.live == false
+    // Live metadata belongs to the active live timing session; for VOD/replay use the selected
+    // archive's year/title instead so a live-session circuit key cannot point at the wrong track.
+    val year = if (replay) {
+        selectedSession?.seasonYear ?: info.year ?: state.selectedSeason?.year ?: java.time.Year.now().value
     } else {
-        Result.failure(IllegalStateException("Session metadata has no circuit key"))
+        info.year ?: selectedSession?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
+    }
+    val meeting = if (replay) {
+        selectedSession?.name.orEmpty()
+    } else {
+        info.meeting.takeUnless { it.isBlank() || it == "-" } ?: selectedSession?.name.orEmpty()
+    }
+    val circuitName = if (replay) "" else info.circuitName
+    val existing = if (!replay && info.circuitKey != null) {
+        trackMapClient.load(info.circuitKey, year, circuitName.ifBlank { meeting })
+    } else {
+        Result.failure(IllegalStateException("Circuit key is not available for this session; use meeting lookup"))
     }
     val resolved = if (existing.isSuccess) existing else {
         trackMapClient.loadByName(year, meeting, circuitName)

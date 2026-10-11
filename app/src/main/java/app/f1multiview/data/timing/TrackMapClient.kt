@@ -69,12 +69,17 @@ class TrackMapClient {
                 }
                 val item = selected?.takeIf { bestScore >= 70 }
                     ?: error("No circuit match for meeting metadata")
-                item.optInt("circuit_key", 0).takeIf { it > 0 }
+                val key = item.optInt("circuit_key", 0).takeIf { it > 0 }
                     ?: error("Matched meeting has no circuit key")
+                val geometryName = item.optString("circuit_short_name")
+                    .ifBlank { item.optString("location") }
+                    .ifBlank { circuitName }
+                    .ifBlank { meetingName }
+                key to geometryName
             }
         }
         return lookup.fold(
-            onSuccess = { key -> load(key, year, circuitName.ifBlank { meetingName }) },
+            onSuccess = { match -> load(match.first, year, match.second) },
             onFailure = { Result.failure(it) }
         )
     }
