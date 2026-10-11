@@ -276,10 +276,11 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     fun setSession(session:Session)=viewModelScope.launch{
         if (session.live) cancelReplayTimingLoad()
         livePlaybackSyncActive=false
+        lastPositionMappingSignature = null
         _ui.value=_ui.value.copy(
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
-            trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",trackPositionMappingValid=null,
+            trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
             timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,trackPositionMappingValid=null,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
         )
         if (shouldLoadReplayTiming(session)) loadReplayTiming(session) else cancelReplayTimingLoad()
