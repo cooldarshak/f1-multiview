@@ -30,7 +30,7 @@ sealed interface AuthState {
 data class UiState(
     val auth:AuthState=AuthState.Checking,val layout:LayoutPreset=LayoutPreset.GRID_4,val session:Session?=null,
     val sessions: List<Session> =emptyList(),val streams: List<StreamSource> =emptyList(),
-    val telemetry: List<DriverTelemetry> = emptyList(), val liveSessionInfo: LiveSessionInfo = LiveSessionInfo(),val timing: List<TimingRow> = emptyList(), val currentLap:Int = 0, val totalLaps:Int = 0,
+    val telemetry: List<DriverTelemetry> = emptyList(), val driverInfo: List<DriverInfo> = emptyList(), val liveSessionInfo: LiveSessionInfo = LiveSessionInfo(),val timing: List<TimingRow> = emptyList(), val currentLap:Int = 0, val totalLaps:Int = 0,
     val raceControl: List<RaceControlEvent> = emptyList(), val weather: TimingWeather = TimingWeather(),val sessionClock:String = "-",val selectedPanel:String?=null,val syncOffsetMs:Long=0,
     val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
@@ -66,6 +66,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         viewModelScope.launch{timingClient.weather.collect{weather->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(weather=weather)}}
         viewModelScope.launch{timingClient.teamRadio.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(teamRadio=items)}}
         viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(telemetry=items)}}
+        viewModelScope.launch{timingClient.driverInfo.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(driverInfo=items)}}
         viewModelScope.launch{timingClient.sessionInfo.collect{info->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(liveSessionInfo=info)}}
         viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(trackPositions=positions)}}
         viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(trackStatus=status)}}
