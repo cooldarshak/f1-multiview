@@ -442,7 +442,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                     else->previous.trail
                 }
                 positionMeta[number]=TrackPositionRaw(x,y,z,System.currentTimeMillis(),trail)
-                changed=changed||moved
+                // Publish valid packets even when a car has not moved beyond the trail
+                // threshold: updatedAtMs is feed freshness, not a movement timestamp.
+                changed=true
             }
         }
         fun visit(value:Any?,depth:Int=0){
