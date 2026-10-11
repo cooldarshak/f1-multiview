@@ -275,6 +275,7 @@ class ReplayTimingClient {
     fun nudge(deltaMs:Long){ syncOffsetMs += deltaMs; syncCalibrated=false }
 
     fun isSyncCalibrated():Boolean = syncCalibrated
+    fun currentSyncOffsetMs():Long = syncOffsetMs
 
     fun calibratedOffset(videoPositionMs:Long, timingPositionMs:Long):Long =
         (timingPositionMs-videoPositionMs).coerceIn(-300_000L,300_000L)
