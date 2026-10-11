@@ -133,6 +133,41 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun newSessionIdentityClearsRowsPositionsAndSessionScopedCaches() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseSessionInfo(JSONObject(
+            """{"SessionInfo":{"Name":"Race","Type":"Race","StartDate":"2026-10-11T12:00:00Z","MeetingName":"Singapore Grand Prix","Meeting":{"Name":"Singapore Grand Prix","Circuit":{"Key":61,"Name":"Marina Bay Street Circuit"}},"Country":{"Name":"Singapore"}}}"""
+        ))
+        client.parseTiming(JSONObject("""{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}}}}"""))
+        client.parsePosition(JSONObject("""{"Position":[{"Entries":{"1":{"X":12.5,"Y":-7.25,"Z":0.0}}}]}"""))
+        assertEquals(1, client.rows.value.size)
+        assertEquals(1, client.trackPositions.value.size)
+
+        client.parseSessionInfo(JSONObject(
+            """{"SessionInfo":{"Name":"Qualifying","Type":"Qualifying","StartDate":"2026-10-10T12:00:00Z","MeetingName":"Singapore Grand Prix","Meeting":{"Name":"Singapore Grand Prix","Circuit":{"Key":61,"Name":"Marina Bay Street Circuit"}},"Country":{"Name":"Singapore"}}}"""
+        ))
+
+        assertTrue(client.rows.value.isEmpty())
+        assertTrue(client.trackPositions.value.isEmpty())
+        assertTrue(client.telemetry.value.isEmpty())
+        assertEquals("Qualifying", client.sessionInfo.value.name)
+    }
+
+    @Test
+    fun partialSessionMetadataDoesNotEraseRowsOrCurrentSessionIdentity() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseSessionInfo(JSONObject(
+            """{"SessionInfo":{"Name":"Race","Type":"Race","StartDate":"2026-10-11T12:00:00Z","MeetingName":"Singapore Grand Prix","Meeting":{"Name":"Singapore Grand Prix","Circuit":{"Key":61,"Name":"Marina Bay Street Circuit"}}}}"""
+        ))
+        client.parseTiming(JSONObject("""{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER"}}}"""))
+
+        client.parseSessionInfo(JSONObject("""{"SessionInfo":{"Status":"Started"}}"""))
+
+        assertEquals(1, client.rows.value.size)
+        assertEquals("Race", client.sessionInfo.value.name)
+        assertEquals("Singapore Grand Prix", client.sessionInfo.value.meeting)
+    }
+    @Test
     fun sparseArrayDeltasPreserveUntouchedSectorSegments() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val target = JSONObject(
