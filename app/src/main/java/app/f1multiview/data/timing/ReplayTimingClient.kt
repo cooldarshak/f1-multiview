@@ -100,7 +100,7 @@ internal fun interpolateReplayPositionSnapshots(
 ): List<TrackDriverPosition> {
     if (snapshots.isEmpty()) return emptyList()
     val ordered = snapshots.sortedBy { it.offsetMs }
-    val before = ordered.lastOrNull { it.offsetMs <= targetOffsetMs } ?: return ordered.first().positions
+    val before = ordered.lastOrNull { it.offsetMs <= targetOffsetMs } ?: return emptyList()
     val after = ordered.firstOrNull { it.offsetMs > targetOffsetMs } ?: return before.positions
     val gap = after.offsetMs - before.offsetMs
     if (gap !in 1L..maxGapMs) return before.positions
