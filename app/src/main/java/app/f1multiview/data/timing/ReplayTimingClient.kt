@@ -26,7 +26,7 @@ private data class ReplayStintSnapshot(val offsetMs:Long,val stints:Map<String,R
 data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
 data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
 data class ReplayLapSnapshot(val offsetMs:Long,val current:Int,val total:Int)
-data class ReplayClockSnapshot(val offsetMs:Long,val clock:String)
+data class ReplayClockSnapshot(val offsetMs:Long,val clock:String,val extrapolating:Boolean,val utc:String?=null)
 data class ReplayMetadataState(
     val sessionInfo:LiveSessionInfo?,
     val weather:TimingWeather,
@@ -80,12 +80,20 @@ class ReplayTimingClient {
             // the replay media clock, including backwards seeks. No live values are mixed in.
             telemetrySnapshots=runCatching { parseCarTelemetry(getText("https://livetiming.formula1.com/static/$path/CarData.z.jsonStream")) }.getOrDefault(emptyList())
             positionSnapshots=runCatching { parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream")) }.getOrDefault(emptyList())
-            syncData=loadCuratedSync(meeting.optString("Key"),session.optString("Key")) ?: ReplaySyncData(0L, emptyMap())
-            // sessionStartMs is absolute UTC epoch metadata; JSONStream timestamps are relative
-            // session offsets (HH:mm:ss.mmm). Adding the epoch made every replay lookup select
-            // the last snapshot, freezing the tower and car positions at the end of the session.
-            // Start at relative offset zero; manual calibration may adjust this offset later.
-            syncOffsetMs=0L
+            val curatedSync=loadCuratedSync(meeting.optString("Key"),session.optString("Key"))
+            syncData=curatedSync ?: ReplaySyncData(0L, emptyMap())
+            // The MultiViewer sync endpoint's session_start is NOT an epoch timestamp. It is the
+            // video position (seconds) at the official session start/lights-out. The archive's
+            // ExtrapolatedClock has a relative offset where Extrapolating first becomes true (K).
+            // Convert video position to archive position with: archive = video + K - session_start.
+            // This is what keeps tower, sectors, car telemetry and map markers on the video playhead.
+            val clockStart=clockSnapshots.firstOrNull { it.extrapolating }?.offsetMs
+            syncOffsetMs=if(curatedSync!=null && clockStart!=null) {
+                syncOffsetForSessionStart(clockStart,curatedSync.sessionStartMs)
+            } else {
+                // Without curated video sync data, zero remains an explicit uncalibrated fallback.
+                0L
+            }
         }
     }
     internal fun archiveOffsetForVideoPosition(videoPositionMs:Long):Long =
@@ -136,6 +144,9 @@ class ReplayTimingClient {
             sessionClock=findSnapshot(clockSnapshots,target){it.offsetMs}?.clock ?: "-"
         )
     }
+
+    internal fun syncOffsetForSessionStart(clockStartOffsetMs:Long, videoSecondsToSessionStartMs:Long):Long =
+        clockStartOffsetMs-videoSecondsToSessionStartMs
 
     fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs }
 
@@ -232,7 +243,9 @@ class ReplayTimingClient {
             val data=root.optJSONObject("ExtrapolatedClock") ?: root
             val remaining=data.optString("Remaining").ifBlank{data.optString("Clock").ifBlank{data.optString("Time")}}
             if(remaining.isNotBlank() && remaining!="null")latest=remaining
-            if(latest!="-")out+=ReplayClockSnapshot(offset,latest)
+            val extrapolating=data.optBoolean("Extrapolating",false)
+            val utc=data.optString("Utc").takeIf{it.isNotBlank()&&it!="null"}
+            if(latest!="-")out+=ReplayClockSnapshot(offset,latest,extrapolating,utc)
         }
         return out
     }

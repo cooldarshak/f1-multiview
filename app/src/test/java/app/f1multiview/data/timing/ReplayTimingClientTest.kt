@@ -18,6 +18,16 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun curatedVideoSessionStartMapsToLightsOutArchiveOffset() {
+        val client = ReplayTimingClient()
+        // The archive reaches lights-out at 42:17, while the VOD reaches it at 3:48.
+        val offset = client.syncOffsetForSessionStart(42 * 60_000L + 17_000L, 3 * 60_000L + 48_000L)
+        client.setSyncOffset(offset)
+        assertEquals(38 * 60_000L + 29_000L, client.archiveOffsetForVideoPosition(0L))
+        assertEquals(39 * 60_000L + 29_000L, client.archiveOffsetForVideoPosition(60_000L))
+    }
+
+    @Test
     fun calibrationReturnsTimingMinusVideoPosition() {
         val client = ReplayTimingClient()
         assertEquals(1500L, client.calibratedOffset(10_000L, 11_500L))
