@@ -1,6 +1,9 @@
 package app.f1multiview.data.timing
 
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TrackMapClientTest {
@@ -44,6 +47,54 @@ class TrackMapClientTest {
         assertEquals(100, client.scoreGeoJsonCircuit("melbourne", "melbourne", "melbourne"))
         assertEquals(80, client.scoreGeoJsonCircuit("albertparkcircuit", "melbourne", "albertpark"))
         assertEquals(0, client.scoreGeoJsonCircuit("unknowncircuit", "unknown", ""))
+    }
+
+
+    @Test
+    fun parsesNativeCircuitTraceInTelemetryCoordinates() {
+        val x = JSONArray()
+        val y = JSONArray()
+        repeat(TrackMapClient.MIN_CENTERLINE_POINTS) { i ->
+            x.put(i.toDouble())
+            y.put((i % 7).toDouble())
+        }
+        val points = TrackMapClient().parseTrackCoordinates(x, y)
+        assertEquals(TrackMapClient.MIN_CENTERLINE_POINTS, points.size)
+        assertEquals(0.0, points.first().x, 0.0)
+        assertEquals(19.0, points.last().x, 0.0)
+    }
+
+    @Test
+    fun rejectsMalformedOrIncompleteNativeCircuitTrace() {
+        val client = TrackMapClient()
+        val x = JSONArray()
+        val y = JSONArray()
+        repeat(TrackMapClient.MIN_CENTERLINE_POINTS) { i ->
+            x.put(i.toDouble())
+            y.put((i % 7).toDouble())
+        }
+        assertTrue(client.parseTrackCoordinates(x, JSONArray()).isEmpty())
+        y.put(99.0)
+        assertTrue(client.parseTrackCoordinates(x, y).isEmpty())
+
+        val badX = JSONArray()
+        val badY = JSONArray()
+        repeat(TrackMapClient.MIN_CENTERLINE_POINTS) { i ->
+            badX.put(if (i == 4) JSONObject.NULL else i.toDouble())
+            badY.put((i % 7).toDouble())
+        }
+        assertTrue(client.parseTrackCoordinates(badX, badY).isEmpty())
+    }
+
+    @Test
+    fun rejectsDegenerateNativeCircuitTrace() {
+        val x = JSONArray()
+        val y = JSONArray()
+        repeat(TrackMapClient.MIN_CENTERLINE_POINTS) {
+            x.put(1.0)
+            y.put(2.0)
+        }
+        assertTrue(TrackMapClient().parseTrackCoordinates(x, y).isEmpty())
     }
 
     @Test
