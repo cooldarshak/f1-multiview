@@ -43,6 +43,7 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 private val MapBg=Color(0xFF07080B)
 private val MapTrack=Color(0xFF454953)
@@ -353,6 +354,26 @@ private fun teamColor(hex:String):Color=runCatching{
 fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
     val drivers = ui.trackPositions
     val selected = drivers.firstOrNull()?.number
+    val clockNowMs by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            delay(250L)
+            value = System.currentTimeMillis()
+        }
+    }
+    val freshCount = when (ui.session?.live) {
+        true -> drivers.count { !isLivePositionStale(it, clockNowMs) }
+        false -> drivers.count {
+            ui.replayDataOffsetMs <= it.updatedAtMs ||
+                ui.replayDataOffsetMs - it.updatedAtMs <= 2_500L
+        }
+        null -> 0
+    }
+    val gpsStatus = when {
+        drivers.isEmpty() -> "WAITING FOR POSITION DATA"
+        freshCount == 0 -> "POSITION DATA STALE"
+        ui.session?.live == false -> "REPLAY POSITION DATA"
+        else -> "LIVE POSITION DATA"
+    }
     Column(
         modifier.fillMaxSize().background(MapBg).padding(if (isTv) 5.dp else 3.dp)
     ) {
@@ -367,7 +388,10 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
                     color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1
                 )
             }
-            Text("${drivers.size} CARS", color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+            Column(horizontalAlignment = Alignment.End) {
+                Text("${freshCount}/${drivers.size} GPS", color = if (freshCount > 0) Color(0xFF66E07A) else MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+                Text(gpsStatus, color = MapMuted, fontSize = 5.sp, fontWeight = FontWeight.Bold)
+            }
         }
         if (drivers.isEmpty()) {
             val timingRows = ui.timing.sortedBy { it.position }.take(10)
