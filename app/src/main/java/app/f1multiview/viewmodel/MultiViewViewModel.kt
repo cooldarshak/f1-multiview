@@ -428,7 +428,15 @@ fun toggleStream(id:String)=viewModelScope.launch{
         if (_ui.value.trackPositionMappingValid != null) _ui.value = _ui.value.copy(trackPositionMappingValid = null)
         return
     }
-    val result = TrackMapClient.validatePositionCoordinateMapping(geometry.centerline, positions)
+    val live = _ui.value.session?.live == true
+    val nowMs = System.currentTimeMillis()
+    val replayOffset = _ui.value.replayDataOffsetMs
+    val freshPositions = positions.filter { position ->
+        if (position.updatedAtMs <= 0L) return@filter false
+        if (live) nowMs - position.updatedAtMs in 0L..2_500L
+        else kotlin.math.abs(replayOffset - position.updatedAtMs) <= 2_500L
+    }
+    val result = TrackMapClient.validatePositionCoordinateMapping(geometry.centerline, freshPositions)
     if (result.valid == null) {
         if (_ui.value.trackPositionMappingValid != null) _ui.value = _ui.value.copy(trackPositionMappingValid = null)
         return
