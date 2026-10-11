@@ -32,6 +32,21 @@ class TrackMapClientTest {
     }
 
     @Test
+    fun matchesGeoJsonCircuitByExactVenueAlias() {
+        val client = TrackMapClient()
+        assertEquals(90, client.scoreGeoJsonCircuit("albertparkcircuit", "melbourne", "melbourne"))
+        assertEquals(90, client.scoreGeoJsonCircuit("bahraininternationalcircuit", "sakhir", "sakhir"))
+    }
+
+    @Test
+    fun exactCircuitNameOutranksLocationAndAmbiguousAliasesStayRejectable() {
+        val client = TrackMapClient()
+        assertEquals(100, client.scoreGeoJsonCircuit("melbourne", "melbourne", "melbourne"))
+        assertEquals(80, client.scoreGeoJsonCircuit("albertparkcircuit", "melbourne", "albertpark"))
+        assertEquals(0, client.scoreGeoJsonCircuit("unknowncircuit", "unknown", ""))
+    }
+
+    @Test
     fun acceptsAnAccuratelyAlignedCentrelineFit() {
         val client = TrackMapClient()
         val matches = listOf(
