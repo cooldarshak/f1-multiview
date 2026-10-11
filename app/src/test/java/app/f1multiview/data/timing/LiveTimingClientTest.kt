@@ -54,6 +54,62 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun parsesRealPositionPayloadShapesAndKeepsPreviousSample() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parsePosition(
+            JSONObject(
+                """{"Position":[{"Timestamp":"2026-10-11T18:00:00Z","Entries":{"1":{"X":12.5,"Y":-7.25,"Z":1.0},"44":{"X":3.0,"Y":9.0}}}]}"""
+            )
+        )
+        val first = client.trackPositions.value.first { it.number == "1" }
+        assertEquals(12.5, first.x, 0.0001)
+        assertEquals(-7.25, first.y, 0.0001)
+        assertEquals(1, first.trail.size)
+
+        client.parsePosition(
+            JSONObject("""{"Position":[{"Entries":{"1":{"X":15.5,"Y":-2.25,"Z":1.0}}}]}""")
+        )
+        val second = client.trackPositions.value.first { it.number == "1" }
+        assertEquals(15.5, second.x, 0.0001)
+        assertEquals(-2.25, second.y, 0.0001)
+        assertEquals(12.5, second.previousX!!, 0.0001)
+        assertEquals(-7.25, second.previousY!!, 0.0001)
+        assertTrue(second.previousUpdatedAtMs > 0L)
+        assertTrue(second.updatedAtMs >= second.previousUpdatedAtMs)
+        assertEquals(2, second.trail.size)
+    }
+
+    @Test
+    fun malformedPositionEntriesNeverCreateCoordinates() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parsePosition(JSONObject("""{"Position":[{"Entries":{"1":{"X":"not-x","Y":2.0},"2":{"X":1.0}}}]}"""))
+        assertTrue(client.trackPositions.value.isEmpty())
+    }
+
+    @Test
+    fun timingTowerRowsRetainSparseFieldsAndFastestLapFlags() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(
+            JSONObject(
+                """{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100","Sector1":{"Value":"25.100","OverallFastest":true},"Sector2":{"Value":"33.200","PersonalFastest":true},"Sector3":{"Value":"33.800"}},"BestLapTime":{"Value":"1:31.000","OverallFastest":true}},"44":{"Position":2,"Tla":"HAM","GapToLeader":"+1.2","IntervalToPositionAhead":{"Value":"+1.2"}}}}"""
+            )
+        )
+        client.parseTiming(JSONObject("""{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"44":{"GapToLeader":"+0.8"}}}"""))
+
+        val leader = client.rows.value.first { it.driverNumber == "1" }
+        val second = client.rows.value.first { it.driverNumber == "44" }
+        assertEquals("VER", leader.driver)
+        assertEquals("1:31.900", leader.lastLap)
+        assertEquals("25.100", leader.sector1)
+        assertEquals("PURPLE", leader.sector1Status)
+        assertEquals("GREEN", leader.sector2Status)
+        assertEquals("1:31.000", leader.bestLap)
+        assertEquals("PURPLE", leader.bestLapStatus)
+        assertEquals("+0.8", second.leaderGap)
+        assertEquals("+1.2", second.interval)
+    }
+
+    @Test
     fun sparseTimingUpdatesPreserveUntouchedNestedFields() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val current = JSONObject(
