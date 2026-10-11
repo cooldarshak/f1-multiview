@@ -548,7 +548,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                         speed = if (telemetry.speed > 0) telemetry.speed.toString() else row.speed,
                         gear = telemetry.gear,
                         rpm = telemetry.rpm,
-                        drsActive = telemetry.drs.takeIf { it > 0 }?.let { it >= 8 }
+                        drsActive = telemetry.drs?.let { it >= 8 }
                     )
                 }
             }
