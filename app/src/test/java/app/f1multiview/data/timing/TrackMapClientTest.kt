@@ -53,17 +53,16 @@ class TrackMapClientTest {
 
 
     @Test
-    fun retriesOlderPublicCircuitCataloguesWhenCurrentSeasonLookupIsRestricted() {
-        assertEquals(listOf(2026, 2025, 2024, 2023), TrackMapClient.catalogLookupYears(2026))
-        assertEquals(listOf(2025, 2024, 2023), TrackMapClient.catalogLookupYears(2025))
-        // For archived races, recent public catalogue data is still useful for stable venue keys.
-        assertEquals(listOf(2023), TrackMapClient.catalogLookupYears(2021))
+    fun geometryLookupDoesNotSilentlySubstituteAnOlderSeasonLayout() {
+        assertEquals(listOf(2026), TrackMapClient.geometryLookupYears(2026))
+        assertEquals(listOf(2025), TrackMapClient.geometryLookupYears(2025))
+        assertEquals(listOf(2021), TrackMapClient.geometryLookupYears(2021))
     }
 
     @Test
     fun geometryLookupFallsBackOnlyToPublishedPublicSeasons() {
-        assertEquals(listOf(2026, 2025, 2024, 2023), TrackMapClient.geometryLookupYears(2026))
-        assertEquals(listOf(2024, 2023), TrackMapClient.geometryLookupYears(2024))
+        assertEquals(listOf(2026), TrackMapClient.geometryLookupYears(2026))
+        assertEquals(listOf(2024), TrackMapClient.geometryLookupYears(2024))
         // Old archives are not silently mapped to a newer season's telemetry coordinate frame.
         assertEquals(listOf(2021), TrackMapClient.geometryLookupYears(2021))
     }
@@ -97,15 +96,22 @@ class TrackMapClientTest {
             .put("corners", corners)
         val catalogue = JSONObject().put("circuits", JSONObject().put("61", singapore))
 
+        assertNull("Older bundled geometry must not be used for a newer session",
+            TrackMapClient.parseBundledGeometry(catalogue, 61, 2026))
+        singapore.put("year", 2026)
         val geometry = TrackMapClient.parseBundledGeometry(catalogue, 61, 2026)
         assertNotNull(geometry)
         assertEquals(61, geometry!!.circuitKey)
-        assertEquals(2023, geometry.year)
+        assertEquals(2026, geometry.year)
         assertEquals(335.0, geometry.rotation, 0.0)
         assertEquals(TrackMapClient.MIN_CENTERLINE_POINTS, geometry.centerline.size)
         assertEquals(3, geometry.corners.size)
         assertEquals(61 to "Singapore", TrackMapClient.matchBundledCircuit(catalogue, "Singapore Grand Prix", ""))
+        assertNull(TrackMapClient.matchBundledCircuit(catalogue, "Unknown Grand Prix", "Unknown Circuit"))
         assertNull(TrackMapClient.parseBundledGeometry(catalogue, 999, 2026))
+        singapore.put("circuitKey", 63)
+        assertNull("A key mismatch must not reuse another circuit's geometry",
+            TrackMapClient.parseBundledGeometry(catalogue, 61, 2026))
     }
 
     @Test
