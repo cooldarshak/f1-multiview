@@ -162,6 +162,17 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
+    LaunchedEffect(ui.session?.id, ui.session?.live, ui.mainStreamId, ui.streams) {
+        val session = ui.session ?: return@LaunchedEffect
+        if (session.live) return@LaunchedEffect
+        val mainId = ui.mainStreamId ?: return@LaunchedEffect
+        val player = engine.player(mainId)
+        while (true) {
+            if (player.currentMediaItem != null) vm.updateReplayTiming(player.currentPosition.coerceAtLeast(0L))
+            delay(250L)
+        }
+    }
+
     LaunchedEffect(ui.pendingResume?.contentId, ui.mainStreamId) {
         val pending = ui.pendingResume ?: return@LaunchedEffect
         val mainId = ui.mainStreamId ?: return@LaunchedEffect
@@ -1006,6 +1017,9 @@ private fun PitWall(
         }
         listOfNotNull(mainFeed, timingFeed, mapFeed)
     } else selectedCandidates
+    val selectedVideoFeedCount = selected.count {
+        it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+    }
     var wallAspect by rememberSaveable { mutableFloatStateOf(16f / 9f) }
     LaunchedEffect(ui.mainStreamId, selected.size) {
         repeat(16) {
@@ -1132,7 +1146,7 @@ private fun PitWall(
         }
     }
     Box(Modifier.fillMaxWidth().padding(horizontal = if (compactPhone) 12.dp else 18.dp)) {
-        if (selected.size > 1) {
+        if (selectedVideoFeedCount > 1) {
             Text(multiviewStatus, color = Color(0xFFFFD28A), fontSize = 10.sp,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
         }
@@ -2417,6 +2431,9 @@ private fun FullscreenMultiview(
 ) {
     val multiviewStatus by engine.multiviewStatus.collectAsState()
     val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    val selectedVideoFeedCount = selected.count {
+        it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA, StreamKind.TIMING, StreamKind.TRACK)
+    }
 
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
@@ -2482,15 +2499,6 @@ private fun FullscreenMultiview(
             StreamKind.F1_DASH_DATA
         )
     }?.let { engine.player(it.id) }
-
-    LaunchedEffect(activePlayer, ui.session?.live) {
-        if (activePlayer != null && ui.session?.live == false) {
-            while (true) {
-                onReplayPosition(activePlayer.currentPosition)
-                delay(500L)
-            }
-        }
-    }
 
     DisposableEffect(activePlayer) {
         if (activePlayer == null) return@DisposableEffect onDispose {}
@@ -2618,7 +2626,7 @@ private fun FullscreenMultiview(
             }
         }
 
-        if (selected.size > 1) {
+        if (selectedVideoFeedCount > 1) {
             Text(multiviewStatus, color = Color(0xFFFFD28A), fontSize = 11.sp,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = if (controlsVisible) 54.dp else 8.dp))
         }
