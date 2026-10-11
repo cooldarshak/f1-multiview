@@ -424,13 +424,24 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     val resolved = if (hasUsableGeometry) existing else {
         trackMapClient.loadByName(year, meeting, circuitName)
     }
-    resolved.onSuccess { geometry ->
-        _ui.value = _ui.value.copy(trackGeometry=geometry, providerError=null)
-        AppLogger.i("TrackMap", "GEOMETRY_READY circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
-    }.onFailure {
-        _ui.value = _ui.value.copy(providerError="Track map geometry unavailable: "+(it.message?:"unknown error"))
-        AppLogger.w("TrackMap", "GEOMETRY_UNAVAILABLE year=$year meetingNamePresent=${meeting.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()} reason=${it.javaClass.simpleName}")
-    }
+    resolved.fold(
+        onSuccess = { geometry ->
+            // A successful provider response can still contain only corner metadata.
+            // Never publish it as a ready map unless its centreline is validated.
+            if (geometry.centerline.size < 20) {
+                val reason = "Matched circuit returned only ${geometry.centerline.size} centreline points (minimum 20)"
+                _ui.value = _ui.value.copy(trackGeometry=null, providerError="Track map geometry unavailable: " + reason)
+                AppLogger.w("TrackMap", "GEOMETRY_REJECTED circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
+            } else {
+                _ui.value = _ui.value.copy(trackGeometry=geometry, providerError=null)
+                AppLogger.i("TrackMap", "GEOMETRY_READY circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
+            }
+        },
+        onFailure = { failure ->
+            _ui.value = _ui.value.copy(trackGeometry=null, providerError="Track map geometry unavailable: " + (failure.message ?: "unknown error"))
+            AppLogger.w("TrackMap", "GEOMETRY_UNAVAILABLE year=${year} meetingNamePresent=${meeting.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()} reason=${failure.javaClass.simpleName}")
+        }
+    )
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
