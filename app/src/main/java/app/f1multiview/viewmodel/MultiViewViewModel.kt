@@ -632,8 +632,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 }
         }
     }
-    fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta);replayTimingClient.nudge(delta)}
-    fun setReplayTimingOffset(offsetMs:Long){_ui.value=_ui.value.copy(syncOffsetMs=offsetMs);replayTimingClient.setSyncOffset(offsetMs)}
+    fun sync(delta:Long){replayTimingClient.nudge(delta);_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta,replaySyncCalibrated=replayTimingClient.isSyncCalibrated(),timingStatus=if(replayTimingClient.isSyncCalibrated())"REPLAY" else "REPLAY_UNCALIBRATED")}
+    fun setReplayTimingOffset(offsetMs:Long){replayTimingClient.setSyncOffset(offsetMs);_ui.value=_ui.value.copy(syncOffsetMs=offsetMs,replaySyncCalibrated=replayTimingClient.isSyncCalibrated(),timingStatus=if(replayTimingClient.isSyncCalibrated())"REPLAY" else "REPLAY_UNCALIBRATED")}
     fun calibrateReplayTiming(videoPositionMs:Long,timingPositionMs:Long){setReplayTimingOffset(replayTimingClient.calibratedOffset(videoPositionMs,timingPositionMs))}
 
     fun providerError(message:String?){_ui.value=_ui.value.copy(providerError=message)}
