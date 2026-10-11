@@ -1,1 +1,544 @@
-file:///mnt/data/livetiming.txt
+F1 MULTIVIEW ANDROID TV
+
+Engineering Handover: Live Timing Tower + Driver Tracker
+
+Date: 11 October 2026
+Project repository: https://github.com/cooldarshak/f1-multiview
+Active development branch: "feature/tiledmedia-multiview-rearchitecture"
+Last inspected commit: "39670b9474490850be78db944b3acdf4664bad93"
+
+1. YOUR TASK
+
+Continue the existing F1 MultiView Android/Android TV project. Do not restart from scratch.
+
+The immediate objective is to implement a faithful, fully functional reproduction of the supplied F1 TV Live Timings / Timing Tower and Driver Tracker / Track Map screens, using the existing Android application and proven implementations from the reference GitHub repositories.
+
+The previous plan was too generic. We have identified existing code, relevant reference implementations and specific gaps. Now start implementing fixes in the repository.
+
+Do not respond with another high-level plan only. Inspect the current branch, identify the first concrete change, implement it, test it and continue through the milestones.
+
+2. CRITICAL USER REQUIREMENTS
+
+1. Do not use OpenF1. Its live timing offering is paid. Do not use OpenF1 APIs, endpoints, services, SDKs or repository code as the source for live timing or driver positions.
+2. Use the existing authorised F1 TV timing infrastructure and the reference repositories listed below. F1 TV live timing is the preferred source for live session data.
+3. The user permits copying and porting the relevant code from the listed reference repositories. Preserve any applicable attribution and licence notices in the repository.
+4. Do not remove working functionality while implementing new functionality.
+5. Single-feed playback already works in the user's established setup. Do not reprioritise playback repairs without concrete evidence of a regression.
+6. Do not replace the current Android app with a web application, a Python server or an Electron app.
+7. Do not fabricate driver positions, GPS coordinates, sector timing, telemetry, circuit geometry or live status.
+8. No placeholder values presented as actual timing data. No fake sector bars. Do not display "LIVE" merely because a socket is connected.
+9. Maintain Android TV remote navigation and the existing mobile-responsive UI.
+10. Do not claim a fix or milestone is successful until its tests, build and relevant runtime behaviour have been verified.
+
+3. REPOSITORY AND WORKING RULES
+
+Repository:
+https://github.com/cooldarshak/f1-multiview
+
+Work only on:
+"feature/tiledmedia-multiview-rearchitecture"
+
+Last inspected commit:
+"39670b9474490850be78db944b3acdf4664bad93"
+
+First retrieve the current branch head and working tree state through the available GitHub tools. The recorded commit may have advanced since this handover.
+
+Rules:
+
+- Never develop directly on "main" unless explicitly instructed.
+- Inspect the current source before editing. Do not overwrite changes made after the recorded commit.
+- Prefer small, focused, reviewable changes.
+- Preserve existing playback, Widevine DRM, feed selection, layout, synchronisation and remote-control behaviour.
+- Do not delete safety checks or weaken DRM.
+- Use GitHub Actions for CI validation. Do not use Codemagic.
+- Verify the exact commit associated with every build.
+- Report CI success separately from physical-device runtime success.
+- If a GitHub operation fails, diagnose the failure rather than claiming the change was made.
+
+4. REFERENCE REPOSITORIES
+
+Use these as implementation references and port suitable algorithms, data models, parsers, UI behaviour and tests into Kotlin and Jetpack Compose.
+
+A. F1OpenViewer: primary live timing tower reference
+
+Repository:
+https://github.com/npanu420/F1OpenViewer
+
+Important source paths:
+
+- "electron/livetiming.js"
+- "src/domain/timing.ts"
+- "src/ui/components/LiveTimingBody.tsx"
+- "src/ui/hooks/useLiveTiming.ts"
+
+Study and port:
+
+- SignalR negotiation and connection lifecycle.
+- WebSocket framing and feed subscriptions.
+- Compressed message decoding.
+- Reconnection and subscription recovery.
+- Recursive merging of sparse timing deltas.
+- Driver row derivation.
+- Sector status and sector segments.
+- Tyre/stint information and pit status.
+- Weather and race-control state.
+- Compact and detailed timing tower presentation.
+
+The existing Android transport should not be replaced wholesale unless evidence shows that it is incorrect. Reuse the working parts and fix the actual failing layer.
+
+B. F1ReplayTiming: replay and track-rendering reference
+
+Repository:
+https://github.com/adn8naiagent/F1ReplayTiming
+
+Important source paths:
+
+- "backend/services/live_signalr.py"
+- "backend/routers/track.py"
+- "backend/routers/replay_data.py"
+- "frontend/src/components/TrackCanvas.tsx"
+- "frontend/src/lib/trackRenderer.ts"
+
+Study and port:
+
+- Live timing connection and feed handling.
+- Replay session selection and archive processing.
+- Timestamped timing and position snapshots.
+- Track geometry and position mapping.
+- Smooth driver-marker movement.
+- Replay-seek behaviour.
+- Separation of source data, processed state and rendering.
+
+Do not introduce a mandatory backend server. Port the relevant functionality into the existing native Android application.
+
+C. Fast-F1: timing and telemetry reference
+
+Repository:
+https://github.com/theOehrly/Fast-F1
+
+Use it to understand and test:
+
+- Official timing archive formats.
+- Telemetry channel semantics.
+- Session metadata.
+- Driver positions and telemetry.
+- Replay data and timestamp alignment.
+
+Do not add Python/Pandas as a runtime dependency of the Android app.
+
+D. f1-circuits: circuit geometry reference
+
+Repository:
+https://github.com/bacinger/f1-circuits
+
+Use circuit geometry data to supplement and validate the bundled geometry catalogue. Verify coordinate-system compatibility before using any geometry for actual driver positions.
+
+E. Jolpica-F1: historical results reference
+
+Repository:
+https://github.com/jolpica/jolpica-f1
+
+Use for appropriate historical schedule, race results and standings needs. It is not the primary source for real-time GPS positions or live timing deltas.
+
+Explicit exclusion: OpenF1
+
+Repository:
+https://github.com/br-g/openf1
+
+Do not use this project or its APIs. The user explicitly excluded OpenF1 because live timings are paid. Do not suggest switching to OpenF1 to solve missing data.
+
+F. f1-dash: supplementary UI and state reference
+
+Repository:
+https://github.com/slowlydev/f1-dash
+
+Use as a supplementary reference for timing presentation, track-map layout and state handling. Distinguish actual received position data from any estimated position calculated using mini-sector progress. Never present an estimate as real GPS telemetry.
+
+5. EXISTING ANDROID IMPLEMENTATION
+
+The following files exist in the active project branch. Re-fetch them before modifying anything.
+
+Timing and telemetry
+
+- "app/src/main/java/app/f1multiview/data/timing/LiveTimingClient.kt"
+- "app/src/main/java/app/f1multiview/data/timing/ReplayTimingClient.kt"
+
+Track geometry
+
+- "app/src/main/java/app/f1multiview/data/timing/TrackMapClient.kt"
+- "app/src/main/assets/circuit_geometry_2026.json"
+- "app/src/test/java/app/f1multiview/data/timing/TrackMapClientTest.kt"
+- "app/src/test/java/app/f1multiview/data/timing/ReplayTimingClientTest.kt"
+
+UI and application state
+
+- "app/src/main/java/app/f1multiview/ui/TrackMapPanel.kt"
+- "app/src/main/java/app/f1multiview/ui/UgisInfoPanel.kt"
+- "app/src/main/java/app/f1multiview/ui/App.kt"
+- "app/src/main/java/app/f1multiview/viewmodel/MultiViewViewModel.kt"
+- "app/src/main/java/app/f1multiview/model/Models.kt"
+
+The current application already has live timing transport, a timing row model, replay archive parsing, track position parsing, bundled circuit geometry, timing rows and native map rendering. The task is to fix and complete these components, not recreate them from scratch.
+
+6. VERIFIED SOURCE FINDINGS TO INVESTIGATE
+
+These findings were observed in the recorded branch. Revalidate them against the current branch before changing code.
+
+Finding A: replay loading can be skipped
+
+In "MultiViewViewModel.kt":
+
+- "setSession()" resets timing state and calls "loadStreams(session)", but does not itself call "loadReplayTiming(session)".
+- Separate VOD/resume paths do call "loadReplayTiming(session)".
+- "loadReplayTiming()" returns immediately when "seasonYear" or "meetingNumber" is missing.
+- "updateReplayTiming()" returns immediately if the replay client has not loaded data.
+- "App.kt" polls the replay player's playhead and invokes "updateReplayTiming()".
+
+Potential result: a replay can show no timing without an informative error, because the replay data loader was never started or session metadata was missing.
+
+Required fix:
+
+1. Trace every session-entry path.
+2. Ensure eligible replay sessions always initiate timing archive resolution and loading.
+3. Resolve missing identifiers where possible using existing session/meeting metadata.
+4. Set explicit loading, ready and unavailable states.
+5. Never silently return while leaving an indefinite loading/empty screen.
+6. Keep replay state separate from live timing state.
+
+Finding B: replay session selection is too permissive
+
+"ReplayTimingClient.kt" currently chooses the first archive session whose name contains the requested name OR whose type matches.
+
+This can select the wrong session when practice, qualifying, sprint qualifying and other session names overlap.
+
+Required fix:
+
+- Implement a deterministic session resolver.
+- Prefer exact identifiers and exact names.
+- Use meeting, season, session title and session type as supporting evidence.
+- Rank candidates using a documented score.
+- Reject ambiguous matches instead of quietly loading a different session.
+- Log the chosen archive path, selected session metadata and reason for selection.
+- Add unit tests for ambiguous names, matching types, missing metadata and exact matches.
+
+Finding C: bundled circuit geometry is available
+
+The current asset:
+"app/src/main/assets/circuit_geometry_2026.json"
+
+was inspected and contains 23 circuits, including:
+
+- Sakhir/Bahrain, key "63", with 730 centreline points.
+- Singapore, key "61", with 544 centreline points.
+
+The geometry client currently attempts remote geometry sources and historical-year fallbacks before its bundled catalogue is used. Remote failures such as HTTP 401 can therefore delay or obstruct a map that could already be rendered from local data.
+
+Required fix:
+
+1. Resolve known circuit keys against validated bundled geometry immediately.
+2. Use remote sources when local matching fails or a verified newer geometry is needed.
+3. Validate circuit identity, centreline size and geometry integrity.
+4. Never accept an older geometry merely because it has enough points; verify that it belongs to the correct circuit.
+5. Ensure the selected live/replay session controls circuit selection correctly.
+6. Add tests for circuit-key matching, aliases, unknown circuits and remote HTTP 401.
+7. Confirm that position coordinates can actually be transformed into the geometry's coordinate system.
+
+A screenshot previously showed "Circuit lookup HTTP 401", but the recorded branch's geometry request emitted "Circuit geometry HTTP 401". Verify the installed APK's commit and the actual failing request before assuming the screenshot comes from this exact code.
+
+Finding D: live position parsing already exists, but end-to-end flow is unproven
+
+"LiveTimingClient.kt" has a "parsePosition()" implementation that:
+
+- Searches nested JSON structures for "Position" and "Entries".
+- Reads numeric X/Y/Z coordinates.
+- Stores recent trails.
+- Updates driver positions.
+- Publishes parsed positions.
+
+The client also parses driver metadata and logs driver-list updates.
+
+However, this does not prove that:
+
+- Position messages are actually received.
+- Subscription to the required feed succeeded.
+- The compressed payload format was decoded correctly.
+- Real position data reaches the UI.
+- The coordinates match the selected circuit geometry.
+
+Required fix:
+Instrument the actual chain:
+connection → negotiation → subscription → raw message → decompression → feed name → parser → valid entries → ViewModel state → rendered markers.
+
+Use counters, timestamps and source-derived values. Do not log credentials, cookies or licence secrets.
+
+Finding E: replay archive parsing exists
+
+"ReplayTimingClient.kt" already loads archived:
+
+- "TimingData.jsonStream"
+- "DriverList.jsonStream"
+- "SessionInfo.jsonStream"
+- "WeatherData.jsonStream"
+- "TrackStatus.jsonStream"
+- "LapCount.jsonStream"
+- "ExtrapolatedClock.jsonStream"
+- "TimingAppData.jsonStream"
+- "CarData.z.jsonStream"
+- "Position.z.jsonStream"
+
+It also merges timing deltas, creates timestamped snapshots and exposes timing, telemetry and position data based on the video playhead.
+
+Required fix:
+
+- Verify session resolution first.
+- Verify archive paths and response contents.
+- Test compressed position decoding and sparse position updates.
+- Confirm timestamps are aligned to the video playhead.
+- Test forward seek, backward seek and pause.
+- Keep live values out of replay.
+- Verify that replay position snapshots contain valid driver positions before claiming replay tracking works.
+
+Finding F: current timing tower needs a dedicated presentation
+
+"UgisInfoPanel.kt" already renders timing rows, but the presentation does not yet fully reproduce the reference timing tower.
+
+Implement a dedicated native Compose timing tower with:
+
+- Position.
+- Driver acronym and team colour.
+- Gap to leader and interval to car ahead.
+- Last lap and best lap.
+- Sector 1, 2 and 3 timing.
+- Sector status and segment indicators.
+- Tyre compound and stint.
+- Pit state and pit stops.
+- Fastest-lap indicators when source data supports them.
+- Session clock, lap count and track status.
+- Weather and race-control information.
+
+Use actual source data only. Do not create fake mini-sector bars or infer values when the required data is absent.
+
+Maintain readable sizing on Android TV and mobile, with proper D-pad focus and scrolling.
+
+Finding G: the map needs timestamp-based interpolation
+
+"TrackMapPanel.kt" already draws circuit geometry, driver markers and trails. The rendering does not yet demonstrate the continuous, timestamp-based interpolation needed for smooth motion between incoming position updates.
+
+Required fix:
+
+- Use actual position samples as interpolation endpoints.
+- Interpolate between samples according to timestamps.
+- Bound the interpolation/extrapolation horizon.
+- Detect stale positions and gaps.
+- Handle replay seeks and backward time movement.
+- Clear or recompute trails when a replay seek invalidates their history.
+- Ensure marker positions align with the selected circuit.
+- Never generate artificial GPS coordinates to make markers move.
+
+7. IMPLEMENTATION MILESTONES
+
+Work sequentially, committing focused changes as appropriate.
+
+Milestone 1: repair replay timing loading
+
+Start here.
+
+1. Fetch the current branch head and inspect "MultiViewViewModel.kt", "ReplayTimingClient.kt" and the existing tests.
+2. Trace session selection from the UI through "setSession()", VOD selection, resume and replay loading.
+3. Fix missing loader invocations and silent early returns.
+4. Port the stronger session-selection approach from F1OpenViewer/F1ReplayTiming.
+5. Add tests for the resolver and loader state transitions.
+6. Run the unit-test gate and Android build.
+7. Report the exact commit and test results.
+
+Acceptance criteria: a known replay session resolves to the correct archive, yields non-empty timing snapshots, displays real rows and responds correctly to playhead changes and seeks.
+
+Milestone 2: make circuit geometry resolution reliable
+
+1. Fix local bundled geometry lookup and fallback ordering.
+2. Validate circuit identity and geometry quality.
+3. Add tests for Sakhir, Singapore, aliases, invalid geometry and HTTP 401.
+4. Verify live and replay circuit selection independently.
+
+Acceptance criteria: known circuits render without depending on a successful remote geometry request.
+
+Milestone 3: validate and fix live timing transport and parsing
+
+1. Inspect the current SignalR implementation against F1OpenViewer.
+2. Instrument connection, subscription, raw messages, compression, feed names and parser output.
+3. Identify whether the current failure is transport, subscription, payload format, parser, state propagation or UI rendering.
+4. Port proven delta-merge and field-selection logic.
+5. Add fixture-based tests for full snapshots, sparse updates, compressed messages, malformed records, pit states and sector updates.
+6. Do not replace the transport unless the evidence justifies it.
+
+Acceptance criteria: real authorised F1 timing messages become stable, correctly merged native driver rows.
+
+Milestone 4: finish the Driver Tracker
+
+1. Verify that real position data arrives from the authorised live timing feed.
+2. Validate coordinate compatibility with the selected circuit.
+3. Port the track-rendering and interpolation approach from F1ReplayTiming.
+4. Test live updates, stale data, missing drivers, replay seeks and backward playback.
+5. Preserve accurate source timestamps and distinguish stale/unavailable data.
+
+Acceptance criteria: the correct circuit renders, real drivers appear in plausible positions and markers move smoothly without fabricated telemetry.
+
+Milestone 5: reproduce the timing tower
+
+1. Port the relevant F1OpenViewer row model and UI behaviour.
+2. Implement a dedicated Compose timing tower.
+3. Add sector timing and status, tyre/stint, pit and fastest-lap presentation.
+4. Include weather, track status, race-control events and session clock where available.
+5. Keep all values tied to actual parsed source data.
+6. Ensure Android TV remote navigation and mobile layout remain usable.
+
+Acceptance criteria: the tower uses real timing data, retains unchanged fields across sparse updates, and renders the available session information clearly.
+
+Milestone 6: live and replay integration validation
+
+Test live and replay as separate modes.
+
+Replay:
+
+- Correct archive/session.
+- Non-empty timing rows.
+- Valid position snapshots.
+- Pause/play.
+- Forward and backward seeks.
+- Correct circuit.
+- No live-state contamination.
+
+Live:
+
+- SignalR connection and subscription.
+- Actual timing rows.
+- Actual position packets.
+- Driver metadata.
+- Correct circuit.
+- Honest freshness and error states.
+- Reconnection and recovery.
+
+Acceptance criteria: the screen remains truthful when data is unavailable and becomes functional when valid data is received.
+
+Milestone 7: APK and device validation
+
+1. Run unit tests.
+2. Run Kotlin compilation and debug APK assembly.
+3. Run applicable GitHub Actions workflows.
+4. Verify the canonical artifact and its exact commit.
+5. Install and test on a physical Android device/Android TV.
+6. Collect logs that demonstrate actual data flow and rendering.
+7. Report CI and device results separately.
+
+Do not call the milestone complete based on a successful build alone.
+
+8. TESTING REQUIREMENTS
+
+Add automated tests for:
+
+- Replay session resolution.
+- Replay loader state transitions and missing metadata.
+- Timing delta merging.
+- Compressed live and replay payloads.
+- Position entry parsing.
+- Invalid and stale positions.
+- Track geometry selection and circuit identity.
+- Coordinate transformation and mapping.
+- Replay playhead changes and seeks.
+- Timing row field retention across sparse updates.
+- Empty, malformed and unavailable source data.
+
+Use real captured fixtures where available, with secrets removed. Do not invent fixtures and then present them as proof that the live endpoint is returning that data.
+
+9. LOGGING AND DIAGNOSTICS
+
+Use structured, privacy-safe logs to prove each stage.
+
+Replay examples:
+
+- "REPLAY_SESSION_CANDIDATES"
+- "REPLAY_SESSION_SELECTED"
+- "REPLAY_ARCHIVE_LOAD_START"
+- "REPLAY_TIMING_SNAPSHOT_COUNT"
+- "REPLAY_POSITION_SNAPSHOT_COUNT"
+- "REPLAY_PLAYHEAD_QUERY"
+- "REPLAY_DATA_UNAVAILABLE"
+
+Live examples:
+
+- "LIVE_TIMING_CONNECTED"
+- "LIVE_TIMING_SUBSCRIPTION_SENT"
+- "LIVE_TIMING_FEED_RECEIVED"
+- "LIVE_TIMING_DECODE_SUCCESS"
+- "LIVE_TIMING_ROWS_UPDATED"
+- "LIVE_POSITION_ENTRIES_UPDATED"
+- "LIVE_POSITION_STALE"
+- "LIVE_TIMING_RECONNECT"
+
+Geometry examples:
+
+- "TRACK_GEOMETRY_LOCAL_MATCH"
+- "TRACK_GEOMETRY_REMOTE_FALLBACK"
+- "TRACK_GEOMETRY_IDENTITY_VALIDATED"
+- "TRACK_GEOMETRY_COORDINATE_MAPPING_VALIDATED"
+- "TRACK_GEOMETRY_UNAVAILABLE"
+
+Logs must distinguish a socket connection from successful feed subscription, valid payload receipt, parsed data, state updates and visible rendering.
+
+10. UI REQUIREMENTS
+
+The timing tower and Driver Tracker are native in-app views/feed panels, not an external dashboard or mandatory popup.
+
+Previously specified three-feed layout:
+
+- Main video on the left.
+- Timing/Telemetry panel on the upper right, approximately two-thirds of the right column.
+- Driver Tracker on the lower right, approximately one-third of the right column.
+
+Preserve the existing layout system and allow the panels to work in the available multiview layouts. Keep D-pad focus and mobile responsiveness.
+
+Use the previously supplied Live Timings and Track Map videos as the visual reference. Reuse the existing app's colours, typography and interaction patterns where appropriate.
+
+11. SEPARATE MULTIVIEW PLAYBACK ARCHITECTURE
+
+The one-decoder tiled-video architecture is a separate longer-term milestone. Do not allow it to block the timing tower and track-map work.
+
+The user has already stated that single-feed playback works. Do not destabilise that path while implementing timing features.
+
+Preserve:
+
+- Standard Media3/ExoPlayer playback.
+- Widevine DRM.
+- Feed selection and layout.
+- Existing sync and remote controls.
+- Protected-feed safety checks.
+
+Do not use Tiledmedia/TME/ClearVR or anything owned or created by those vendors.
+
+Do not claim that one-decoder tiled playback works until an authorised tiled representation, a real decoder count, protected output and on-device multiview have been verified.
+
+12. FIRST ACTION IN THE NEW CHAT
+
+Begin implementation immediately:
+
+1. Fetch the current branch head and confirm the active branch is "feature/tiledmedia-multiview-rearchitecture".
+2. Inspect the current "MultiViewViewModel.kt", "ReplayTimingClient.kt" and "ReplayTimingClientTest.kt".
+3. Confirm whether the replay loader is missing from the generic session-entry path.
+4. Implement the first focused fix for replay loading and session resolution.
+5. Add regression tests.
+6. Run tests and build checks.
+7. Continue to the geometry milestone only after recording the first milestone's verified results.
+
+Do not ask the user to repeat information contained in this handover.
+
+Do not reply with a new roadmap instead of implementation. Start with repository inspection and make the first code change.
+
+DEFINITION OF DONE
+
+The task is complete only when the timing tower and Driver Tracker are working with real authorised F1 data, the correct circuit geometry, accurate session/playhead alignment, smooth real position updates, truthful unavailable/stale states and the intended native UI.
+
+A green CI run is necessary, but physical-device runtime validation is also required.
+
+Priority order: replay timing first → bundled circuit geometry → live timing transport/parser → driver tracker interpolation → timing tower UI → live/replay device validation.
+
+Never use OpenF1.
