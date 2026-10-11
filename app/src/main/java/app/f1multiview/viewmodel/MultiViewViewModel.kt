@@ -42,7 +42,7 @@ data class UiState(
     val standings: List<StandingRow> = emptyList(),
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
-    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(), val replayPlayheadMs: Long = 0L, val replayDataOffsetMs: Long = 0L,
+    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(), val replayPlayheadMs: Long = 0L, val replayDataOffsetMs: Long = 0L, val replaySyncCalibrated: Boolean = false,
     val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
@@ -271,7 +271,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
-            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L,replayDataOffsetMs=0L
+            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
         )
         if (shouldLoadReplayTiming(session)) loadReplayTiming(session) else cancelReplayTimingLoad()
         loadStreams(session)
