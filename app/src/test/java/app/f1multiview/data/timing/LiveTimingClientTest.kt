@@ -188,6 +188,24 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun numericKeyDeltasMergeIntoExistingRaceControlArraySnapshots() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        val target = JSONObject(
+            """{"RaceControlMessages":{"Messages":[{"Utc":"12:00:00","Message":"First"},{"Utc":"12:01:00","Message":"Second"}]}}"""
+        )
+        val patch = JSONObject(
+            """{"RaceControlMessages":{"Messages":{"1":{"Flag":"YELLOW"}}}}"""
+        )
+
+        client.mergeJsonObject(target, patch)
+
+        val messages = target.getJSONObject("RaceControlMessages").getJSONArray("Messages")
+        assertEquals(2, messages.length())
+        assertEquals("First", messages.getJSONObject(0).getString("Message"))
+        assertEquals("Second", messages.getJSONObject(1).getString("Message"))
+        assertEquals("YELLOW", messages.getJSONObject(1).getString("Flag"))
+    }
+    @Test
     fun sparseTimingUpdatesPreserveUntouchedNestedFields() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val current = JSONObject(
