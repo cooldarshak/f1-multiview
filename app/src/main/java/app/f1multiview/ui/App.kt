@@ -220,8 +220,10 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         } else {
             ui.mainStreamId?.takeIf { it in videoSelectedIds } ?: ordered.firstOrNull()?.id
         }
-        // Timing and Driver Tracker are native data feeds, not video decoders.
-        // UnifiedMultiviewEngine decides which logical video feeds receive physical decoder slots.
+        // Only app-owned TRACK_MAP and F1_DASH_DATA overlays are native panels.
+        // Official F1 TIMING/TRACK channels remain authorized video feeds.
+        // UnifiedMultiviewEngine keeps multiple protected video feeds blocked until a real one-stream
+        // tiled pipeline is integrated and validated.
         val playableVideoIds = videoSelectedIds.intersect(ordered.map { it.id }.toSet())
         val scheduled = engine.updateViewport(
             streams = ordered,
