@@ -159,6 +159,7 @@ class ReplayTimingClient {
     fun isLoaded()=snapshots.isNotEmpty()
     fun sync():ReplaySyncData=syncData
     internal fun parseSessionInfo(text:String):LiveSessionInfo? {
+        var parsed: LiveSessionInfo? = null
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
             if(line.length<13)return@forEachLine
             val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
@@ -180,7 +181,7 @@ class ReplayTimingClient {
             val meetingName=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{name}
             val circuitName=circuit.optString("Name").ifBlank{circuit.optString("ShortName")}.ifBlank{meeting.optString("Location")}
             if(name.isNotBlank()||meetingName.isNotBlank()||key!=null) {
-                return@runCatching LiveSessionInfo(
+                parsed = LiveSessionInfo(
                     name=name.ifBlank{"-"},
                     meeting=meetingName.ifBlank{"-"},
                     country=country.optString("Name").ifBlank{country.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{"-"},
@@ -188,9 +189,10 @@ class ReplayTimingClient {
                     status=info.optString("Status").ifBlank{"-"},
                     circuitKey=key,year=year,circuitName=circuitName
                 )
+                return@forEachLine
             }
         }
-        return null
+        return parsed
     }
 
     internal fun parseWeatherSnapshots(text:String):List<ReplayWeatherSnapshot> {
