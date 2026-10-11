@@ -165,9 +165,36 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                         }
                     }
                 }
-                if(json.optInt("type")==1 && json.optString("target")=="feed"){
-                    val args=json.optJSONArray("arguments")?:return@forEach
-                    if(args.length()>=2) onFeedPayload(args.optString(0),decodeFeedObject(args.opt(1)))
+                if(json.optInt("type")==1) {
+                    val target=json.optString("target")
+                    if(target=="feed") {
+                        val args=json.optJSONArray("arguments")
+                        if(args==null) {
+                            if(observedFeeds.add("signalr:feed-missing-arguments")) {
+                                AppLogger.w("LiveTiming","SIGNALR_FEED_FRAME_WITHOUT_ARGUMENTS")
+                            }
+                        } else if(args.length()>=2) {
+                            val feed=args.optString(0)
+                            val raw=args.opt(1)
+                            val shape=when(raw) {
+                                is JSONObject -> "object"
+                                is JSONArray -> "array:${raw.length()}"
+                                is String -> "string:${raw.length()}"
+                                null -> "null"
+                                JSONObject.NULL -> "json-null"
+                                else -> raw.javaClass.simpleName
+                            }
+                            if(observedFeeds.add("${feed}:wire-shape")) {
+                                AppLogger.i("LiveTiming","FEED_WIRE_SHAPE feed=${feed} shape=${shape}")
+                            }
+                            onFeedPayload(feed,decodeFeedObject(raw))
+                        } else if(observedFeeds.add("signalr:feed-short-arguments")) {
+                            AppLogger.w("LiveTiming","SIGNALR_FEED_FRAME_ARGUMENT_COUNT count=${args.length()}")
+                        }
+                    } else if(observedFeeds.add("signalr:target:${target}")) {
+                        val argumentCount=json.optJSONArray("arguments")?.length() ?: 0
+                        AppLogger.i("LiveTiming","SIGNALR_INVOCATION_TARGET target=${target} argumentCount=${argumentCount}")
+                    }
                 }
                 if(json.optInt("type")==3){
                     val result=json.optJSONObject("result")?:return@forEach
