@@ -444,23 +444,29 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     fun updateReplayTiming(positionMs:Long) {
         if (!replayTimingClient.isLoaded()) return
         val rows = replayTimingClient.rowsAt(positionMs)
+        val telemetry = replayTimingClient.telemetryAt(positionMs)
         val positions = replayTimingClient.positionsAt(positionMs)
-        val metadata = timingClient.trackPositions.value.associateBy { it.number }
+        val metadata = _ui.value.driverInfo.associateBy { it.number }
+        val livePositions = timingClient.trackPositions.value.associateBy { it.number }
         val rowsByNumber = rows.associateBy { it.driverNumber }
+        val telemetryByNumber = telemetry.associateBy { it.driver }
         val enriched = positions.map { position ->
             val row = rowsByNumber[position.number]
+            val car = telemetryByNumber[position.number]
             val meta = metadata[position.number]
+            val livePosition = livePositions[position.number]
             position.copy(
-                name = meta?.name ?: row?.driver ?: position.name,
-                acronym = meta?.acronym ?: row?.driver ?: position.acronym,
-                team = meta?.team ?: position.team,
-                teamColor = meta?.teamColor ?: position.teamColor,
+                name = meta?.name?.takeIf { it.isNotBlank() && it != "-" } ?: livePosition?.name ?: row?.driver ?: position.name,
+                acronym = row?.driver ?: meta?.acronym ?: livePosition?.acronym ?: position.acronym,
+                team = meta?.team ?: livePosition?.team ?: position.team,
+                teamColor = meta?.teamColor ?: livePosition?.teamColor ?: position.teamColor,
                 position = row?.position ?: position.position,
-                speed = row?.speed?.toIntOrNull() ?: position.speed,
-                lap = row?.lap ?: position.lap
+                speed = car?.speed ?: row?.speed?.toIntOrNull() ?: position.speed,
+                lap = row?.lap ?: position.lap,
+                inPit = row?.lastLap.equals("IN PIT", true) || position.inPit
             )
         }
-        _ui.value = _ui.value.copy(timing=rows, trackPositions=enriched, timingStatus="REPLAY")
+        _ui.value = _ui.value.copy(timing=rows, trackPositions=enriched, telemetry=telemetry, timingStatus="REPLAY")
     }
     fun loadReplayTiming(session:Session)=viewModelScope.launch {
         val year=session.seasonYear ?: return@launch
