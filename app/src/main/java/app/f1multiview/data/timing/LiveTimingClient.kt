@@ -790,6 +790,10 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             mergeJsonObject(current, incoming)
             current
         }
+        incoming is JSONObject && current is JSONArray && hasOnlyNumericKeys(incoming) -> {
+            mergeJsonObjectIntoArray(current, incoming)
+            current
+        }
         incoming is JSONArray && current is JSONArray -> {
             mergeJsonArray(current, incoming)
             current
@@ -797,6 +801,26 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         incoming is JSONObject -> JSONObject(incoming.toString())
         incoming is JSONArray -> JSONArray(incoming.toString())
         else -> incoming
+    }
+
+    private fun hasOnlyNumericKeys(value: JSONObject): Boolean {
+        val keys = value.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key.toIntOrNull()?.let { it >= 0 } != true) return false
+        }
+        return true
+    }
+
+    private fun mergeJsonObjectIntoArray(target: JSONArray, patch: JSONObject) {
+        val keys = patch.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val index = key.toIntOrNull() ?: continue
+            if (index < 0) continue
+            val merged = mergeJsonValue(target.opt(index), patch.opt(key))
+            target.put(index, merged)
+        }
     }
 
     private fun mergeJsonArray(target: JSONArray, patch: JSONArray) {
