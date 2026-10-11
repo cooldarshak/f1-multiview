@@ -2,6 +2,13 @@ package app.f1multiview.data.timing
 
 import app.f1multiview.model.TrackDriverPosition
 import app.f1multiview.model.TrackPoint
+import kotlinx.coroutines.runBlocking
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -63,6 +70,27 @@ class TrackMapClientTest {
     }
 
 
+    @Test
+    fun exactYearRemoteHttp401IsReportedUnavailableWithoutGuessingAnotherGeometry() = runBlocking {
+        val unauthorizedClient = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(401)
+                    .message("Unauthorized")
+                    .body("unauthorized".toResponseBody("text/plain".toMediaType()))
+                    .build()
+            })
+            .build()
+
+        val result = TrackMapClient(context = null, httpClient = unauthorizedClient)
+            .load(circuitKey = 999, year = 2026, circuitName = "Unknown Circuit")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("HTTP 401") == true)
+        assertEquals(listOf(2026), TrackMapClient.geometryLookupYears(2026))
+    }
     @Test
     fun parsesBundledNativeGeometryAndValidatesCircuitIdentity() {
         val x = JSONArray()
