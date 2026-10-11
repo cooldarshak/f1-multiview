@@ -140,7 +140,20 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             selectedStreamIds = emptyList(),
             mainStreamId = null,
             providerError = null,
-            pendingResume = null
+            pendingResume = null,
+            timing = emptyList(),
+            telemetry = emptyList(),
+            driverInfo = emptyList(),
+            trackPositions = emptyList(),
+            trackStatus = TrackStatusInfo(),
+            weather = TimingWeather(),
+            raceControl = emptyList(),
+            sessionClock = "-",
+            currentLap = 0,
+            totalLaps = 0,
+            trackGeometry = null,
+            liveSessionInfo = LiveSessionInfo(),
+            timingStatus = "OFFLINE"
         )
         loadStreams(session)
     }
@@ -242,6 +255,15 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadStreams(session)
          loadReplayTiming(session)
      }
+    private fun shouldLoadReplayTiming(session: Session): Boolean {
+        if (session.live) return false
+        val type = session.sessionType.trim().lowercase().replace(Regex("[_\\s]+"), "-")
+        return type !in setOf(
+            "editorial", "show", "shows", "documentary", "highlight", "highlights",
+            "pre-show", "post-show", "promo", "trailer", "unknown-editorial"
+        )
+    }
+
     fun setSession(session:Session)=viewModelScope.launch{
         if (session.live) cancelReplayTimingLoad()
         livePlaybackSyncActive=false
@@ -249,9 +271,9 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
-            timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L,replayDataOffsetMs=0L
+            timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L,replayDataOffsetMs=0L
         )
-        if (!session.live) loadReplayTiming(session)
+        if (shouldLoadReplayTiming(session)) loadReplayTiming(session) else cancelReplayTimingLoad()
         loadStreams(session)
     }
     private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
@@ -540,6 +562,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     }
 
     fun loadReplayTiming(session: Session) {
+        livePlaybackSyncActive=false
         replayTimingLoadJob?.cancel()
         val client = ReplayTimingClient()
         replayTimingClient = client
