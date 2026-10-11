@@ -19,4 +19,17 @@ internal object ProtectedMultiviewFeedPolicy {
 
     fun selectedVideoStreams(streams: List<StreamSource>, visibleIds: Set<String>): List<StreamSource> =
         streams.filter { it.id in visibleIds && isVideo(it.kind) }
+
+    /**
+     * Preserve the requested reference feed for the safe single-video fallback. If the reference
+     * has not entered the visible selection, choose the first visible playable video in caller order.
+     */
+    fun singleFeedFallbackMainStream(
+        streams: List<StreamSource>,
+        visibleIds: Set<String>,
+        referenceId: String?
+    ): StreamSource? {
+        val selected = selectedVideoStreams(streams, visibleIds)
+        return selected.firstOrNull { it.id == referenceId } ?: selected.firstOrNull()
+    }
 }

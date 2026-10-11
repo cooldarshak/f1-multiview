@@ -39,6 +39,37 @@ class ProtectedMultiviewFeedPolicyTest {
     }
 
     @Test
+    fun singleFeedFallbackKeepsRequestedReferenceWhenVisible() {
+        val world = StreamSource(id = "world", title = "World", kind = StreamKind.WORLD)
+        val track = StreamSource(id = "track", title = "Track", kind = StreamKind.TRACK)
+        assertEquals(
+            "track",
+            ProtectedMultiviewFeedPolicy.singleFeedFallbackMainStream(
+                listOf(world, track), setOf("world", "track"), "track"
+            )?.id
+        )
+    }
+
+    @Test
+    fun singleFeedFallbackUsesFirstVisibleVideoWhenReferenceIsNotVisible() {
+        val world = StreamSource(id = "world", title = "World", kind = StreamKind.WORLD)
+        val track = StreamSource(id = "track", title = "Track", kind = StreamKind.TRACK)
+        val map = StreamSource(id = "map", title = "Map", kind = StreamKind.TRACK_MAP)
+        assertEquals(
+            "world",
+            ProtectedMultiviewFeedPolicy.singleFeedFallbackMainStream(
+                listOf(world, track, map), setOf("world", "track", "map"), "not-visible"
+            )?.id
+        )
+        assertEquals(
+            "track",
+            ProtectedMultiviewFeedPolicy.singleFeedFallbackMainStream(
+                listOf(world, track, map), setOf("track", "map"), null
+            )?.id
+        )
+    }
+
+    @Test
     fun unknownVisibleIdsDoNotCountAsVideoFeeds() {
         val streams = listOf(StreamSource(id = "world", title = "World", kind = StreamKind.WORLD))
         assertEquals(1, ProtectedMultiviewFeedPolicy.visibleVideoCount(streams, setOf("world", "unknown")))

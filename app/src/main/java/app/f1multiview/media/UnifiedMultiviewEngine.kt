@@ -154,8 +154,9 @@ class UnifiedMultiviewEngine(context: Context) {
         streams.forEach(feedRegistry::put)
         val visibleVideoCount = ProtectedMultiviewFeedPolicy.visibleVideoCount(streams, visibleIds)
         if (visibleVideoCount > 1 && !fallbackApplied) {
-            val mainStream = streams.firstOrNull { it.id == referenceId && it.id in visibleIds }
-                ?: streams.firstOrNull { it.id in visibleIds }
+            val mainStream = ProtectedMultiviewFeedPolicy.singleFeedFallbackMainStream(
+                streams, visibleIds, referenceId
+            )
             if (mainStream != null) {
                 // Keep one authorized Media3 video alive; do not turn the main feed into an
                 // audio-only player because more than one official feed has been selected.
