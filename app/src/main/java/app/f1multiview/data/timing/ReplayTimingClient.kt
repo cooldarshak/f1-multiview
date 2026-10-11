@@ -271,7 +271,7 @@ class ReplayTimingClient {
 
     fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs; syncCalibrated=true }
 
-    fun nudge(deltaMs:Long){ syncOffsetMs += deltaMs; syncCalibrated=true }
+    fun nudge(deltaMs:Long){ syncOffsetMs += deltaMs; syncCalibrated=false }
 
     fun isSyncCalibrated():Boolean = syncCalibrated
 
