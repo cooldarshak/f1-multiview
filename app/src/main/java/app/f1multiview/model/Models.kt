@@ -14,7 +14,7 @@ data class DriverTelemetry(val driver: String, val speed: Int, val rpm: Int, val
 data class TimingRow(val position: Int, val driver: String, val gap: String, val lastLap: String, val tyre: String, val pitStops: Int, val sector1: String = "-", val sector2: String = "-", val sector3: String = "-", val speed: String = "-", val bestLap: String = "-", val lap: Int = 0, val sector1Status: String = "NORMAL", val sector2Status: String = "NORMAL", val sector3Status: String = "NORMAL", val sector1Segments: List<String> = emptyList(), val sector2Segments: List<String> = emptyList(), val sector3Segments: List<String> = emptyList(), val interval: String = "-", val leaderGap: String = "-", val driverNumber: String = "")
 data class RaceControlEvent(val time: String, val message: String, val severity: String)
 data class TeamRadioItem(val time:String,val driver:String,val url:String,val durationMs:Long=0L)
-data class TimingWeather(val air: String = "-", val track: String = "-", val humidity: String = "-", val wind: String = "-", val rainfall: String = "-", val windDirection: String = "-")
+data class TimingWeather(val air: String = "-", val track: String = "-", val humidity: String = "-", val wind: String = "-", val rainfall: String = "-", val windDirection: String = "-", val pressure: String = "-")
 data class Session(
     val id: String, val name: String, val country: String, val dateLabel: String, val live: Boolean,
     val seasonYear: Int? = null, val eventPageId: Int? = null, val series: String = "F1",
