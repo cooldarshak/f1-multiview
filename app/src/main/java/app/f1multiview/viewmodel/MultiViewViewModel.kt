@@ -60,6 +60,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
     private var livePlaybackSyncActive=false
+    private var lastPositionMappingSignature: String? = null
     init{
         _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
@@ -420,7 +421,28 @@ fun toggleStream(id:String)=viewModelScope.launch{
         resolveSource(source)
     }
 }
-    fun activateTracker(){
+    private fun validateTrackPositionMapping(positions: List<TrackDriverPosition>, geometry: TrackMapGeometry? = _ui.value.trackGeometry) {
+    if (geometry == null) {
+        if (_ui.value.trackPositionMappingValid != null) _ui.value = _ui.value.copy(trackPositionMappingValid = null)
+        return
+    }
+    val result = TrackMapClient.validatePositionCoordinateMapping(geometry.centerline, positions)
+    if (result.valid == null) {
+        if (_ui.value.trackPositionMappingValid != null) _ui.value = _ui.value.copy(trackPositionMappingValid = null)
+        return
+    }
+    _ui.value = _ui.value.copy(trackPositionMappingValid = result.valid)
+    val signature = "${geometry.circuitKey}:${geometry.year}:${result.valid}"
+    if (lastPositionMappingSignature != signature) {
+        lastPositionMappingSignature = signature
+        if (result.valid) {
+            AppLogger.i("TrackMap", "TRACK_GEOMETRY_COORDINATE_MAPPING_VALIDATED circuitKey=${geometry.circuitKey} year=${geometry.year} matched=${result.matched}/${result.total}")
+        } else {
+            AppLogger.w("TrackMap", "TRACK_GEOMETRY_COORDINATE_MAPPING_REJECTED circuitKey=${geometry.circuitKey} year=${geometry.year} matched=${result.matched}/${result.total} reason=${result.reason}")
+        }
+    }
+}
+fun activateTracker(){
     _ui.value=_ui.value.copy(selectedPanel="tracker")
     loadTrackMapGeometry()
 }
