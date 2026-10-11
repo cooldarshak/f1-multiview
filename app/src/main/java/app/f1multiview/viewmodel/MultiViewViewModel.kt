@@ -513,6 +513,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             liveSessionInfo=metadataState.sessionInfo ?: _ui.value.liveSessionInfo,
             weather=metadataState.weather, trackStatus=metadataState.trackStatus,
             currentLap=metadataState.currentLap, totalLaps=metadataState.totalLaps,
+            sessionClock=metadataState.sessionClock,
             timingStatus="REPLAY"
         )
     }

@@ -123,6 +123,16 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun parsesExtrapolatedClockSnapshotsForReplayPlayhead() {
+        val clocks = ReplayTimingClient().parseClockSnapshots(
+            """00:00:01.000{"Remaining":"00:59:12"}\n00:00:02.000{"Remaining":"00:59:11"}"""
+        )
+        assertEquals(2, clocks.size)
+        assertEquals("00:59:12", clocks.first().clock)
+        assertEquals("00:59:11", clocks.last().clock)
+    }
+
+    @Test
     fun parsesArchivedWeatherAndTrackStatusAtSessionOffset() {
         val weather = ReplayTimingClient().parseWeatherSnapshots(
             """00:00:01.000{"AirTemp":"29.8","TrackTemp":"39.7","Humidity":"75.7","WindSpeed":"4.3","WindDirection":"S","Pressure":"1010.0"}"""

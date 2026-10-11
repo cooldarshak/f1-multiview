@@ -1277,7 +1277,11 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
     val rows = ui.timing.sortedBy { it.position }
     val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
     val totalLaps = ui.totalLaps.takeIf { it > 0 }
-    val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
+    val sessionTitle = ui.liveSessionInfo.meeting.takeUnless { it.isBlank() || it == "-" }?.let { meeting ->
+        val sessionName = ui.liveSessionInfo.name.takeUnless { it.isBlank() || it == "-" }
+            ?: ui.liveSessionInfo.sessionType.ifBlank { "Race" }
+        "$meeting: $sessionName"
+    } ?: ("FORMULA 1: " + ui.liveSessionInfo.sessionType.ifBlank { "Race" })
     val status = ui.trackStatus.label.ifBlank { "GREEN" }
 
     BoxWithConstraints(modifier.background(Color(0xFF111214))) {

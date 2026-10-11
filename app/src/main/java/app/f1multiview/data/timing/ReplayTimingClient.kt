@@ -26,12 +26,14 @@ private data class ReplayStintSnapshot(val offsetMs:Long,val stints:Map<String,R
 data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
 data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
 data class ReplayLapSnapshot(val offsetMs:Long,val current:Int,val total:Int)
+data class ReplayClockSnapshot(val offsetMs:Long,val clock:String)
 data class ReplayMetadataState(
     val sessionInfo:LiveSessionInfo?,
     val weather:TimingWeather,
     val trackStatus:TrackStatusInfo,
     val currentLap:Int,
-    val totalLaps:Int
+    val totalLaps:Int,
+    val sessionClock:String
 )
 data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Long>)
 class ReplayTimingClient {
@@ -45,6 +47,7 @@ class ReplayTimingClient {
     private var weatherSnapshots:List<ReplayWeatherSnapshot> = emptyList()
     private var trackStatusSnapshots:List<ReplayTrackStatusSnapshot> = emptyList()
     private var lapSnapshots:List<ReplayLapSnapshot> = emptyList()
+    private var clockSnapshots:List<ReplayClockSnapshot> = emptyList()
     private var syncOffsetMs:Long = 0L
     private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
@@ -71,6 +74,7 @@ class ReplayTimingClient {
             weatherSnapshots=runCatching { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }.getOrDefault(emptyList())
             trackStatusSnapshots=runCatching { parseTrackStatusSnapshots(getText("https://livetiming.formula1.com/static/$path/TrackStatus.jsonStream")) }.getOrDefault(emptyList())
             lapSnapshots=runCatching { parseLapSnapshots(getText("https://livetiming.formula1.com/static/$path/LapCount.jsonStream")) }.getOrDefault(emptyList())
+            clockSnapshots=runCatching { parseClockSnapshots(getText("https://livetiming.formula1.com/static/$path/ExtrapolatedClock.jsonStream")) }.getOrDefault(emptyList())
             stintSnapshots=runCatching { parseTimingAppData(getText("https://livetiming.formula1.com/static/$path/TimingAppData.jsonStream")) }.getOrDefault(emptyList())
             // These two compressed feeds are needed to keep car telemetry and map markers tied to
             // the replay media clock, including backwards seeks. No live values are mixed in.
@@ -128,7 +132,8 @@ class ReplayTimingClient {
             weather=findSnapshot(weatherSnapshots,target){it.offsetMs}?.weather ?: TimingWeather(),
             trackStatus=findSnapshot(trackStatusSnapshots,target){it.offsetMs}?.trackStatus ?: TrackStatusInfo(),
             currentLap=findSnapshot(lapSnapshots,target){it.offsetMs}?.current ?: 0,
-            totalLaps=findSnapshot(lapSnapshots,target){it.offsetMs}?.total ?: 0
+            totalLaps=findSnapshot(lapSnapshots,target){it.offsetMs}?.total ?: 0,
+            sessionClock=findSnapshot(clockSnapshots,target){it.offsetMs}?.clock ?: "-"
         )
     }
 
@@ -213,6 +218,21 @@ class ReplayTimingClient {
             val label=when(code){1->"GREEN";2->"YELLOW";4->"SAFETY CAR";5->"RED";6->"VSC";7->"VSC ENDING";else->"STATUS $code"}
             latest=TrackStatusInfo(code,label,data.optString("Message").ifBlank{latest.message})
             out+=ReplayTrackStatusSnapshot(offset,latest)
+        }
+        return out
+    }
+
+    internal fun parseClockSnapshots(text:String):List<ReplayClockSnapshot> {
+        val out=ArrayList<ReplayClockSnapshot>()
+        var latest="-"
+        BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
+            if(line.length<13)return@forEachLine
+            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val data=root.optJSONObject("ExtrapolatedClock") ?: root
+            val remaining=data.optString("Remaining").ifBlank{data.optString("Clock").ifBlank{data.optString("Time")}}
+            if(remaining.isNotBlank() && remaining!="null")latest=remaining
+            if(latest!="-")out+=ReplayClockSnapshot(offset,latest)
         }
         return out
     }
