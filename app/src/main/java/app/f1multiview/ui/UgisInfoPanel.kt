@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -243,14 +245,25 @@ fun UgisInfoPanel(
                                 Column(Modifier.weight(1f)){
                                     Text(if(ui.session?.live==false) "REPLAY TIMING" else "LIVE TIMING",color=InfoWhite,fontWeight=FontWeight.Black)
                                     Text(ui.liveSessionInfo.name+" · "+ui.liveSessionInfo.sessionType,color=InfoMuted,fontSize=8.sp)
+                                    Text("CLOCK "+ui.sessionClock+"  ·  LAP "+ui.currentLap+"/"+ui.totalLaps+"  ·  TRACK "+ui.trackStatus.label,color=InfoMuted,fontSize=7.sp,fontWeight=FontWeight.Bold)
                                 }
                                 Text(ui.timingStatus,color=if(ui.timingStatus=="LIVE") Color(0xFF66E07A) else InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black)
                             }
                         }
                     }
-                    item { InfoRow("WX","Weather","Air "+ui.weather.air+" · Track "+ui.weather.track+" · Humidity "+ui.weather.humidity,"Wind "+ui.weather.wind) }
+                    item { InfoRow("WX","Weather","Air "+ui.weather.air+" °C · Track "+ui.weather.track+" °C · Humidity "+ui.weather.humidity+"%","Wind "+ui.weather.wind+" "+ui.weather.windDirection+" · Rain "+ui.weather.rainfall) }
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=8.dp, vertical=3.dp),
+                            horizontalArrangement=Arrangement.spacedBy(14.dp)
+                        ) {
+                            listOf("POS / DRIVER","INT","GAP","LAST LAP","BEST LAP","SPEED","TYRE","PIT").forEach {
+                                Text(it,color=InfoMuted,fontSize=7.sp,fontWeight=FontWeight.Black)
+                            }
+                        }
+                    }
                     items(ui.timing){r->
-                        F1TimingRow(r)
+                        F1TimingRow(r,ui.driverInfo.firstOrNull { it.number == r.driverNumber },isTv)
                     }
                     if(ui.session?.live==false){
                         item{
@@ -319,20 +332,116 @@ fun UgisInfoPanel(
         Text(label,color=InfoWhite,fontSize=9.sp,fontWeight=FontWeight.Black,modifier=Modifier.padding(horizontal=14.dp,vertical=9.dp))
     }
 }
-@Composable private fun F1TimingRow(r:TimingRow){
-    Surface(color=if(r.position%2==0) InfoSurface else InfoSurface2,shape=RoundedCornerShape(1.dp),modifier=Modifier.fillMaxWidth()){
-        Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically){
-            Text(r.position.toString(),color=InfoRed,fontWeight=FontWeight.Black,fontSize=10.sp,modifier=Modifier.width(34.dp))
-            Column(Modifier.weight(1f)){
-                Text(r.driver,color=InfoWhite,fontWeight=FontWeight.Bold,fontSize=11.sp)
-                Text("P"+r.position+"  ·  "+r.speed+" km/h",color=InfoMuted,fontSize=7.sp)
+@Composable
+private fun F1TimingRow(r: TimingRow, driver: DriverInfo?, isTv: Boolean) {
+    val team = runCatching { Color(android.graphics.Color.parseColor("#" + (driver?.teamColor ?: "FFFFFF").removePrefix("#").padStart(6, 'F'))) }
+        .getOrDefault(InfoWhite)
+    val width = if (isTv) 760.dp else 680.dp
+    Surface(
+        color = if (r.position % 2 == 0) InfoSurface else InfoSurface2,
+        shape = RoundedCornerShape(2.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=8.dp, vertical=6.dp)
+        ) {
+            Row(
+                Modifier.width(width),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    color = if (r.position == 1) InfoRed else InfoSurface,
+                    shape = RoundedCornerShape(2.dp),
+                    border = if (r.position == 1) null else BorderStroke(1.dp, InfoLine)
+                ) {
+                    Text(r.position.toString().padStart(2, '0'), color=InfoWhite, fontSize=10.sp, fontWeight=FontWeight.Black,
+                        modifier=Modifier.width(28.dp).padding(vertical=5.dp), textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+                }
+                Box(Modifier.width(3.dp).height(30.dp).background(team))
+                Column(Modifier.width(92.dp)) {
+                    Text(r.driver, color=InfoWhite, fontSize=11.sp, fontWeight=FontWeight.Black, maxLines=1)
+                    Text(driver?.team ?: ("CAR " + r.driverNumber), color=InfoMuted, fontSize=7.sp, maxLines=1)
+                }
+                TimingMetric("INT", if (r.position == 1) "LEADER" else r.interval, 70.dp, InfoWhite)
+                TimingMetric("GAP", r.leaderGap, 72.dp, InfoWhite)
+                TimingMetric("LAST", r.lastLap, 76.dp, if (r.lastLap.equals("IN PIT",true)) InfoYellow else InfoWhite)
+                TimingMetric("BEST", r.bestLap, 76.dp, timingStatusColor(r.bestLapStatus))
+                TimingMetric("KM/H", r.speed, 52.dp, InfoWhite)
+                Column(Modifier.width(54.dp), horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("TYRE",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
+                    Text(r.tyre.takeIf { it.isNotBlank() && it != "-" } ?: "—",
+                        color=compoundStatusColor(r.tyre),fontSize=8.sp,fontWeight=FontWeight.Black,maxLines=1)
+                }
+                Column(Modifier.width(34.dp), horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("PIT",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
+                    Text(r.pitStops.toString(),color=InfoWhite,fontSize=9.sp,fontWeight=FontWeight.Black)
+                }
             }
-            Text(r.gap,color=InfoWhite,fontSize=9.sp,modifier=Modifier.width(72.dp))
-            Text(r.lastLap,color=InfoWhite,fontSize=9.sp,modifier=Modifier.width(72.dp))
-            Text("S1 "+r.sector1+"  S2 "+r.sector2+"  S3 "+r.sector3,color=InfoWhite.copy(alpha=.82f),fontSize=8.sp,modifier=Modifier.width(220.dp))
-            Text(r.tyre,color=if(r.tyre.contains("S",true)) InfoRed else if(r.tyre.contains("M",true)) InfoYellow else InfoWhite,fontSize=8.sp,fontWeight=FontWeight.Black,modifier=Modifier.width(58.dp))
+            Spacer(Modifier.height(5.dp))
+            Row(
+                Modifier.width(width),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SectorCell("S1",r.sector1,r.sector1Status,r.sector1Segments)
+                SectorCell("S2",r.sector2,r.sector2Status,r.sector2Segments)
+                SectorCell("S3",r.sector3,r.sector3Status,r.sector3Segments)
+                Spacer(Modifier.weight(1f))
+                if (r.bestLapStatus == "PURPLE") {
+                    Text("OVERALL BEST",color=Color(0xFFD36BFF),fontSize=7.sp,fontWeight=FontWeight.Black)
+                } else if (r.bestLapStatus == "GREEN") {
+                    Text("PERSONAL BEST",color=InfoGreen,fontSize=7.sp,fontWeight=FontWeight.Black)
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun TimingMetric(label: String, value: String, width: androidx.compose.ui.unit.Dp, valueColor: Color) {
+    Column(Modifier.width(width)) {
+        Text(label,color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
+        Text(value.ifBlank { "—" },color=valueColor,fontSize=9.sp,fontWeight=FontWeight.Bold,maxLines=1)
+    }
+}
+
+@Composable
+private fun SectorCell(label: String, value: String, status: String, segments: List<String>) {
+    Column(Modifier.width(112.dp)) {
+        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+            Text(label,color=InfoMuted,fontSize=7.sp,fontWeight=FontWeight.Black)
+            Text(value.ifBlank { "—" },color=timingStatusColor(status),fontSize=8.sp,fontWeight=FontWeight.Bold,maxLines=1)
+        }
+        if (segments.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().height(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                segments.forEach { segment ->
+                    Box(Modifier.weight(1f).fillMaxHeight().background(timingStatusColor(segment)))
+                }
+            }
+        }
+    }
+}
+
+private fun timingStatusColor(status: String): Color = when (status.uppercase()) {
+    "PURPLE" -> Color(0xFFD36BFF)
+    "GREEN" -> InfoGreen
+    "YELLOW" -> InfoYellow
+    "BLUE" -> Color(0xFF4AA3FF)
+    "GRAY","GREY" -> Color(0xFF454953)
+    else -> InfoWhite
+}
+
+private fun compoundStatusColor(compound: String): Color = when {
+    compound.contains("SOFT",true) -> Color(0xFFE10600)
+    compound.contains("MEDIUM",true) -> InfoYellow
+    compound.contains("HARD",true) -> InfoWhite
+    compound.contains("INTER",true) -> InfoGreen
+    compound.contains("WET",true) -> Color(0xFF4AA3FF)
+    else -> InfoMuted
 }
 
 @Composable private fun InfoRow(pos:String,title:String,sub:String,meta:String){
