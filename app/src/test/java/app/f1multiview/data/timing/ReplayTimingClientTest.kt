@@ -276,6 +276,47 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun sparseReplayPositionFramesRetainUnchangedDriversWithTheirRealTimestamps() {
+        fun encode(raw: String): String {
+            val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
+            val bytes = ByteArrayOutputStream()
+            try {
+                deflater.setInput(raw.toByteArray(Charsets.UTF_8))
+                deflater.finish()
+                val buffer = ByteArray(512)
+                while (!deflater.finished()) {
+                    val count = deflater.deflate(buffer)
+                    bytes.write(buffer, 0, count)
+                }
+            } finally {
+                deflater.end()
+            }
+            return Base64.getEncoder().encodeToString(bytes.toByteArray())
+        }
+        val first = encode("""{"Position":[{"Entries":{"1":{"X":10.0,"Y":1.0},"44":{"X":20.0,"Y":2.0}}}]}""")
+        val later = encode("""{"Position":[{"Entries":{"1":{"X":60.0,"Y":6.0}}}]}""")
+        val stream = listOf(
+            "00:00:01.000\"$first\"",
+            "00:00:02.000\"broken\"",
+            "00:00:03.000\"broken\"",
+            "00:00:04.000\"broken\"",
+            "00:00:05.000\"broken\"",
+            "00:00:06.000\"$later\""
+        ).joinToString("\n")
+
+        val snapshots = ReplayTimingClient().parsePositions(stream)
+
+        assertEquals(2, snapshots.size)
+        val secondFrame = snapshots.last()
+        assertEquals(2, secondFrame.positions.size)
+        val updated = secondFrame.positions.first { it.number == "1" }
+        val unchanged = secondFrame.positions.first { it.number == "44" }
+        assertEquals(60.0, updated.x, 0.0001)
+        assertEquals(6_000L, updated.updatedAtMs)
+        assertEquals(20.0, unchanged.x, 0.0001)
+        assertEquals(1_000L, unchanged.updatedAtMs)
+    }
+    @Test
     fun replayPositionsInterpolateAtTheExactVideoPlayhead() {
         val first = TrackDriverPosition(
             number = "1", x = 0.0, y = 10.0, updatedAtMs = 1_000L
