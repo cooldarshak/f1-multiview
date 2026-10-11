@@ -247,8 +247,19 @@ fun UgisInfoPanel(
                                     Text(ui.liveSessionInfo.name+" · "+ui.liveSessionInfo.sessionType,color=InfoMuted,fontSize=8.sp)
                                     Text("CLOCK "+ui.sessionClock+"  ·  LAP "+ui.currentLap+"/"+ui.totalLaps+"  ·  TRACK "+ui.trackStatus.label,color=InfoMuted,fontSize=7.sp,fontWeight=FontWeight.Bold)
                                 }
-                                Text(ui.timingStatus,color=if(ui.timingStatus=="LIVE") Color(0xFF66E07A) else InfoMuted,fontSize=9.sp,fontWeight=FontWeight.Black)
+                                val statusLabel = if (ui.session?.live == false && !ui.replaySyncCalibrated) "SYNC UNVERIFIED" else ui.timingStatus
+                                Text(statusLabel,color=when { ui.timingStatus=="LIVE" -> Color(0xFF66E07A); ui.session?.live==false && !ui.replaySyncCalibrated -> InfoYellow; else -> InfoMuted },fontSize=9.sp,fontWeight=FontWeight.Black)
                             }
+                        }
+                    }
+                    if (ui.session?.live == false && !ui.replaySyncCalibrated) {
+                        item {
+                            InfoRow(
+                                "SYNC",
+                                "Replay timing offset unverified",
+                                "The archive loaded, but video-to-timing alignment has not been verified. Offset buttons adjust timing but do not prove alignment.",
+                                "UNVERIFIED"
+                            )
                         }
                     }
                     item { InfoRow("WX","Weather","Air "+ui.weather.air+" °C · Track "+ui.weather.track+" °C · Humidity "+ui.weather.humidity+"%","Wind "+ui.weather.wind+" "+ui.weather.windDirection+" · Rain "+ui.weather.rainfall) }
