@@ -24,7 +24,7 @@ import kotlin.math.*
  */
 internal data class PositionMappingValidation(val valid: Boolean?, val matched: Int, val total: Int, val reason: String)
 
-class TrackMapClient(private val context: Context? = null) {
+class TrackMapClient(private val context: Context? = null, httpClient: OkHttpClient? = null) {
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
         internal const val MIN_CENTERLINE_POINTS = 20
@@ -155,7 +155,7 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
 
 
     }
-    private val http = OkHttpClient.Builder()
+    private val http = httpClient ?: OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .build()
