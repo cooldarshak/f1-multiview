@@ -552,7 +552,14 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             }
         }
         visit(data)
-        if(changed)publishTrackPositions()
+        if(changed) {
+            publishTrackPositions()
+            val now=System.currentTimeMillis()
+            if(now-lastPositionLogAtMs>=2_000L) {
+                lastPositionLogAtMs=now
+                AppLogger.i("LiveTiming","LIVE_POSITION_ENTRIES_UPDATED count=${positionMeta.size} timestampMs=$now")
+            }
+        }
     }
 
     private fun parseTrackStatus(data:JSONObject?) {
