@@ -53,23 +53,16 @@ class TrackMapClientTest {
 
 
     @Test
-    fun geometryLookupDoesNotSilentlySubstituteAnOlderSeasonLayout() {
-        assertEquals(listOf(2026), TrackMapClient.geometryLookupYears(2026))
-        assertEquals(listOf(2025), TrackMapClient.geometryLookupYears(2025))
-        assertEquals(listOf(2021), TrackMapClient.geometryLookupYears(2021))
-    }
-
-    @Test
-    fun geometryLookupFallsBackOnlyToPublishedPublicSeasons() {
+    fun remoteGeometryLookupDoesNotFallBackToAnUnverifiedSeason() {
         assertEquals(listOf(2026), TrackMapClient.geometryLookupYears(2026))
         assertEquals(listOf(2024), TrackMapClient.geometryLookupYears(2024))
-        // Old archives are not silently mapped to a newer season's telemetry coordinate frame.
+        // Remote requests must not silently substitute another season's telemetry coordinate frame.
         assertEquals(listOf(2021), TrackMapClient.geometryLookupYears(2021))
     }
 
 
     @Test
-    fun parsesBundledNativeGeometryWithoutNetworkAndMatchesNamesUnambiguously() {
+    fun parsesBundledNativeGeometryAndValidatesCircuitIdentity() {
         val x = JSONArray()
         val y = JSONArray()
         repeat(TrackMapClient.MIN_CENTERLINE_POINTS) { i ->
@@ -96,13 +89,12 @@ class TrackMapClientTest {
             .put("corners", corners)
         val catalogue = JSONObject().put("circuits", JSONObject().put("61", singapore))
 
-        assertNull("Older bundled geometry must not be used for a newer session",
-            TrackMapClient.parseBundledGeometry(catalogue, 61, 2026))
-        singapore.put("year", 2026)
+        // An older geometry is accepted only because its explicit circuit key matches the
+        // selected venue; point count alone is not used to infer circuit identity.
         val geometry = TrackMapClient.parseBundledGeometry(catalogue, 61, 2026)
         assertNotNull(geometry)
         assertEquals(61, geometry!!.circuitKey)
-        assertEquals(2026, geometry.year)
+        assertEquals(2023, geometry.year)
         assertEquals(335.0, geometry.rotation, 0.0)
         assertEquals(TrackMapClient.MIN_CENTERLINE_POINTS, geometry.centerline.size)
         assertEquals(3, geometry.corners.size)
