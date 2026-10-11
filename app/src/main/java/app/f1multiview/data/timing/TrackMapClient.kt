@@ -175,12 +175,18 @@ class TrackMapClient {
         }
         if (geoPoints.size < 20) return emptyList()
         val lengths = cumulativeDistances(geoPoints)
-        val trackLength = properties.optDouble("length", lengths.lastOrNull() ?: 0.0)
-        if (trackLength <= 0.0) return emptyList()
+        val geographicLength = lengths.lastOrNull() ?: 0.0
+        // GeoJSON datasets disagree on whether a circuit's optional "length" is metres,
+        // kilometres, or absent. Never mix that metadata unit with F1 corner distances.
+        // Normalize the authoritative ordered corner distances onto the complete geographic
+        // centreline instead; this preserves relative corner placement independent of units.
+        val maxCornerDistance = corners.maxOfOrNull { it.distance } ?: 0.0
+        if (geographicLength <= 0.0 || maxCornerDistance <= 0.0) return emptyList()
 
         val matches = corners.mapNotNull { corner ->
-            if (corner.distance <= 0.0 || corner.distance > trackLength * 1.08) return@mapNotNull null
-            val scaledDistance = (corner.distance / trackLength * lengths.last()).coerceIn(0.0, lengths.last())
+            if (corner.distance <= 0.0 || corner.distance > maxCornerDistance * 1.001) return@mapNotNull null
+            val scaledDistance = (corner.distance / maxCornerDistance * geographicLength)
+                .coerceIn(0.0, geographicLength)
             val geoPoint = sampleAtDistance(geoPoints, lengths, scaledDistance)
             geoPoint?.let { Triple(it.lon, it.lat, corner.x to corner.y) }
         }
