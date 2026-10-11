@@ -1,3 +1,19 @@
+# FIRST ACTION IN THE NEW CHAT — READ THIS BEFORE DOING ANYTHING
+
+**Do not respond with another plan or ask the user to repeat context. Start execution.**
+
+1. Fetch the latest head of `feature/tiledmedia-multiview-rearchitecture` from GitHub and confirm the exact commit SHA. Do not use `main`.
+2. Read this entire document and inspect the current source files listed below at that exact branch head. Do not assume the earlier findings remain true without rechecking them.
+3. Inspect the latest relevant GitHub Actions runs, test results, and APK artifact if available. Keep CI/build evidence separate from device-runtime evidence.
+4. Start with **Phase 1: replay timing loading and deterministic session resolution**. Trace the selected-session path through `MultiViewViewModel`, `ReplayTimingClient`, and the UI playhead update. Identify the concrete defect from source, implement the smallest correct fix, add regression tests, and run the relevant tests.
+5. Continue in the prescribed phase order in this document. Do not stop after reporting findings or after making a checklist. Make code changes and commit each coherent, validated milestone to this feature branch.
+6. Preserve existing working functionality. Do not modify `main`, do not weaken DRM or the multiple-feed safety guard, do not add OpenF1, and do not use Tiledmedia/TME/ClearVR or their code/dependencies.
+7. If blocked by missing live credentials, device access, or unavailable runtime evidence, continue all work that can be proven from source and fixtures, state the exact blocker, and never fabricate a successful runtime result.
+
+**Immediate first deliverable:** a source-backed replay timing/session-resolution fix with regression tests, committed on the feature branch, plus the exact commit SHA and test results. Then proceed through the remaining phases rather than waiting for another user prompt.
+
+---
+
 # Live Timing, Driver Tracker, and Track Map Implementation Plan
 
 **Project:** F1 MultiView for Android / Android TV  
@@ -214,3 +230,64 @@ Implement in this order:
 7. Replay/live end-to-end validation, tests, CI/APK verification, and device evidence.
 
 A phase is complete only when its relevant tests pass and its behavior is verified with real or representative fixtures. The overall milestone is complete only when the timing tower and Driver Tracker/Track Map work together with video in replay and live modes, use real data, handle seek/session changes correctly, and preserve official feed selection and single-feed playback. Clearly document any behavior that remains unverified on a physical device.
+
+
+## 7. Definition of done — acceptance gate
+
+The milestone is **not done** merely because code compiles, the APK builds, a panel is visible, or mocked/sample markers move. Mark each criterion PASS only with the evidence described. Use FAIL or BLOCKED otherwise.
+
+### A. Source and architecture
+- [ ] All work is committed to `feature/tiledmedia-multiview-rearchitecture`; no active development commits are made on `main`.
+- [ ] No OpenF1 endpoints, APIs, SDKs, or code are used.
+- [ ] No Tiledmedia/TME/ClearVR-owned dependencies, code, or services are used.
+- [ ] No fabricated timing, positions, geometry, driver identities, or session metadata are displayed as real.
+- [ ] Existing official F1 TV feed selection, Widevine/DRM behavior, Media3 single-feed playback, and the multiple-feed safety guard remain intact.
+
+### B. Replay/VOD timing
+- [ ] Selecting a replay session deterministically resolves the correct season, meeting, and session/archive; ambiguous matches fail clearly instead of choosing the first candidate.
+- [ ] Timing data loads on every supported replay-session selection path and is reset/reloaded when the session changes.
+- [ ] The selected replay's timing, driver list, weather, track status, lap count, and position data are available when those streams exist in the archive.
+- [ ] Timing snapshots follow the actual video playhead during play/pause, forward seek, backward seek, and resume.
+- [ ] Missing identifiers/archives/streams produce explicit diagnosable UI/log state, not a silently empty panel.
+- [ ] Replay state cannot leak into live timing or a different replay session.
+
+### C. Live timing
+- [ ] The authorised live timing connection reaches the expected transport and subscription states.
+- [ ] Logs/counters prove receipt, decode/decompression, message-type parsing, state reduction, and UI publication without exposing secrets.
+- [ ] Reconnect, cancellation, malformed payload, sparse delta, explicit-null/removal, and stale-data paths are handled and tested.
+- [ ] The UI reflects real received session data; unavailable values are marked unavailable or omitted, never fabricated.
+
+### D. Driver Tracker and circuit map
+- [ ] Circuit identity is resolved correctly and a validated local geometry renders without requiring a successful remote request when that geometry is available.
+- [ ] Unknown or invalid geometry never silently falls back to a different circuit.
+- [ ] Real position samples are associated with the correct drivers and use verified coordinate semantics and a documented transform.
+- [ ] Marker positions are aligned to live time or replay playhead as appropriate; interpolation uses genuine timestamped samples and is bounded.
+- [ ] Stale/missing samples are indicated honestly; backward seek and session changes reset/rebuild trails correctly.
+- [ ] Markers follow the actual circuit without unjustified jumps, drift, or invented locations.
+
+### E. Timing tower and integrated UI
+- [ ] Tower values/indicators are driven by real feed fields, including gaps, lap/sector times, tyres/stints, pit state, weather, track status, lap/session clock, and race control only where available.
+- [ ] Compact/detailed presentation is legible at target phone and Android TV sizes.
+- [ ] Main video, timing tower, and Driver Tracker/map can be visible together in the same grid. The intended starting arrangement is main video left, timing/telemetry upper-right (about two-thirds), map/tracker lower-right (about one-third).
+- [ ] Panels are not forced into popups and do not block video when timing/map data loads or fails.
+- [ ] Layout resizing, feed selection, Android TV D-pad focus/navigation, and mobile responsiveness work.
+
+### F. Regression, build, and runtime proof
+- [ ] Unit tests cover the phase-specific regressions, including archive resolution, replay load lifecycle, delta merge, geometry fallback, coordinate mapping, interpolation, backward seek, and session switching.
+- [ ] Relevant tests and `testDebugUnitTest` pass.
+- [ ] `assembleDebug` succeeds.
+- [ ] GitHub Actions results and the APK artifact are tied to the exact reviewed branch commit; record run URL, artifact name, and checksum when available.
+- [ ] Existing single-feed playback is rechecked after changes and is not regressed.
+- [ ] Live and replay behaviors are tested separately with representative real-format data.
+- [ ] Physical-device evidence is recorded for actual live/replay data flow, tower rendering, marker motion, seek behavior, and combined layout. If a device test cannot be performed, mark it BLOCKED and do not claim full completion.
+
+### Required final report
+At completion, provide:
+1. Branch name and final commit SHA.
+2. Commits made and the main files changed.
+3. Test commands/results and relevant GitHub Actions links.
+4. APK artifact link and checksum, if produced.
+5. A criterion-by-criterion PASS / FAIL / BLOCKED summary for sections B–F.
+6. Explicit remaining blockers and device-runtime checks not performed.
+
+The milestone can be called **DONE** only when all applicable acceptance criteria pass. If physical-device verification is unavailable, label the milestone **IMPLEMENTED, DEVICE VALIDATION BLOCKED**, not DONE.
