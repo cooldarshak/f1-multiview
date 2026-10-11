@@ -363,11 +363,16 @@ private fun F1TimingRow(r: TimingRow, driver: DriverInfo?, isTv: Boolean) {
                     Text(r.driver, color=InfoWhite, fontSize=11.sp, fontWeight=FontWeight.Black, maxLines=1)
                     Text(driver?.team ?: ("CAR " + r.driverNumber), color=InfoMuted, fontSize=7.sp, maxLines=1)
                 }
+                TimingMetric("GEAR", r.gear.takeIf { it > 0 }?.toString() ?: "—", 36.dp, InfoWhite)
+                TimingMetric("RPM", r.rpm.takeIf { it > 0 }?.toString() ?: "—", 54.dp, InfoWhite)
+                TimingMetric("KM/H", r.speed, 52.dp, InfoWhite)
+                TimingMetric("DRS", when (r.drsActive) { true -> "ON"; false -> "OFF"; null -> "—" }, 42.dp,
+                    if (r.drsActive == true) InfoGreen else InfoWhite)
                 TimingMetric("INT", if (r.position == 1) "LEADER" else r.interval, 70.dp, InfoWhite)
                 TimingMetric("GAP", r.leaderGap, 72.dp, InfoWhite)
-                TimingMetric("LAST", if (r.inPit) "IN PIT" else r.lastLap, 76.dp, if (r.inPit) InfoYellow else InfoWhite)
+                TimingMetric("LAST", when { r.inPit -> "IN PIT"; r.pitOut -> "PIT OUT"; else -> r.lastLap }, 76.dp,
+                    if (r.inPit) InfoYellow else InfoWhite)
                 TimingMetric("BEST", r.bestLap, 76.dp, timingStatusColor(r.bestLapStatus))
-                TimingMetric("KM/H", r.speed, 52.dp, InfoWhite)
                 Column(Modifier.width(54.dp), horizontalAlignment=Alignment.CenterHorizontally) {
                     Text("TYRE",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
                     Text(r.tyre.takeIf { it.isNotBlank() && it != "-" } ?: "—",
@@ -379,7 +384,9 @@ private fun F1TimingRow(r: TimingRow, driver: DriverInfo?, isTv: Boolean) {
                     val pitLabel = buildString {
                         append(r.pitStops)
                         if (r.inPit) append(" · IN")
+                        else if (r.pitOut) append(" · OUT")
                         if (r.stopped) append(" · STOP")
+                        if (r.retired) append(" · RET")
                     }
                     Text(pitLabel,color=if(r.inPit||r.stopped) InfoYellow else InfoWhite,fontSize=7.sp,fontWeight=FontWeight.Black,maxLines=1)
                 }
