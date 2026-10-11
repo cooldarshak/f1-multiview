@@ -7,6 +7,7 @@ import app.f1multiview.model.TrackStatusInfo
 import app.f1multiview.model.TimingWeather
 import app.f1multiview.model.TrackDriverPosition
 import app.f1multiview.model.TrackPoint
+import app.f1multiview.media.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -36,7 +37,44 @@ data class ReplayMetadataState(
     val sessionClock:String
 )
 data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Long>)
+internal data class ReplayArchiveSession(val name:String,val type:String,val path:String,val key:String="")
+internal data class ReplaySessionResolution(val session:ReplayArchiveSession,val reason:String)
+
+internal fun resolveReplayArchiveSession(
+    candidates: List<ReplayArchiveSession>,
+    requestedSessionType: String
+): ReplaySessionResolution {
+    fun normalize(value:String) = value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
+    val requested = normalize(requestedSessionType)
+    val wanted = when {
+        requested.contains("sprint") && requested.contains("qual") -> "sprint qualifying"
+        requested.contains("sprint") -> "sprint"
+        requested.contains("practice 1") -> "practice 1"
+        requested.contains("practice 2") -> "practice 2"
+        requested.contains("practice 3") -> "practice 3"
+        requested.contains("qual") -> "qualifying"
+        requested.contains("race") -> "race"
+        else -> requested
+    }
+    val normalizedWanted = normalize(wanted)
+    val exactName = candidates.filter { normalize(it.name) == normalizedWanted }
+    if (exactName.size == 1) return ReplaySessionResolution(exactName.single(), "exact-name")
+    if (exactName.size > 1) error("Ambiguous exact archive session name '$wanted' (${exactName.size} candidates)")
+    val exactType = candidates.filter { normalize(it.type) == normalizedWanted }
+    if (exactType.size == 1) return ReplaySessionResolution(exactType.single(), "exact-type")
+    if (exactType.size > 1) error("Ambiguous archive session type '$wanted' (${exactType.size} candidates)")
+    val nameMatches = candidates.filter { normalize(it.name).contains(normalizedWanted) }
+    if (nameMatches.size == 1) return ReplaySessionResolution(nameMatches.single(), "unique-name-containment")
+    if (nameMatches.size > 1) error("Ambiguous archive session name '$wanted' (${nameMatches.size} candidates)")
+    error("No archive session matches '$requestedSessionType' (normalized='$wanted')")
+}
+
 class ReplayTimingClient {
+    fun clear() {
+        snapshots=emptyList(); positionSnapshots=emptyList(); telemetrySnapshots=emptyList(); stintSnapshots=emptyList()
+        archivedDriverInfo=emptyList(); archivedSessionInfo=null; weatherSnapshots=emptyList(); trackStatusSnapshots=emptyList()
+        lapSnapshots=emptyList(); clockSnapshots=emptyList(); syncOffsetMs=0L; syncData=ReplaySyncData(0L, emptyMap())
+    }
     /**
      * Archive endpoints can return a valid HTTP response whose lines do not match the parser's
      * supported TimingData shape. Do not report the replay timing service as ready unless it
@@ -70,23 +108,23 @@ class ReplayTimingClient {
     private var syncOffsetMs:Long = 0L
     private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
+        clear()
         runCatching {
             val index=getJson("https://livetiming.formula1.com/static/$year/Index.json")
             val meetings=index.optJSONArray("Meetings") ?: error("Timing archive has no meetings")
             val meeting=(0 until meetings.length()).map{meetings.getJSONObject(it)}.firstOrNull{it.optInt("Number",-1)==meetingNumber} ?: error("Timing archive meeting not found")
             val sessions=meeting.optJSONArray("Sessions") ?: error("Timing archive has no sessions")
-            val wanted=when {
-                sessionType.contains("sprint",true) && sessionType.contains("qual",true) -> "Sprint Qualifying"
-                sessionType.contains("sprint",true) -> "Sprint"
-                sessionType.contains("qual",true) -> "Qualifying"
-                sessionType.contains("practice 1",true) || sessionType=="practice-1" -> "Practice 1"
-                sessionType.contains("practice 2",true) || sessionType=="practice-2" -> "Practice 2"
-                sessionType.contains("practice 3",true) || sessionType=="practice-3" -> "Practice 3"
-                sessionType.contains("race",true) -> "Race"
-                else -> sessionType
+            val candidates=(0 until sessions.length()).mapNotNull { i ->
+                val item=sessions.optJSONObject(i) ?: return@mapNotNull null
+                val name=item.optString("Name").trim()
+                val type=item.optString("Type").trim()
+                val path=item.optString("Path").trim('/')
+                if (name.isBlank() || path.isBlank()) null else ReplayArchiveSession(name,type,path,item.optString("Key"))
             }
-            val session=(0 until sessions.length()).map{sessions.getJSONObject(it)}.firstOrNull{it.optString("Name").contains(wanted,true) || it.optString("Type").equals(wanted,true)} ?: error("Timing archive session not found")
-            val path=session.optString("Path").trim('/').ifBlank{error("Timing archive session has no path")}
+            val resolution=resolveReplayArchiveSession(candidates,sessionType)
+            val session=resolution.session
+            AppLogger.i("ReplayTiming", "REPLAY_SESSION_SELECTED name=${session.name} type=${session.type} path=${session.path} reason=${resolution.reason}")
+            val path=session.path
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
             requireTimingRows(snapshots, year, meetingNumber, sessionType)
             archivedDriverInfo=runCatching { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }.getOrDefault(emptyList())
