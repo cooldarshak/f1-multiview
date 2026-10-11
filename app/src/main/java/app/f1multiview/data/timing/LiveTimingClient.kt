@@ -33,6 +33,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val _weather=MutableStateFlow(TimingWeather());val weather:StateFlow<TimingWeather> = _weather.asStateFlow()
     private val _teamRadio=MutableStateFlow<List<app.f1multiview.model.TeamRadioItem>>(emptyList());val teamRadio:StateFlow<List<app.f1multiview.model.TeamRadioItem>> = _teamRadio.asStateFlow()
     private val _telemetry=MutableStateFlow<List<app.f1multiview.model.DriverTelemetry>>(emptyList());val telemetry:StateFlow<List<app.f1multiview.model.DriverTelemetry>> = _telemetry.asStateFlow()
+    private val _driverInfo=MutableStateFlow<List<DriverInfo>>(emptyList());val driverInfo:StateFlow<List<DriverInfo>> = _driverInfo.asStateFlow()
     private val _sessionInfo=MutableStateFlow(app.f1multiview.model.LiveSessionInfo());val sessionInfo:StateFlow<app.f1multiview.model.LiveSessionInfo> = _sessionInfo.asStateFlow()
     private val _trackPositions=MutableStateFlow<List<TrackDriverPosition>>(emptyList())
     val trackPositions:StateFlow<List<TrackDriverPosition>> = _trackPositions.asStateFlow()
@@ -246,7 +247,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
     private fun parseDriverList(data:JSONObject?) {
         if(data == null) return
-        val root=data.optJSONObject("DriverList") ?: data
+        val root=data.optJSONObject("DriverList") ?: data.optJSONObject("Drivers") ?: data
         val keys=root.keys()
         while(keys.hasNext()){
             val number=keys.next()
@@ -259,6 +260,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 teamColor=x.optString("TeamColour").ifBlank{x.optString("TeamColor")}.ifBlank{"FFFFFF"}
             )
         }
+        _driverInfo.value=driverMeta.map{(number,meta)->DriverInfo(number,meta.name,meta.acronym,meta.team,meta.teamColor)}
+            .sortedWith(compareBy<DriverInfo>{it.number.toIntOrNull() ?: Int.MAX_VALUE}.thenBy{it.number})
+        AppLogger.i("LiveTiming","DRIVER_LIST_UPDATED drivers=${_driverInfo.value.size}")
         publishTrackPositions()
     }
     private fun parseSessionInfo(data:JSONObject?) {
