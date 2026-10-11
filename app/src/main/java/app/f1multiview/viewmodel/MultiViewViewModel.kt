@@ -381,12 +381,28 @@ fun activateRaceMap(){
     _ui.value=_ui.value.copy(selectedPanel="tracker")
     loadTrackMapGeometry()
 }
-fun loadTrackMapGeometry()=viewModelScope.launch{
-    val info=_ui.value.liveSessionInfo
-    val key=info.circuitKey ?: return@launch
-    val year=info.year ?: java.time.Year.now().value
-    trackMapClient.load(key,year,info.circuitName).onSuccess{geometry->_ui.value=_ui.value.copy(trackGeometry=geometry,providerError=null)}
-        .onFailure{_ui.value=_ui.value.copy(providerError="Track map geometry unavailable: "+(it.message?:"unknown error"))}
+fun loadTrackMapGeometry()=viewModelScope.launch {
+    val state = _ui.value
+    val info = state.liveSessionInfo
+    val year = info.year ?: state.session?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
+    val meeting = info.meeting.takeUnless { it.isBlank() || it == "-" }
+        ?: state.session?.name.orEmpty()
+    val circuitName = info.circuitName.ifBlank { meeting }
+    val existing = if (info.circuitKey != null) {
+        trackMapClient.load(info.circuitKey, year, circuitName)
+    } else {
+        Result.failure(IllegalStateException("Session metadata has no circuit key"))
+    }
+    val resolved = if (existing.isSuccess) existing else {
+        trackMapClient.loadByName(year, meeting, circuitName)
+    }
+    resolved.onSuccess { geometry ->
+        _ui.value = _ui.value.copy(trackGeometry=geometry, providerError=null)
+        AppLogger.i("TrackMap", "GEOMETRY_READY circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
+    }.onFailure {
+        _ui.value = _ui.value.copy(providerError="Track map geometry unavailable: "+(it.message?:"unknown error"))
+        AppLogger.w("TrackMap", "GEOMETRY_UNAVAILABLE year=$year meetingNamePresent=${meeting.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()} reason=${it.javaClass.simpleName}")
+    }
 }
     fun setMainStream(id:String)=viewModelScope.launch{
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
