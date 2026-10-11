@@ -412,7 +412,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         info.meeting.takeUnless { it.isBlank() || it == "-" } ?: selectedSession?.name.orEmpty()
     }
     val circuitName = if (replay) "" else info.circuitName
-    val existing = if (!replay && info.circuitKey != null) {
+    val existing = if (info.circuitKey != null) {
         trackMapClient.load(info.circuitKey, year, circuitName.ifBlank { meeting })
     } else {
         Result.failure(IllegalStateException("Circuit key is not available for this session; use meeting lookup"))
