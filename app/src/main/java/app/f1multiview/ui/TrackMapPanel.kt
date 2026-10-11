@@ -189,15 +189,17 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
     modifier:Modifier
 ){
     Canvas(modifier){
-        val points=mutableListOf<TrackPoint>()
-        geometry?.centerline?.forEach{points+=it}
-        geometry?.corners?.forEach{points+=TrackPoint(it.x,it.y)}
-        drivers.forEach{points+=TrackPoint(it.x,it.y)}
-        if(points.isEmpty()) return@Canvas
-
+        // Refuse to draw a cluster of GPS dots as if it were a circuit. The marker coordinates
+        // are only meaningful when the matching validated centreline has been resolved.
+        val circuit = geometry?.centerline.orEmpty()
+        if(circuit.size < 20)return@Canvas
         val selected=drivers.firstOrNull{it.number==selectedNumber}
-        val cx0=if(focusSelected && selected!=null)selected.x else points.map{it.x}.average()
-        val cy0=if(focusSelected && selected!=null)selected.y else points.map{it.y}.average()
+        val trackPoints=mutableListOf<TrackPoint>().apply {
+            addAll(circuit)
+            geometry?.corners?.forEach{add(TrackPoint(it.x,it.y))}
+        }
+        val cx0=if(focusSelected && selected!=null)selected.x else trackPoints.map{it.x}.average()
+        val cy0=if(focusSelected && selected!=null)selected.y else trackPoints.map{it.y}.average()
         val rot=-(geometry?.rotation ?: 0.0)*Math.PI/180.0
         fun transform(p:TrackPoint):TrackPoint{
             val dx=p.x-cx0
@@ -206,9 +208,11 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             val ry=dx*sin(rot)+dy*cos(rot)
             return TrackPoint(rx,ry)
         }
-        val transformed=points.map(::transform)
-        val minX=transformed.minOf{it.x};val maxX=transformed.maxOf{it.x}
-        val minY=transformed.minOf{it.y};val maxY=transformed.maxOf{it.y}
+        // Scale and centre are derived from fixed circuit geometry only. Moving cars must not
+        // make the whole map zoom, jitter, or recenter on every telemetry packet.
+        val transformedTrack=trackPoints.map(::transform)
+        val minX=transformedTrack.minOf{it.x};val maxX=transformedTrack.maxOf{it.x}
+        val minY=transformedTrack.minOf{it.y};val maxY=transformedTrack.maxOf{it.y}
         val span=max(maxX-minX,maxY-minY).coerceAtLeast(1.0)
         val scale=min(size.width,size.height)*.78f/span.toFloat()*zoom
         val center=Offset(size.width/2f + panX*size.width,size.height/2f + panY*size.height)
