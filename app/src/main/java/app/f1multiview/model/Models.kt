@@ -91,8 +91,8 @@ data class TrackDriverPosition(
 data class TrackPoint(val x: Double, val y: Double)
 
 data class TrackStatusInfo(
-    val code: Int = 1,
-    val label: String = "GREEN",
+    val code: Int = 0,
+    val label: String = "-",
     val message: String = ""
 )
 
