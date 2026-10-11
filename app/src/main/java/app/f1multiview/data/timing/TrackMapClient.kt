@@ -202,7 +202,10 @@ class TrackMapClient {
         // every published corner before exposing the centreline to the UI.
         val residualRatio = normalizedFitResidual(matches, xFit, yFit) ?: return emptyList()
         if (residualRatio > MAX_NORMALIZED_FIT_RESIDUAL) {
-            return emptyList()
+            error(
+                "Circuit centreline alignment rejected: corner residual " +
+                    "%.3f exceeds %.3f".format(java.util.Locale.US, residualRatio, MAX_NORMALIZED_FIT_RESIDUAL)
+            )
         }
         val transformed = geoPoints.map { p ->
             TrackPoint(xFit[0] * p.lon + xFit[1] * p.lat + xFit[2], yFit[0] * p.lon + yFit[1] * p.lat + yFit[2])
