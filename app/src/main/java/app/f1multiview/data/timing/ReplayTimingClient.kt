@@ -23,9 +23,9 @@ data class ReplayPositionSnapshot(val offsetMs:Long,val positions:List<TrackDriv
 data class ReplayTelemetrySnapshot(val offsetMs:Long,val telemetry:List<DriverTelemetry>)
 private data class ReplayStint(val compound:String,val pitStops:Int,val inPit:Boolean)
 private data class ReplayStintSnapshot(val offsetMs:Long,val stints:Map<String,ReplayStint>)
-private data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
-private data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
-private data class ReplayLapSnapshot(val offsetMs:Long,val current:Int,val total:Int)
+data class ReplayWeatherSnapshot(val offsetMs:Long,val weather:TimingWeather)
+data class ReplayTrackStatusSnapshot(val offsetMs:Long,val trackStatus:TrackStatusInfo)
+data class ReplayLapSnapshot(val offsetMs:Long,val current:Int,val total:Int)
 data class ReplayMetadataState(
     val sessionInfo:LiveSessionInfo?,
     val weather:TimingWeather,
