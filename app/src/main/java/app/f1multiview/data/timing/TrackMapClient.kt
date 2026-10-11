@@ -31,6 +31,16 @@ class TrackMapClient {
          */
         internal fun catalogLookupYears(requestedYear: Int): List<Int> =
             (maxOf(requestedYear, 2023) downTo 2023).toList()
+
+    /**
+     * Circuit data is a best-effort public endpoint. When the requested season is restricted
+     * or has no published resource, try older public geometry before giving up. Fallback is
+     * bounded to 2023 onward (or the explicitly requested earlier year) and is logged so stale
+     * layout data is never mistaken for the requested season.
+     */
+    internal fun geometryLookupYears(requestedYear: Int): List<Int> =
+        if (requestedYear >= 2023) (requestedYear downTo 2023).toList() else listOf(requestedYear)
+
     }
     private val http = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -127,15 +137,6 @@ class TrackMapClient {
             onFailure = { Result.failure(it) }
         )
     }
-    /**
-     * Circuit data is a best-effort public endpoint. When the requested season is restricted
-     * or has no published resource, try older public geometry before giving up. Fallback is
-     * bounded to 2023 onward (or the explicitly requested earlier year) and is logged so stale
-     * layout data is never mistaken for the requested season.
-     */
-    internal fun geometryLookupYears(requestedYear: Int): List<Int> =
-        if (requestedYear >= 2023) (requestedYear downTo 2023).toList() else listOf(requestedYear)
-
     suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
         var lastFailure: Throwable? = null
         val years = geometryLookupYears(year)
