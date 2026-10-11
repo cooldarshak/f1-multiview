@@ -12,6 +12,9 @@ import android.util.Base64
 import app.f1multiview.model.*
 import java.util.zip.Inflater
 import org.json.JSONObject
+import org.json.JSONArray
+import org.json.JSONTokener
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
 class LiveTimingClient(private val scope:CoroutineScope, private val authHeadersProvider:suspend () -> Map<String,String> = { emptyMap() }){
@@ -45,6 +48,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     // F1 SignalR sends TimingData as differential updates. Keep the latest merged Lines state.
     private val timingLinesState=JSONObject()
     private val timingLock=Any()
+    private val telemetryByDriver = linkedMapOf<String, DriverTelemetry>()
+    private val observedFeeds = mutableSetOf<String>()
+    private var lastFeedSummaryAtMs = 0L
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
@@ -67,34 +73,128 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
     private fun scheduleReconnect(){if(reconnect?.isActive==true)return;reconnect=scope.launch{delay(2000);if(isActive)connect()}}
     private inner class Listener:WebSocketListener(){
-        override fun onOpen(ws:WebSocket,response:Response){_status.value="HANDSHAKING";ws.send("{\"protocol\":\"json\",\"version\":1}$RS")}
-        override fun onMessage(ws:WebSocket,text:String){text.split(RS).filter{it.isNotBlank()}.forEach{frame->
-            val json=runCatching{JSONObject(frame)}.getOrNull()?:return@forEach
-            if(json.optString("error").isNotBlank()){_status.value="ERROR";ws.close(1002,json.optString("error"));return@forEach}
-            if(_status.value=="HANDSHAKING"){_status.value="LIVE";val subscribe=JSONObject().put("type",1).put("invocationId","1").put("target","Subscribe").put("arguments",org.json.JSONArray().put(FEEDS.toTypedArray()));ws.send(subscribe.toString()+RS);keepAlive?.cancel();keepAlive=scope.launch{while(isActive){delay(KEEPALIVE_MS);if(socket===ws)ws.send(JSONObject().put("type",6).toString()+RS)}}}
-            if(json.optInt("type")==1&&json.optString("target")=="feed"){val args=json.optJSONArray("arguments")?:return@forEach;if(args.length()>=2){val feed=args.optString(0);val data=decodeFeedObject(args.opt(1));when(feed){"TimingData"->parseTiming(data);"TimingAppData"->parseTimingAppData(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TeamRadio"->parseTeamRadio(data);"ExtrapolatedClock"->parseExtrapolatedClock(data)}}}
-            if(json.optInt("type")==3){val result=json.optJSONObject("result")?:return@forEach;val it=result.keys();while(it.hasNext()){val feed=it.next();val data=decodeFeedObject(result.opt(feed));when(feed){"TimingData"->parseTiming(data);"TimingAppData"->parseTimingAppData(data);"DriverList"->parseDriverList(data);"SessionInfo"->parseSessionInfo(data);"CarData.z","CarData"->parseCarData(data);"Position.z","Position"->parsePosition(data);"TrackStatus"->parseTrackStatus(data);"RaceControlMessages"->parseRaceControl(data);"WeatherData"->parseWeather(data);"LapCount"->parseLapCount(data);"TimingDataF1"->parseTiming(data);"TeamRadio"->parseTeamRadio(data);"ExtrapolatedClock"->parseExtrapolatedClock(data)}}}
-        }}
-        override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;_status.value="RETRYING";scheduleReconnect()}
-        override fun onClosed(ws:WebSocket,code:Int,reason:String){if(socket===ws)socket=null;keepAlive?.cancel();keepAlive=null;if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"}
+        override fun onOpen(ws:WebSocket,response:Response){
+            _status.value="HANDSHAKING"
+            AppLogger.i("LiveTiming","SIGNALR_WEBSOCKET_OPEN httpStatus=${response.code}")
+            ws.send("{\"protocol\":\"json\",\"version\":1}$RS")
+        }
+        override fun onMessage(ws:WebSocket,text:String){
+            text.split(RS).filter{it.isNotBlank()}.forEach{frame->
+                val json=runCatching{JSONObject(frame)}.getOrNull()?:return@forEach
+                if(json.optString("error").isNotBlank()){
+                    AppLogger.w("LiveTiming","SIGNALR_SERVER_ERROR")
+                    _status.value="ERROR"
+                    ws.close(1002,"SignalR error")
+                    return@forEach
+                }
+                // The first post-handshake frame is the SignalR handshake acknowledgement.
+                if(_status.value=="HANDSHAKING"){
+                    _status.value="LIVE"
+                    val feedArray=JSONArray()
+                    FEEDS.forEach(feedArray::put)
+                    val subscribe=JSONObject()
+                        .put("type",1)
+                        .put("invocationId","1")
+                        .put("target","Subscribe")
+                        .put("arguments",JSONArray().put(feedArray))
+                    ws.send(subscribe.toString()+RS)
+                    AppLogger.i("LiveTiming","SIGNALR_SUBSCRIBE_SENT feedCount=${FEEDS.size}")
+                    keepAlive?.cancel()
+                    keepAlive=scope.launch{
+                        while(isActive){
+                            delay(KEEPALIVE_MS)
+                            if(socket===ws)ws.send(JSONObject().put("type",6).toString()+RS)
+                        }
+                    }
+                }
+                if(json.optInt("type")==1 && json.optString("target")=="feed"){
+                    val args=json.optJSONArray("arguments")?:return@forEach
+                    if(args.length()>=2) onFeedPayload(args.optString(0),decodeFeedObject(args.opt(1)))
+                }
+                if(json.optInt("type")==3){
+                    val result=json.optJSONObject("result")?:return@forEach
+                    val it=result.keys()
+                    while(it.hasNext()){
+                        val feed=it.next()
+                        onFeedPayload(feed,decodeFeedObject(result.opt(feed)))
+                    }
+                }
+            }
+        }
+        private fun onFeedPayload(feed:String,data:JSONObject?){
+            if(data==null){
+                if(observedFeeds.add("$feed:decode-failed")) AppLogger.w("LiveTiming","FEED_DECODE_FAILED feed=$feed")
+                return
+            }
+            if(observedFeeds.add(feed)) AppLogger.i("LiveTiming","FEED_FIRST_PAYLOAD feed=$feed keys=${data.length()}")
+            when(feed){
+                "TimingData","TimingDataF1"->parseTiming(data)
+                "TimingAppData"->parseTimingAppData(data)
+                "DriverList"->parseDriverList(data)
+                "SessionInfo"->parseSessionInfo(data)
+                "CarData.z","CarData"->parseCarData(data)
+                "Position.z","Position"->parsePosition(data)
+                "TrackStatus"->parseTrackStatus(data)
+                "RaceControlMessages"->parseRaceControl(data)
+                "WeatherData"->parseWeather(data)
+                "LapCount"->parseLapCount(data)
+                "TeamRadio"->parseTeamRadio(data)
+                "ExtrapolatedClock"->parseExtrapolatedClock(data)
+            }
+            val now=System.currentTimeMillis()
+            if(now-lastFeedSummaryAtMs>=10_000L){
+                lastFeedSummaryAtMs=now
+                AppLogger.i("LiveTiming","FEED_SUMMARY timingRows=${_rows.value.size} gpsDrivers=${positionMeta.size} telemetryDrivers=${telemetryByDriver.size} status=${_status.value}")
+            }
+        }
+        override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){
+            if(socket===ws)socket=null
+            keepAlive?.cancel();keepAlive=null
+            AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_FAILED reason=${t.javaClass.simpleName} httpStatus=${response?.code ?: -1}")
+            _status.value="RETRYING"
+            scheduleReconnect()
+        }
+        override fun onClosed(ws:WebSocket,code:Int,reason:String){
+            if(socket===ws)socket=null
+            keepAlive?.cancel();keepAlive=null
+            AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_CLOSED code=$code")
+            if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"
+        }
     }
     private fun decodeFeedObject(raw:Any?):JSONObject? {
-        if(raw is JSONObject) return raw
-        val encoded = raw as? String ?: return null
-        if(encoded.isBlank()) return null
-        val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() ?: return null
-        val inflater = Inflater(true)
+        if(raw is JSONObject)return raw
+        if(raw is JSONArray)return JSONObject().put("Position",raw)
+        val encoded=raw as? String ?: return null
+        if(encoded.isBlank())return null
+        jsonObjectFromText(encoded)?.let{return it}
+        val bytes=runCatching{Base64.decode(encoded,Base64.DEFAULT)}.getOrNull() ?: return null
+        inflateFeedBytes(bytes)?.let{jsonObjectFromText(it)?.let{return it}}
+        // Some feed messages are base64-wrapped JSON rather than raw-deflate compressed JSON.
+        return jsonObjectFromText(runCatching{String(bytes,Charsets.UTF_8)}.getOrDefault(""))
+    }
+    private fun jsonObjectFromText(text:String):JSONObject? {
+        val cleaned=text.trimStart('\uFEFF',' ','\n','\r','\t')
+        val parsed=runCatching{JSONTokener(cleaned).nextValue()}.getOrNull()
+        return when(parsed){
+            is JSONObject->parsed
+            is JSONArray->JSONObject().put("Position",parsed)
+            else->null
+        }
+    }
+    private fun inflateFeedBytes(bytes:ByteArray):String? {
+        val inflater=Inflater(true)
         return try {
             inflater.setInput(bytes)
-            val out = ByteArray(1024 * 1024)
-            val size = inflater.inflate(out)
-            if(size > 0) JSONObject(String(out, 0, size, Charsets.UTF_8))
-            else runCatching { JSONObject(encoded) }.getOrNull()
-        } catch(_:Throwable) {
-            runCatching { JSONObject(encoded) }.getOrNull()
-        } finally {
-            inflater.end()
-        }
+            val output=ByteArrayOutputStream()
+            val buffer=ByteArray(16*1024)
+            var iterations=0
+            while(!inflater.finished() && iterations++<2048){
+                val count=inflater.inflate(buffer)
+                if(count>0)output.write(buffer,0,count)
+                else if(inflater.needsInput()||inflater.needsDictionary())break
+            }
+            output.toString(Charsets.UTF_8.name()).takeIf{it.isNotBlank()}
+        }catch(_:Throwable){null}finally{inflater.end()}
     }
 
     private data class DriverMeta(val name:String,val acronym:String,val team:String,val teamColor:String)
