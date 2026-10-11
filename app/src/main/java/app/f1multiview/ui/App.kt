@@ -1318,6 +1318,12 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                                 Text(tyreLabel(row.tyre), color = tyreDisplayColor(row.tyre), fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1)
                                 Text("L" + row.lap, color = Muted, fontSize = 6.sp, maxLines = 1)
                             }
+                            MiniGearGauge(
+                                gear = telemetry?.gear ?: 0,
+                                rpm = telemetry?.rpm ?: 0,
+                                speed = telemetry?.speed ?: row.speed.toIntOrNull() ?: 0,
+                                modifier = Modifier.weight(.62f)
+                            )
                             Column(Modifier.weight(.55f), verticalArrangement = Arrangement.Center) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("LAST", color = Muted, fontSize = 5.sp, modifier = Modifier.width(22.dp))
@@ -1351,6 +1357,24 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MiniGearGauge(gear: Int, rpm: Int, speed: Int, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Box(Modifier.size(25.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 2.5.dp.toPx()
+                drawArc(Color(0xFF45464C), 135f, 270f, false, style = Stroke(stroke, cap = StrokeCap.Round))
+                drawArc(Color(0xFF2999EA), 135f, 270f * (rpm / 12500f).coerceIn(0f, 1f), false, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            Text(gear.toString(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+        }
+        Column(verticalArrangement = Arrangement.Center) {
+            Text(rpm.toString(), color = White, fontSize = 5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(speed.toString() + " km/h", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
