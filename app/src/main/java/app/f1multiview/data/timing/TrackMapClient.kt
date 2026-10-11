@@ -25,12 +25,14 @@ class TrackMapClient(private val context: Context? = null) {
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
         internal const val MIN_CENTERLINE_POINTS = 20
-internal fun geometryLookupYears(requestedYear: Int): List<Int> =
-            if (requestedYear >= 2023) (requestedYear downTo 2023).toList() else listOf(requestedYear)
+internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(requestedYear)
 
         /** Parse a bundled circuit only when it contains a complete, finite native centreline. */
         internal fun parseBundledGeometry(catalogue: JSONObject, circuitKey: Int, requestedYear: Int): TrackMapGeometry? {
             val item = catalogue.optJSONObject("circuits")?.optJSONObject(circuitKey.toString()) ?: return null
+            if (item.optInt("circuitKey", circuitKey) != circuitKey) return null
+            val itemYear = item.optInt("year", 0)
+            if (itemYear > 0 && itemYear < requestedYear) return null
             val client = TrackMapClient()
             val centerline = client.parseTrackCoordinates(item.optJSONArray("x"), item.optJSONArray("y"))
             if (centerline.size < MIN_CENTERLINE_POINTS) return null
@@ -47,7 +49,7 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> =
                 }
             }.sortedWith(compareBy<TrackCorner> { it.distance }.thenBy { it.number })
             if (corners.size < 3) return null
-            return TrackMapGeometry(circuitKey, item.optInt("year", requestedYear),
+            return TrackMapGeometry(circuitKey, itemYear.takeIf { it > 0 } ?: requestedYear,
                 item.optDouble("rotation", 0.0), corners, centerline)
         }
 
@@ -90,13 +92,7 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> =
         }
 
 
-        /**
-         * Try the requested year's catalogue first, then public historical catalogues.
-         * OpenF1 real-time/current-season access can be restricted, while historical circuit
-         * metadata is publicly available. Circuit keys for established venues are stable.
-         */
-        internal fun catalogLookupYears(requestedYear: Int): List<Int> =
-            (maxOf(requestedYear, 2023) downTo 2023).toList()
+
     }
     private val http = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -104,142 +100,63 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> =
         .build()
 
     /**
-     * Resolve a missing circuit key using public historical OpenF1 catalogues when the
-     * current-season catalogue is restricted. For established circuits the circuit key is
-     * stable across seasons; the MultiViewer geometry request still uses the requested year.
-     * New circuits without an unambiguous public match remain unavailable rather than guessed.
+     * Resolve names from the validated bundled catalogue first. OpenF1 is intentionally not
+     * used as a circuit lookup or timing dependency. When the local catalogue cannot identify a
+     * circuit unambiguously, fail honestly rather than selecting a guessed key.
      */
     suspend fun loadByName(year: Int, meetingName: String, circuitName: String = ""): Result<TrackMapGeometry> {
-        val lookup = withContext(Dispatchers.IO) {
-            runCatching {
-                val wantedMeeting = normalize(meetingName)
-                val wantedCircuit = normalize(circuitName)
-                if (wantedMeeting.isBlank() && wantedCircuit.isBlank()) {
-                    error("Missing meeting and circuit names")
-                }
-
-                var selected: Pair<Int, String>? = null
-                var lastFailure: Throwable? = null
-                val catalogueYears = catalogLookupYears(year)
-                for (catalogueYear in catalogueYears) {
-                    val meetings = try {
-                        val request = Request.Builder()
-                            .url("https://api.openf1.org/v1/meetings?year=" + catalogueYear)
-                            .header("User-Agent", "F1MultiView/1.0 Android")
-                            .build()
-                        http.newCall(request).execute().use { response ->
-                            if (!response.isSuccessful) {
-                                throw java.io.IOException("OpenF1 meeting catalogue HTTP " + response.code)
-                            }
-                            JSONArray(response.body?.string().orEmpty())
-                        }
-                    } catch (failure: Exception) {
-                        lastFailure = failure
-                        AppLogger.w(
-                            "TrackMap",
-                            "MEETING_CATALOGUE_UNAVAILABLE year=" + catalogueYear +
-                                " reason=" + failure.javaClass.simpleName
-                        )
-                        continue
-                    }
-
-                    val scoredMeetings = mutableListOf<Pair<JSONObject, Int>>()
-                    for (i in 0 until meetings.length()) {
-                        val item = meetings.optJSONObject(i) ?: continue
-                        val name = normalize(item.optString("meeting_name"))
-                        val official = normalize(item.optString("meeting_official_name"))
-                        val shortName = normalize(item.optString("circuit_short_name"))
-                        val location = normalize(item.optString("location"))
-                        val score = when {
-                            wantedMeeting.isNotBlank() && name == wantedMeeting -> 100
-                            wantedMeeting.isNotBlank() && official.contains(wantedMeeting) -> 95
-                            wantedMeeting.isNotBlank() && name.contains(wantedMeeting) -> 90
-                            wantedMeeting.isNotBlank() && wantedMeeting.contains(name) && name.isNotBlank() -> 80
-                            wantedCircuit.isNotBlank() && shortName == wantedCircuit -> 100
-                            wantedCircuit.isNotBlank() && shortName.contains(wantedCircuit) -> 90
-                            wantedCircuit.isNotBlank() && location.contains(wantedCircuit) -> 80
-                            wantedCircuit.isNotBlank() && wantedCircuit.contains(location) && location.isNotBlank() -> 70
-                            else -> 0
-                        }
-                        scoredMeetings += item to score
-                    }
-
-                    val selectedIndex = uniqueBestIndex(scoredMeetings.map { it.second }, minimumScore = 70)
-                        ?: continue
-                    val item = scoredMeetings[selectedIndex].first
-                    val key = item.optInt("circuit_key", 0).takeIf { it > 0 } ?: continue
-                    val geometryName = item.optString("circuit_short_name")
-                        .ifBlank { item.optString("location") }
-                        .ifBlank { circuitName }
-                        .ifBlank { meetingName }
-                    selected = key to geometryName
-                    AppLogger.i(
-                        "TrackMap",
-                        "CIRCUIT_KEY_RESOLVED requestedYear=" + year +
-                            " catalogueYear=" + catalogueYear + " circuitKey=" + key
-                    )
-                    break
-                }
-
-                selected ?: throw java.io.IOException(
-                    "No unambiguous public circuit catalogue match for meeting metadata " +
-                        "(catalogue years=" + catalogueYears.joinToString(",") + ")",
-                    lastFailure
+        val catalogue = readBundledCatalogue()
+        val bundledMatch = catalogue?.let { matchBundledCircuit(it, meetingName, circuitName) }
+        if (bundledMatch != null) {
+            val bundled = catalogue?.let { parseBundledGeometry(it, bundledMatch.first, year) }
+            if (bundled != null) {
+                AppLogger.i(
+                    "TrackMap",
+                    "TRACK_GEOMETRY_LOCAL_MATCH circuitKey=${bundled.circuitKey} year=${bundled.year} points=${bundled.centerline.size}"
                 )
+                AppLogger.i("TrackMap", "TRACK_GEOMETRY_IDENTITY_VALIDATED circuitKey=${bundled.circuitKey} source=bundled")
+                return Result.success(bundled)
             }
+            AppLogger.i("TrackMap", "TRACK_GEOMETRY_REMOTE_FALLBACK circuitKey=${bundledMatch.first} requestedYear=$year reason=bundled_geometry_not_eligible")
+            return load(bundledMatch.first, year, circuitName.ifBlank { bundledMatch.second })
         }
-return lookup.fold(
-            onSuccess = { match -> load(match.first, year, match.second) },
-            onFailure = { failure ->
-                val catalogue = readBundledCatalogue()
-                val bundledMatch = catalogue?.let { matchBundledCircuit(it, meetingName, circuitName) }
-                if (catalogue != null && bundledMatch != null) {
-                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_MATCH circuitKey=${bundledMatch.first} meetingNamePresent=${meetingName.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()}")
-                    load(bundledMatch.first, year, circuitName.ifBlank { bundledMatch.second })
-                } else {
-                    AppLogger.w("TrackMap", "BUNDLED_CATALOGUE_NO_MATCH assetPresent=${catalogue != null} meetingNamePresent=${meetingName.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()}")
-                    Result.failure(failure)
-                }
-            }
+
+        val reason = if (catalogue == null) "bundled_catalogue_unavailable" else "no_unambiguous_bundled_match"
+        AppLogger.w(
+            "TrackMap",
+            "TRACK_GEOMETRY_UNAVAILABLE reason=$reason meetingNamePresent=${meetingName.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()}"
         )
-
+        return Result.failure(java.io.IOException("No unambiguous bundled circuit match for meeting='$meetingName' circuit='$circuitName'"))
     }
-    suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
-        var lastFailure: Throwable? = null
-        for (geometryYear in geometryLookupYears(year)) {
-            val result = loadSingleYear(circuitKey, geometryYear, circuitName)
-            val geometry = result.getOrNull()
-            if (geometry != null && geometry.centerline.size >= MIN_CENTERLINE_POINTS) {
-                if (geometryYear != year) {
-                    AppLogger.w("TrackMap", "GEOMETRY_YEAR_FALLBACK requestedYear=$year geometryYear=$geometryYear circuitKey=$circuitKey")
-                }
-                return Result.success(geometry)
-            }
-            val failure = result.exceptionOrNull()
-                ?: java.io.IOException("Circuit geometry has no validated centreline for key=$circuitKey year=$geometryYear")
-            lastFailure = failure
-            val statusCode = Regex("""Circuit geometry HTTP (\d+)""").find(failure.message.orEmpty())
-                ?.groupValues?.getOrNull(1)?.toIntOrNull()
-            AppLogger.w("TrackMap", "GEOMETRY_YEAR_UNAVAILABLE circuitKey=$circuitKey year=$geometryYear status=${statusCode ?: -1} reason=${failure.javaClass.simpleName}")
-            val hasNoCenterline = failure.message.orEmpty().contains("no validated centreline", ignoreCase = true)
-            if (statusCode !in setOf(401, 403, 404) && !hasNoCenterline) break
-        }
 
-        val bundled = readBundledCatalogue()?.let { parseBundledGeometry(it, circuitKey, year) }
+    suspend fun load(circuitKey: Int, year: Int, circuitName: String = ""): Result<TrackMapGeometry> {
+        val catalogue = readBundledCatalogue()
+        val bundled = catalogue?.let { parseBundledGeometry(it, circuitKey, year) }
         if (bundled != null) {
-            AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_READY circuitKey=$circuitKey requestedYear=$year geometryYear=${bundled.year} centerlinePoints=${bundled.centerline.size}")
+            AppLogger.i("TrackMap", "TRACK_GEOMETRY_LOCAL_MATCH circuitKey=$circuitKey year=${bundled.year} points=${bundled.centerline.size}")
+            AppLogger.i("TrackMap", "TRACK_GEOMETRY_IDENTITY_VALIDATED circuitKey=$circuitKey source=bundled")
             return Result.success(bundled)
         }
-        val failure = lastFailure ?: java.io.IOException("No circuit geometry versions checked for key=$circuitKey year=$year")
-        AppLogger.w("TrackMap", "BUNDLED_GEOMETRY_UNAVAILABLE circuitKey=$circuitKey assetPresent=${context != null}")
+
+        // Only use the requested season remotely. A dense centreline from an older layout is
+        // not proof that it matches this session's circuit configuration.
+        AppLogger.i("TrackMap", "TRACK_GEOMETRY_REMOTE_FALLBACK circuitKey=$circuitKey requestedYear=$year")
+        val remote = loadSingleYear(circuitKey, year, circuitName)
+        val geometry = remote.getOrNull()
+        if (geometry != null &&
+            geometry.circuitKey == circuitKey &&
+            geometry.year == year &&
+            geometry.centerline.size >= MIN_CENTERLINE_POINTS
+        ) {
+            AppLogger.i("TrackMap", "TRACK_GEOMETRY_IDENTITY_VALIDATED circuitKey=$circuitKey year=$year source=remote")
+            return Result.success(geometry)
+        }
+
+        val failure = remote.exceptionOrNull()
+            ?: java.io.IOException("Circuit geometry identity/year validation failed for key=$circuitKey requestedYear=$year")
+        AppLogger.w("TrackMap", "TRACK_GEOMETRY_UNAVAILABLE circuitKey=$circuitKey year=$year reason=${failure.javaClass.simpleName}")
         return Result.failure(failure)
     }
-
-    private fun readBundledCatalogue(): JSONObject? = runCatching {
-        val appContext = context ?: return@runCatching null
-        appContext.assets.open("circuit_geometry_2026.json").bufferedReader().use { JSONObject(it.readText()) }
-    }.getOrNull()
-
 
     private suspend fun loadSingleYear(
         circuitKey: Int,
@@ -254,6 +171,14 @@ return lookup.fold(
                 val root = http.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) error("Circuit geometry HTTP " + response.code)
                     JSONObject(response.body?.string().orEmpty())
+                }
+                val responseKey = root.optInt("circuitKey", circuitKey)
+                val responseYear = root.optInt("year", geometryYear)
+                if (responseKey != circuitKey) {
+                    error("Circuit geometry identity mismatch requestedKey=$circuitKey responseKey=$responseKey")
+                }
+                if (responseYear != geometryYear) {
+                    error("Circuit geometry year mismatch requestedYear=$geometryYear responseYear=$responseYear")
                 }
                 val corners = mutableListOf<TrackCorner>()
                 val items = root.optJSONArray("corners") ?: JSONArray()
