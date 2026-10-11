@@ -1356,8 +1356,11 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     "REPLAY_LOADING" -> "LOADING REPLAY TIMING"
                     "REPLAY_UNAVAILABLE" -> "REPLAY TIMING UNAVAILABLE"
                     "LIVE" -> "WAITING FOR LIVE TIMING DATA"
+                    "HANDSHAKING" -> "LIVE TIMING SOCKET OPEN · HANDSHAKING"
+                    "SUBSCRIBE_SENT" -> "SUBSCRIBE SENT · WAITING FOR F1 DATA"
                     "OFFLINE", "RETRYING", "ERROR" -> "LIVE TIMING " + ui.timingStatus
-                    else -> "CONNECTING TO LIVE TIMING"
+                    "CONNECTING" -> "CONNECTING TO LIVE TIMING"
+                    else -> "LIVE TIMING STATUS · " + ui.timingStatus
                 }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(emptyMessage, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
