@@ -171,6 +171,17 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                             if(socket===ws)ws.send(JSONObject().put("type",6).toString()+RS)
                         }
                     }
+                    freshnessWatcher?.cancel()
+                    freshnessWatcher=scope.launch {
+                        while (isActive && socket===ws) {
+                            delay(1_000L)
+                            val last=lastTimingRowsAtMs
+                            if (last > 0L && System.currentTimeMillis()-last > 5_000L && _status.value=="LIVE") {
+                                _status.value="STALE"
+                                AppLogger.w("LiveTiming","LIVE_TIMING_STALE lastTimingUpdateMs=${last} staleAfterMs=5000")
+                            }
+                        }
+                    }
                 }
                 if(json.optInt("type")==1) {
                     val target=json.optString("target")
@@ -257,6 +268,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){
             if(socket===ws)socket=null
             keepAlive?.cancel();keepAlive=null
+            freshnessWatcher?.cancel();freshnessWatcher=null
             AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_FAILED reason=${t.javaClass.simpleName} httpStatus=${response?.code ?: -1}")
             _status.value="RETRYING"
             scheduleReconnect()
@@ -264,6 +276,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         override fun onClosed(ws:WebSocket,code:Int,reason:String){
             if(socket===ws)socket=null
             keepAlive?.cancel();keepAlive=null
+            freshnessWatcher?.cancel();freshnessWatcher=null
             AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_CLOSED code=$code")
             if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"
         }
