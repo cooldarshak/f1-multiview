@@ -139,20 +139,25 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
 
         // Only use the requested season remotely. A dense centreline from an older layout is
         // not proof that it matches this session's circuit configuration.
-        AppLogger.i("TrackMap", "TRACK_GEOMETRY_REMOTE_FALLBACK circuitKey=$circuitKey requestedYear=$year")
-        val remote = loadSingleYear(circuitKey, year, circuitName)
-        val geometry = remote.getOrNull()
-        if (geometry != null &&
-            geometry.circuitKey == circuitKey &&
-            geometry.year == year &&
-            geometry.centerline.size >= MIN_CENTERLINE_POINTS
-        ) {
-            AppLogger.i("TrackMap", "TRACK_GEOMETRY_IDENTITY_VALIDATED circuitKey=$circuitKey year=$year source=remote")
-            return Result.success(geometry)
+        var lastFailure: Throwable? = null
+        for (geometryYear in geometryLookupYears(year)) {
+            AppLogger.i("TrackMap", "TRACK_GEOMETRY_REMOTE_FALLBACK circuitKey=$circuitKey requestedYear=$year geometryYear=$geometryYear")
+            val remote = loadSingleYear(circuitKey, geometryYear, circuitName)
+            val geometry = remote.getOrNull()
+            if (geometry != null &&
+                geometry.circuitKey == circuitKey &&
+                geometry.year == geometryYear &&
+                geometry.centerline.size >= MIN_CENTERLINE_POINTS
+            ) {
+                AppLogger.i("TrackMap", "TRACK_GEOMETRY_IDENTITY_VALIDATED circuitKey=$circuitKey year=$geometryYear source=remote")
+                return Result.success(geometry)
+            }
+            lastFailure = remote.exceptionOrNull()
+                ?: java.io.IOException("Circuit geometry identity/year validation failed for key=$circuitKey requestedYear=$geometryYear")
         }
 
-        val failure = remote.exceptionOrNull()
-            ?: java.io.IOException("Circuit geometry identity/year validation failed for key=$circuitKey requestedYear=$year")
+        val failure = lastFailure
+            ?: java.io.IOException("No validated circuit geometry found for key=$circuitKey year=$year")
         AppLogger.w("TrackMap", "TRACK_GEOMETRY_UNAVAILABLE circuitKey=$circuitKey year=$year reason=${failure.javaClass.simpleName}")
         return Result.failure(failure)
     }
