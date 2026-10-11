@@ -1176,25 +1176,7 @@ private fun MultiviewFeedTile(
 
 @Composable
 private fun F1DashDataFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
-    BoxWithConstraints(
-        modifier = modifier.fillMaxSize().background(Color(0xFF111214)),
-        contentAlignment = Alignment.Center
-    ) {
-        val designWidth = 832f
-        val designHeight = 480f
-        val scaleX = maxWidth.value / designWidth
-        val scaleY = maxHeight.value / designHeight
-        val uiScale = minOf(scaleX, scaleY).coerceIn(0.45f, 1f)
-
-        Box(
-            Modifier
-                .requiredWidth(designWidth.dp)
-                .requiredHeight(designHeight.dp)
-                .scale(uiScale)
-        ) {
-            F1DashReferenceLayout(ui, isTv)
-        }
-    }
+    F1DashReferenceLayout(ui, isTv, modifier.fillMaxSize())
 }
 
 private fun countryFlag(country: String): String {
@@ -1267,160 +1249,117 @@ private fun dashboardClock(value: String): String? {
 }
 
 @Composable
-private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean) {
+private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
     val rows = ui.timing.sortedBy { it.position }
     val currentLap = ui.currentLap.takeIf { it > 0 } ?: rows.firstOrNull()?.lap ?: 0
     val totalLaps = ui.totalLaps.takeIf { it > 0 }
     val sessionTitle = ui.liveSessionInfo.meeting.ifBlank { "FORMULA 1" } + ": " + ui.liveSessionInfo.sessionType.ifBlank { "Race" }
     val status = ui.trackStatus.label.ifBlank { "GREEN" }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF111214))) {
-        Row(
-            Modifier.fillMaxWidth().height(62.dp).background(Color(0xFF17181A)).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(Modifier.size(46.dp, 38.dp).background(Color(0xFF101114), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
-                Text(countryFlag(ui.liveSessionInfo.country), fontSize = 24.sp)
-            }
-            Spacer(Modifier.width(9.dp))
-            Column(Modifier.weight(1f)) {
-                Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val clock = dashboardClock(ui.sessionClock)
-                if (clock != null) {
-                    Text(clock, color = White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
+    BoxWithConstraints(modifier.background(Color(0xFF111214))) {
+        val headerHeight = maxHeight.coerceIn(42.dp, 62.dp)
+        val rowHeight = if (rows.isEmpty()) 28.dp else ((maxHeight - headerHeight) / rows.size.coerceAtLeast(1)).coerceIn(24.dp, 68.dp)
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().height(headerHeight).background(Color(0xFF17181A)).padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Text(countryFlag(ui.liveSessionInfo.country), fontSize = if (headerHeight < 50.dp) 15.sp else 22.sp)
+                Column(Modifier.weight(1.4f)) {
+                    Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(dashboardClock(ui.sessionClock) ?: ("LAP " + currentLap + (totalLaps?.let { "/" + it } ?: "")), color = White, fontSize = 13.sp, fontWeight = FontWeight.Black, maxLines = 1)
                 }
-                Text(
-                    (if (currentLap > 0) "LIVE  " else "") + "Lap: " + currentLap + (totalLaps?.let { "/$it" } ?: "") +
-                        (if (currentLap > 0 && totalLaps != null) " (" + (totalLaps - currentLap).coerceAtLeast(0) + " left)" else ""),
-                    color = if (clock != null) Muted else White,
-                    fontSize = if (clock != null) 9.sp else 15.sp,
-                    fontWeight = FontWeight.Black, maxLines = 1
-                )
+                Surface(
+                    color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A),
+                    shape = RoundedCornerShape(3.dp)
+                ) {
+                    Text(if (status.equals("GREEN", true) || status.equals("CLEAR", true)) "Track Clear" else status,
+                        color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF70C96D) else Color(0xFFFF8C82),
+                        fontSize = 8.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 5.dp), maxLines = 1)
+                }
+                WeatherMetric("Wind", formatWind(ui.weather.wind, ui.weather.windDirection))
+                WeatherMetric("Track", if (ui.weather.track == "-") "-" else ui.weather.track + "°C")
+                WeatherMetric("Air", if (ui.weather.air == "-") "-" else ui.weather.air + "°C")
+                WeatherMetric("Humidity", if (ui.weather.humidity == "-") "-" else ui.weather.humidity + "%")
+                WeatherMetric("Pressure", "-")
+                WeatherMetric("Rain", if (ui.weather.rainfall == "-") "No" else ui.weather.rainfall)
             }
-            Surface(
-                color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A),
-                shape = RoundedCornerShape(3.dp)
-            ) {
-                Text(
-                    if (status.equals("GREEN", true)) "Track Clear" else status,
-                    color = if (status.equals("GREEN", true)) Color(0xFF70C96D) else Color(0xFFFF8C82),
-                    fontSize = 9.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Wind", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                Text(formatWind(ui.weather.wind, ui.weather.windDirection), color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Track", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                Text(if (ui.weather.track == "-") "-" else ui.weather.track + "°C", color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            }
-        }
 
-        if (rows.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
-            ) {
-                items(rows, key = { it.position }) { row ->
-                    val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
-                    val telemetry = ui.telemetry.firstOrNull {
-                        it.driver.equals(row.driverNumber, true) ||
-                            (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
-                    }
-                    val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
-                    val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
-
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .height(68.dp)
-                            .background(if (row.position % 2 == 0) Color(0xFF242526) else Color(0xFF151617))
-                            .padding(horizontal = 7.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // F1-style single team/position tag. This replaces the old separate position + TLA blocks.
-                        Surface(color = teamColor, shape = RoundedCornerShape(3.dp), modifier = Modifier.width(125.dp)) {
-                            Row(
-                                Modifier.height(42.dp).padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(27.dp))
-                                Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                            }
+            if (rows.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    items(rows, key = { it.position }) { row ->
+                        val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
+                        val telemetry = ui.telemetry.firstOrNull {
+                            it.driver.equals(row.driverNumber, true) ||
+                                (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
                         }
-
-                        Spacer(Modifier.width(8.dp))
-
-                        // 2026 has no DRS. Use this slot for the actual tyre compound instead.
-                        Column(
-                            Modifier.width(48.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
+                        val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
+                        Row(
+                            Modifier.fillMaxWidth().height(rowHeight)
+                                .background(if (row.position % 2 == 0) Color(0xFF242526) else Color(0xFF151617))
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("TYRE", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black)
-                            Text(
-                                row.tyre.take(4).uppercase().ifBlank { "-" },
-                                color = tyreDisplayColor(row.tyre),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                maxLines = 1
-                            )
-                            Text("L" + row.lap, color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        GearGauge(
-                            gear = telemetry?.gear ?: 0,
-                            rpm = telemetry?.rpm ?: 0,
-                            speed = telemetry?.speed ?: row.speed.toIntOrNull() ?: 0,
-                            modifier = Modifier.width(72.dp)
-                        )
-
-                        Column(Modifier.width(118.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("LAST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
-                                LapPill(row.lastLap, lapColor)
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("BEST", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(30.dp))
-                                if (row.position == 1) {
-                                    LapPill(row.bestLap, Color(0xFFD84BEB))
-                                } else {
-                                    Text(row.bestLap, color = White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                            Surface(color = teamColor, shape = RoundedCornerShape(2.dp), modifier = Modifier.widthIn(min = 52.dp, max = 76.dp).weight(1.1f)) {
+                                Row(Modifier.fillMaxSize().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(14.dp))
+                                    Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
                                 }
                             }
-                        }
-
-                        Column(Modifier.width(98.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("INT", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
-                                GapPill(row.interval, row.position != 1)
+                            Column(Modifier.weight(.48f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Text(tyreLabel(row.tyre), color = tyreDisplayColor(row.tyre), fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                                Text("L" + row.lap, color = Muted, fontSize = 6.sp, maxLines = 1)
                             }
-                            Spacer(Modifier.height(5.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("LDR", color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
-                                Text(if (row.position == 1) "—" else row.leaderGap, color = White, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Column(Modifier.weight(.55f), verticalArrangement = Arrangement.Center) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("LAST", color = Muted, fontSize = 5.sp, modifier = Modifier.width(22.dp))
+                                    Text(row.lastLap, color = lapColor, fontSize = 7.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Clip)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("BEST", color = Muted, fontSize = 5.sp, modifier = Modifier.width(22.dp))
+                                    Text(row.bestLap, color = if (row.position == 1) Color(0xFFD84BEB) else White, fontSize = 7.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip)
+                                }
                             }
-                        }
-
-                        Row(
-                            Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
-                            DashSectorColumn(row.sector2, row.sector2Status, row.sector2Segments)
-                            DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
+                            Column(Modifier.weight(.42f), verticalArrangement = Arrangement.Center) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("INT", color = Muted, fontSize = 5.sp, modifier = Modifier.width(18.dp))
+                                    Text(row.interval, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("LDR", color = Muted, fontSize = 5.sp, modifier = Modifier.width(18.dp))
+                                    Text(row.leaderGap, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
+                            Column(Modifier.weight(.25f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Text((telemetry?.speed ?: row.speed.toIntOrNull() ?: 0).toString(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                Text("km/h", color = Muted, fontSize = 5.sp)
+                            }
+                            Row(Modifier.weight(1.35f), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
+                                DashSectorColumn(row.sector2, row.sector2Status, row.sector2Segments)
+                                DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WeatherMetric(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.Center, modifier = Modifier.widthIn(min = 27.dp, max = 48.dp)) {
+        Text(label, color = Muted, fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(value, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip)
     }
 }
 
