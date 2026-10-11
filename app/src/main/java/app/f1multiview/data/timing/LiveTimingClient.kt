@@ -139,8 +139,10 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                     ws.close(1002,"SignalR error")
                     return@forEach
                 }
-                // The first post-handshake frame is the SignalR handshake acknowledgement.
-                if(_status.value=="HANDSHAKING"){
+                // SignalR's JSON handshake acknowledgement is an empty JSON object ({}).
+                // Do not mistake a feed/result frame for the handshake ack: otherwise Subscribe
+                // can be sent at the wrong protocol stage and the connection remains unusable.
+                if(_status.value=="HANDSHAKING" && json.length()==0){
                     val feedArray=JSONArray()
                     FEEDS.forEach(feedArray::put)
                     val subscribe=JSONObject()
@@ -177,8 +179,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 }
             }
         }
-        private fun onFeedPayload(feed:String,data:JSONObject?){
-            if(data==null){
+        private fun onFeedPayload(feed:String,data:JSONObject?){            if(data==null){
                 if(observedFeeds.add("$feed:decode-failed")) AppLogger.w("LiveTiming","FEED_DECODE_FAILED feed=$feed")
                 return
             }
@@ -357,8 +358,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         AppLogger.i("LiveTiming","SESSION_INFO yearPresent=${year!=null} circuitKeyPresent=${circuitKey!=null} circuitNamePresent=${circuitName.isNotBlank()}")
     }
 
-    private fun parseCarData(data:JSONObject?) {
-        if(data==null)return
+    private fun parseCarData(data:JSONObject?) {        if(data==null)return
         var updated=false
         fun consumeCars(cars:JSONObject){
             val keys=cars.keys()
@@ -537,8 +537,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     }
 
     private fun parseLapCount(data:JSONObject?) {
-        if(data==null)return
-        val root=data.optJSONObject("LapCount") ?: data
+        if(data==null)return        val root=data.optJSONObject("LapCount") ?: data
         _lapCount.value=root.optInt("CurrentLap",0) to root.optInt("TotalLaps",0)
     }
     private fun parseWeather(data:JSONObject?) {
