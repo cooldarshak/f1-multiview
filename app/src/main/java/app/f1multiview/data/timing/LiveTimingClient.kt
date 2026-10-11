@@ -669,17 +669,39 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             return JSONObject(timingLinesState.toString())
         }
     }
-    internal fun mergeJsonObject(target:JSONObject, patch:JSONObject) {
-        val keys=patch.keys()
-        while(keys.hasNext()){
-            val key=keys.next()
-            val value=patch.opt(key)
-            if(value is JSONObject){
-                val current=target.optJSONObject(key)
-                if(current!=null) mergeJsonObject(current,value) else target.put(key,JSONObject(value.toString()))
-            } else {
-                target.put(key,value)
-            }
+    internal fun mergeJsonObject(target: JSONObject, patch: JSONObject) {
+        val keys = patch.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val incoming = patch.opt(key)
+            val current = target.opt(key)
+            target.put(key, mergeJsonValue(current, incoming))
+        }
+    }
+
+    /**
+     * Recursively merge sparse SignalR deltas. Arrays in the live timing payload are time/
+     * segment indexed, so a short delta must not erase untouched earlier entries.
+     */
+    private fun mergeJsonValue(current: Any?, incoming: Any?): Any? = when {
+        incoming is JSONObject && current is JSONObject -> {
+            mergeJsonObject(current, incoming)
+            current
+        }
+        incoming is JSONArray && current is JSONArray -> {
+            mergeJsonArray(current, incoming)
+            current
+        }
+        incoming is JSONObject -> JSONObject(incoming.toString())
+        incoming is JSONArray -> JSONArray(incoming.toString())
+        else -> incoming
+    }
+
+    private fun mergeJsonArray(target: JSONArray, patch: JSONArray) {
+        for (index in 0 until patch.length()) {
+            val incoming = patch.opt(index) ?: continue
+            val current = target.opt(index)
+            target.put(index, mergeJsonValue(current, incoming))
         }
     }
 
