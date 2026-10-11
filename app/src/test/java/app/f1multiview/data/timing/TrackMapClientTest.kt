@@ -17,6 +17,15 @@ class TrackMapClientTest {
     }
 
     @Test
+    fun rejectsAmbiguousHighestScoringCircuitCandidates() {
+        val client = TrackMapClient()
+        assertEquals(1, client.uniqueBestIndex(listOf(10, 100, 20), minimumScore = 80))
+        assertEquals(null, client.uniqueBestIndex(listOf(100, 100, 20), minimumScore = 80))
+        assertEquals(null, client.uniqueBestIndex(listOf(60, 40), minimumScore = 70))
+        assertEquals(null, client.uniqueBestIndex(emptyList(), minimumScore = 70))
+    }
+
+    @Test
     fun suffixOnlyCircuitLabelDoesNotProduceAMatchableName() {
         assertEquals("", TrackMapClient().normalize("GP"))
         assertEquals("", TrackMapClient().normalize("Circuit"))
