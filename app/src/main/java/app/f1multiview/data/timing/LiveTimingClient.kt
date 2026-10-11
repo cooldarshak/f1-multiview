@@ -943,8 +943,12 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         if(rows.isNotEmpty()){
             _rows.value=rows.distinctBy{it.driverNumber}.sortedBy{it.position}
             val rowsNow = System.currentTimeMillis()
-            lastTimingRowsAtMs=rowsNow
-            _status.value="LIVE"
+            if (_rows.value.isNotEmpty()) {
+                lastTimingRowsAtMs=rowsNow
+                _status.value="LIVE"
+            } else if (_status.value == "LIVE") {
+                _status.value="SUBSCRIBED"
+            }
             if (rowsNow-lastRowsLogAtMs>=2_000L) {
                 lastRowsLogAtMs=rowsNow
                 AppLogger.i("LiveTiming","LIVE_TIMING_ROWS_UPDATED count=${_rows.value.size} source=TimingData timestampMs=$rowsNow")
