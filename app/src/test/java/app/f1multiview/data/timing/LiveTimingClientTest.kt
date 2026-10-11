@@ -110,6 +110,26 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun sparseArrayDeltasPreserveUntouchedSectorSegments() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        val target = JSONObject(
+            """{"1":{"LastLapTime":{"Sector1":{"Segments":[{"Status":2049},{"Status":2051},{"Status":2048}]}}}}"""
+        )
+        val patch = JSONObject(
+            """{"1":{"LastLapTime":{"Sector1":{"Segments":[{"Status":2048}]}}}}"""
+        )
+
+        client.mergeJsonObject(target, patch)
+
+        val segments = target.getJSONObject("1").getJSONObject("LastLapTime")
+            .getJSONObject("Sector1").getJSONArray("Segments")
+        assertEquals(3, segments.length())
+        assertEquals(2048, segments.getJSONObject(0).getInt("Status"))
+        assertEquals(2051, segments.getJSONObject(1).getInt("Status"))
+        assertEquals(2048, segments.getJSONObject(2).getInt("Status"))
+    }
+
+    @Test
     fun sparseTimingUpdatesPreserveUntouchedNestedFields() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val current = JSONObject(
