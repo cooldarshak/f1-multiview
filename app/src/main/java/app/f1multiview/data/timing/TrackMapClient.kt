@@ -19,6 +19,9 @@ import kotlin.math.*
  * never used as a substitute for the track path.
  */
 class TrackMapClient {
+    companion object {
+        private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
+    }
     private val http = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -190,8 +193,17 @@ class TrackMapClient {
             geoPoint?.let { Triple(it.lon, it.lat, corner.x to corner.y) }
         }
         if (matches.size < 3) return emptyList()
-        val xFit = fitAffine(matches.map { Triple(it.first, it.second, it.third.first) }) ?: return emptyList()
-        val yFit = fitAffine(matches.map { Triple(it.first, it.second, it.third.second) }) ?: return emptyList()
+        val xSamples = matches.map { Triple(it.first, it.second, it.third.first) }
+        val ySamples = matches.map { Triple(it.first, it.second, it.third.second) }
+        val xFit = fitAffine(xSamples) ?: return emptyList()
+        val yFit = fitAffine(ySamples) ?: return emptyList()
+        // The least-squares fit always returns coefficients for a solvable matrix, even when
+        // the selected GeoJSON feature or distance alignment is wrong. Validate the fit against
+        // every published corner before exposing the centreline to the UI.
+        val residualRatio = normalizedFitResidual(matches, xFit, yFit) ?: return emptyList()
+        if (residualRatio > MAX_NORMALIZED_FIT_RESIDUAL) {
+            return emptyList()
+        }
         val transformed = geoPoints.map { p ->
             TrackPoint(xFit[0] * p.lon + xFit[1] * p.lat + xFit[2], yFit[0] * p.lon + yFit[1] * p.lat + yFit[2])
         }
@@ -265,6 +277,30 @@ class TrackMapClient {
             points[index - 1].lon + (points[index].lon - points[index - 1].lon) * fraction,
             points[index - 1].lat + (points[index].lat - points[index - 1].lat) * fraction
         )
+    }
+
+    /**
+     * RMS corner residual divided by the target-circuit bounding-box diagonal.
+     * A dimensionless metric lets us reject visibly bad alignments across circuits of different
+     * sizes. Null means the targets have no useful spatial extent or coefficients are invalid.
+     */
+    internal fun normalizedFitResidual(
+        matches: List<Triple<Double, Double, Pair<Double, Double>>>,
+        xFit: DoubleArray,
+        yFit: DoubleArray
+    ): Double? {
+        if (matches.size < 3 || xFit.size != 3 || yFit.size != 3) return null
+        if (xFit.any { !it.isFinite() } || yFit.any { !it.isFinite() }) return null
+        val targetX = matches.map { it.third.first }
+        val targetY = matches.map { it.third.second }
+        val diagonal = hypot(targetX.maxOrNull()!! - targetX.minOrNull()!!, targetY.maxOrNull()!! - targetY.minOrNull()!!)
+        if (!diagonal.isFinite() || diagonal <= 1e-9) return null
+        val squaredError = matches.sumOf { (lon, lat, target) ->
+            val dx = xFit[0] * lon + xFit[1] * lat + xFit[2] - target.first
+            val dy = yFit[0] * lon + yFit[1] * lat + yFit[2] - target.second
+            dx * dx + dy * dy
+        }
+        return sqrt(squaredError / matches.size) / diagonal
     }
 
     /** Least-squares affine transform: target = a*lon + b*lat + c. */
