@@ -173,6 +173,19 @@ private fun MultiViewScreen(ui: UiState, vm: MultiViewViewModel) {
         }
     }
 
+    LaunchedEffect(ui.session?.id, ui.session?.live, ui.mainStreamId, ui.streams) {
+        val session=ui.session ?: return@LaunchedEffect
+        if(!session.live)return@LaunchedEffect
+        val mainId=ui.mainStreamId ?: return@LaunchedEffect
+        val player=engine.player(mainId)
+        while(true) {
+            val offset=player.currentLiveOffsetMs
+            val usable=offset!=androidx.media3.common.C.TIME_UNSET && offset>=0L
+            vm.updateLiveTiming(if(usable)offset else 0L)
+            delay(250L)
+        }
+    }
+
     LaunchedEffect(ui.pendingResume?.contentId, ui.mainStreamId) {
         val pending = ui.pendingResume ?: return@LaunchedEffect
         val mainId = ui.mainStreamId ?: return@LaunchedEffect

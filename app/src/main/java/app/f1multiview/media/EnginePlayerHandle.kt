@@ -20,6 +20,7 @@ class EnginePlayerHandle internal constructor(
         get() = engine.backendPlayerOrNull(id)
 
     val currentPosition: Long get() = engine.currentPositionMs(id, player?.currentPosition ?: 0L)
+    val currentLiveOffsetMs: Long get() = player?.currentLiveOffset ?: C.TIME_UNSET
     val duration: Long get() = engine.durationMs(id, player?.duration ?: C.TIME_UNSET)
     val isPlaying: Boolean get() = engine.isFeedPlaying(id, player?.isPlaying == true)
     val playbackState: Int get() = engine.playbackState(id, player?.playbackState ?: Player.STATE_IDLE)

@@ -18,6 +18,18 @@ import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
+data class LiveTimingSnapshot(
+    val capturedAtMs:Long,
+    val rows:List<TimingRow>,
+    val telemetry:List<DriverTelemetry>,
+    val positions:List<TrackDriverPosition>,
+    val trackStatus:TrackStatusInfo,
+    val weather:TimingWeather,
+    val raceControl:List<RaceControlEvent>,
+    val lapCount:Pair<Int,Int>,
+    val sessionClock:String
+)
+
 class LiveTimingClient(private val scope:CoroutineScope, private val authHeadersProvider:suspend () -> Map<String,String> = { emptyMap() }){
     companion object{
         private const val BASE="https://livetiming.formula1.com"
@@ -52,6 +64,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val timingLock=Any()
     private val telemetryByDriver = linkedMapOf<String, DriverTelemetry>()
     private val observedFeeds = mutableSetOf<String>()
+    private val historyLock=Any()
+    private val liveHistory=java.util.ArrayDeque<LiveTimingSnapshot>()
+    private var lastHistorySampleAtMs=0L
     private var lastFeedSummaryAtMs = 0L
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
@@ -183,12 +198,49 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 (feed in setOf("CarData.z","CarData") && telemetryByDriver.isNotEmpty()) ||
                 (feed in setOf("Position.z","Position") && positionMeta.isNotEmpty())
             ) _status.value="LIVE"
+            recordLiveSnapshot()
             val now=System.currentTimeMillis()
             if(now-lastFeedSummaryAtMs>=10_000L){
                 lastFeedSummaryAtMs=now
                 AppLogger.i("LiveTiming","FEED_SUMMARY timingRows=${_rows.value.size} gpsDrivers=${positionMeta.size} telemetryDrivers=${telemetryByDriver.size} status=${_status.value}")
             }
         }
+    /**
+     * Return one internally consistent timing/map snapshot from the requested broadcast instant.
+     * Media3's live offset tells how far the playing frame trails the live edge.
+     */
+    fun snapshotBehindLiveEdge(offsetMs:Long):LiveTimingSnapshot {
+        val now=System.currentTimeMillis()
+        val target=(now-offsetMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+        synchronized(historyLock) {
+            val samples=liveHistory.toList()
+            return samples.lastOrNull{it.capturedAtMs<=target} ?: samples.firstOrNull() ?: currentSnapshot(now)
+        }
+    }
+
+    private fun recordLiveSnapshot() {
+        val now=System.currentTimeMillis()
+        synchronized(historyLock) {
+            if(now-lastHistorySampleAtMs<250L)return
+            lastHistorySampleAtMs=now
+            liveHistory.addLast(currentSnapshot(now))
+            val cutoff=now-180_000L
+            while(liveHistory.isNotEmpty() && liveHistory.peekFirst().capturedAtMs<cutoff) liveHistory.removeFirst()
+        }
+    }
+
+    private fun currentSnapshot(atMs:Long)=LiveTimingSnapshot(
+        capturedAtMs=atMs,
+        rows=_rows.value.toList(),
+        telemetry=_telemetry.value.toList(),
+        positions=_trackPositions.value.toList(),
+        trackStatus=_trackStatus.value,
+        weather=_weather.value,
+        raceControl=_raceControl.value.toList(),
+        lapCount=_lapCount.value,
+        sessionClock=_sessionClock.value
+    )
+
         override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){
             if(socket===ws)socket=null
             keepAlive?.cancel();keepAlive=null

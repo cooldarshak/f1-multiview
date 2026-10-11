@@ -57,21 +57,22 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val featureClient=UgisFeatureClient(application)
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
+    private var livePlaybackSyncActive=false
     init{
         _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
-        viewModelScope.launch{timingClient.rows.collect{rows->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(timing=rows)}}
+        viewModelScope.launch{timingClient.rows.collect{rows->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(timing=rows)}}
         viewModelScope.launch{timingClient.status.collect{status->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(timingStatus=status)}}
-        viewModelScope.launch{timingClient.raceControl.collect{events->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(raceControl=events)}}
-        viewModelScope.launch{timingClient.weather.collect{weather->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(weather=weather)}}
+        viewModelScope.launch{timingClient.raceControl.collect{events->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(raceControl=events)}}
+        viewModelScope.launch{timingClient.weather.collect{weather->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(weather=weather)}}
         viewModelScope.launch{timingClient.teamRadio.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(teamRadio=items)}}
-        viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(telemetry=items)}}
+        viewModelScope.launch{timingClient.telemetry.collect{items->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(telemetry=items)}}
         viewModelScope.launch{timingClient.driverInfo.collect{items->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(driverInfo=items)}}
         viewModelScope.launch{timingClient.sessionInfo.collect{info->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(liveSessionInfo=info)}}
-        viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(trackPositions=positions)}}
-        viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(trackStatus=status)}}
-        viewModelScope.launch{timingClient.lapCount.collect{laps->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
-        viewModelScope.launch{timingClient.sessionClock.collect{clock->if(_ui.value.session?.live != false)_ui.value=_ui.value.copy(sessionClock=clock)}}
+        viewModelScope.launch{timingClient.trackPositions.collect{positions->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackPositions=positions)}}
+        viewModelScope.launch{timingClient.trackStatus.collect{status->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(trackStatus=status)}}
+        viewModelScope.launch{timingClient.lapCount.collect{laps->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(currentLap=laps.first,totalLaps=laps.second)}}
+        viewModelScope.launch{timingClient.sessionClock.collect{clock->if(_ui.value.session?.live != true || !livePlaybackSyncActive)_ui.value=_ui.value.copy(sessionClock=clock)}}
         viewModelScope.launch{val restored=provider.restoreSession().getOrDefault(false);if(restored){timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()}else _ui.value=_ui.value.copy(auth=AuthState.SignedOut)}
         viewModelScope.launch{
             store.setups.collect { setups -> _ui.value = _ui.value.copy(savedSetups = setups) }
@@ -238,7 +239,16 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadStreams(session)
          loadReplayTiming(session)
      }
-    fun setSession(session:Session)=viewModelScope.launch{_ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),providerError=null);loadStreams(session)}
+    fun setSession(session:Session)=viewModelScope.launch{
+        livePlaybackSyncActive=false
+        _ui.value=_ui.value.copy(
+            session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
+            timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
+            trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
+            timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null
+        )
+        loadStreams(session)
+    }
     private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
         provider.streams(session.id).fold(
             { sources ->
@@ -432,6 +442,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     fun setSeries(value:String)=viewModelScope.launch{
         val series=RacingSeries.fromId(value).id
         prefs.edit().putString("series_filter",series).apply()
+        livePlaybackSyncActive=false
         _ui.value=_ui.value.copy(selectedSeries=series,calendar=emptyList(),standings=emptyList(),results=emptyList(),vodEvents=emptyList(),vodSessions=emptyList(),session=null,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null)
         loadVodSeasons()
         if(series=="F1") loadCalendar()
@@ -454,6 +465,23 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         featureClient.results().onSuccess{_ui.value=_ui.value.copy(results=it)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}
     }
     fun panel(panel:String?){_ui.value=_ui.value.copy(selectedPanel=panel)}
+    fun updateLiveTiming(offsetMs:Long) {
+        if(_ui.value.session?.live != true) return
+        livePlaybackSyncActive=true
+        val snapshot=timingClient.snapshotBehindLiveEdge(offsetMs)
+        _ui.value=_ui.value.copy(
+            timing=snapshot.rows,
+            telemetry=snapshot.telemetry,
+            trackPositions=snapshot.positions,
+            trackStatus=snapshot.trackStatus,
+            weather=snapshot.weather,
+            raceControl=snapshot.raceControl,
+            currentLap=snapshot.lapCount.first,
+            totalLaps=snapshot.lapCount.second,
+            sessionClock=snapshot.sessionClock
+        )
+    }
+
     fun updateReplayTiming(positionMs:Long) {
         if (!replayTimingClient.isLoaded()) return
         val rows = replayTimingClient.rowsAt(positionMs)
