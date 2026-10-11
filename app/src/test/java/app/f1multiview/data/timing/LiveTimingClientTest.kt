@@ -80,6 +80,27 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun joinsCarDataGearRpmAndDrsIntoExistingTimingRows() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(
+            JSONObject("""{"Lines":{"1":{"Position":1,"Tla":"VER","LastLapTime":{"Value":"1:31.100"}}}}""")
+        )
+        client.parseCarData(
+            JSONObject(
+                """{"Entries":[{"Cars":{"1":{"Channels":{"0":12850,"2":318,"3":8,"4":100,"5":0,"45":8}}}}]}"""
+            )
+        )
+
+        val row = client.rows.value.single()
+        assertEquals("318", row.speed)
+        assertEquals(12850, row.rpm)
+        assertEquals(8, row.gear)
+        assertEquals(true, row.drsActive)
+        assertEquals(318, client.telemetry.value.single().speed)
+        assertEquals(8, client.telemetry.value.single().drs)
+    }
+
+    @Test
     fun malformedPositionEntriesNeverCreateCoordinates() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         client.parsePosition(JSONObject("""{"Position":[{"Entries":{"1":{"X":"not-x","Y":2.0},"2":{"X":1.0}}}]}"""))
@@ -91,7 +112,7 @@ class LiveTimingClientTest {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         client.parseTiming(
             JSONObject(
-                """{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100","Sector1":{"Value":"25.100","OverallFastest":true},"Sector2":{"Value":"33.200","PersonalFastest":true},"Sector3":{"Value":"33.800"}},"BestLapTime":{"Value":"1:31.000","OverallFastest":true}},"44":{"Position":2,"Tla":"HAM","GapToLeader":"+1.2","IntervalToPositionAhead":{"Value":"+1.2"}}}}"""
+                """{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","InPit":true,"PitOut":false,"Stopped":true,"Retired":false,"LastLapTime":{"Value":"1:32.100","Sector1":{"Value":"25.100","OverallFastest":true},"Sector2":{"Value":"33.200","PersonalFastest":true},"Sector3":{"Value":"33.800"}},"BestLapTime":{"Value":"1:31.000","OverallFastest":true}},"44":{"Position":2,"Tla":"HAM","GapToLeader":"+1.2","IntervalToPositionAhead":{"Value":"+1.2"}}}}"""
             )
         )
         client.parseTiming(JSONObject("""{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"44":{"GapToLeader":"+0.8"}}}"""))
@@ -100,6 +121,8 @@ class LiveTimingClientTest {
         val second = client.rows.value.first { it.driverNumber == "44" }
         assertEquals("VER", leader.driver)
         assertEquals("1:31.900", leader.lastLap)
+        assertTrue(leader.inPit)
+        assertTrue(leader.stopped)
         assertEquals("25.100", leader.sector1)
         assertEquals("PURPLE", leader.sector1Status)
         assertEquals("GREEN", leader.sector2Status)
