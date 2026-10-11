@@ -154,6 +154,7 @@ class TrackMapClient {
             val score = when {
                 name.isNotBlank() && name == wanted -> 100
                 name.isNotBlank() && (name.contains(wanted) || wanted.contains(name)) -> 80
+                location.isNotBlank() && location == wanted -> 90
                 location.isNotBlank() && (wanted.contains(location) || location.contains(wanted)) -> 30
                 else -> 0
             }
