@@ -388,7 +388,7 @@ private fun F1TimingRow(r: TimingRow, driver: DriverInfo?, isTv: Boolean) {
                     Text("TYRE",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
                     Text(r.tyre.takeIf { it.isNotBlank() && it != "-" } ?: "—",
                         color=compoundStatusColor(r.tyre),fontSize=8.sp,fontWeight=FontWeight.Black,maxLines=1)
-                    if (r.stintNumber > 0) Text("STINT "+r.stintNumber,color=InfoMuted,fontSize=5.sp,fontWeight=FontWeight.Bold)
+                    if (r.stintNumber > 0) Text("STINT "+r.stintNumber+r.stintLaps?.let { " · "+it+"L" }.orEmpty(),color=InfoMuted,fontSize=5.sp,fontWeight=FontWeight.Bold)
                 }
                 Column(Modifier.width(62.dp), horizontalAlignment=Alignment.CenterHorizontally) {
                     Text("STOPS",color=InfoMuted,fontSize=6.sp,fontWeight=FontWeight.Black)
