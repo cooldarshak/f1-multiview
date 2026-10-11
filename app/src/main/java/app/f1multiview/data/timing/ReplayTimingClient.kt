@@ -141,7 +141,7 @@ class ReplayTimingClient {
             trackStatus=findSnapshot(trackStatusSnapshots,target){it.offsetMs}?.trackStatus ?: TrackStatusInfo(),
             currentLap=findSnapshot(lapSnapshots,target){it.offsetMs}?.current ?: 0,
             totalLaps=findSnapshot(lapSnapshots,target){it.offsetMs}?.total ?: 0,
-            sessionClock=findSnapshot(clockSnapshots,target){it.offsetMs}?.clock ?: "-"
+            sessionClock=clockAt(target)
         )
     }
 
@@ -231,6 +231,31 @@ class ReplayTimingClient {
             out+=ReplayTrackStatusSnapshot(offset,latest)
         }
         return out
+    }
+
+    private fun clockAt(targetMs:Long):String {
+        val snapshot=findSnapshot(clockSnapshots,targetMs){it.offsetMs} ?: return "-"
+        if(!snapshot.extrapolating)return snapshot.clock
+        val base=parseClockMillis(snapshot.clock) ?: return snapshot.clock
+        val remaining=(base-(targetMs-snapshot.offsetMs)).coerceAtLeast(0L)
+        return formatClock(remaining)
+    }
+
+    internal fun parseClockMillis(value:String):Long? {
+        val parts=value.trim().split(":")
+        if(parts.size !in 2..3)return null
+        val seconds=parts.last().toDoubleOrNull() ?: return null
+        val minutes=parts[parts.size-2].toLongOrNull() ?: return null
+        val hours=if(parts.size==3)parts[0].toLongOrNull() ?: return null else 0L
+        return ((hours*60+minutes)*60_000L+seconds*1000.0).toLong()
+    }
+
+    internal fun formatClock(valueMs:Long):String {
+        val seconds=(valueMs.coerceAtLeast(0L)/1000L).toInt()
+        val hours=seconds/3600
+        val minutes=(seconds%3600)/60
+        val secs=seconds%60
+        return if(hours>0) "%d:%02d:%02d".format(hours,minutes,secs) else "%02d:%02d".format(minutes,secs)
     }
 
     internal fun parseClockSnapshots(text:String):List<ReplayClockSnapshot> {

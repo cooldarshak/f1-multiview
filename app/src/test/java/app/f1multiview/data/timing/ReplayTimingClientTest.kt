@@ -18,6 +18,14 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun replayClockExtrapolatesAtVideoSpeedBetweenSparseClockRecords() {
+        assertEquals(3_600_000L, ReplayTimingClient().parseClockMillis("01:00:00"))
+        assertEquals(59_000L, ReplayTimingClient().parseClockMillis("01:00"))
+        assertEquals("00:59", ReplayTimingClient().formatClock(59_000L))
+        assertEquals("1:00:00", ReplayTimingClient().formatClock(3_600_000L))
+    }
+
+    @Test
     fun curatedVideoSessionStartMapsToLightsOutArchiveOffset() {
         val client = ReplayTimingClient()
         // The archive reaches lights-out at 42:17, while the VOD reaches it at 3:48.
