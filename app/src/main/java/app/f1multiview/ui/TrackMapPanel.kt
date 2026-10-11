@@ -406,8 +406,16 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
         ) {
             Column(Modifier.weight(1f)) {
                 Text("DRIVER TRACKER", color = MapWhite, fontSize = if (isTv) 9.sp else 8.sp, fontWeight = FontWeight.Black)
+                val sessionName = ui.liveSessionInfo.name.takeUnless { it.isBlank() || it == "-" }
+                    ?: ui.session?.name?.takeIf { it.isNotBlank() }
+                    ?: "F1 SESSION"
+                val sessionMode = when (ui.session?.live) {
+                    true -> "LIVE"
+                    false -> "REPLAY"
+                    null -> "NO SESSION"
+                }
                 Text(
-                    ui.liveSessionInfo.name.ifBlank { "LIVE TRACK" } + " · " + ui.trackStatus.label,
+                    sessionName + " · " + sessionMode + " · " + ui.trackStatus.label,
                     color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Bold, maxLines = 1
                 )
             }
@@ -431,7 +439,13 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(5.dp)) {
-                    Text("TRACK POSITION UNAVAILABLE · LIVE TIMING ACTIVE", color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+                    val unavailableLabel = when {
+                        ui.session?.live == false -> "TRACK POSITION UNAVAILABLE · REPLAY TIMING"
+                        ui.session?.live == true && ui.timingStatus == "LIVE" -> "TRACK POSITION UNAVAILABLE · LIVE TIMING ACTIVE"
+                        ui.session?.live == true -> "TRACK POSITION UNAVAILABLE · TIMING ${ui.timingStatus}"
+                        else -> "TRACK POSITION UNAVAILABLE"
+                    }
+                    Text(unavailableLabel, color = MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
                     Spacer(Modifier.height(4.dp))
                     timingRows.forEach { row ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
