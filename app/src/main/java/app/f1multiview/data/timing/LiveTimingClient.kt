@@ -326,13 +326,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
 
     private data class DriverMeta(val name:String,val acronym:String,val team:String,val teamColor:String,val line:Int=0)
     private data class TimingMeta(val position:Int=0,val speed:Int=0,val lap:Int=0,val inPit:Boolean=false,val stopped:Boolean=false,val retired:Boolean=false)
-    private data class TrackPositionRaw(val x:Double,val y:Double,val z:Double,val updatedAtMs:Long,val trail:List<TrackPoint> = emptyList())
+    private data class TrackPositionRaw(val x:Double,val y:Double,val z:Double,val updatedAtMs:Long,val trail:List<TrackPoint> = emptyList(),val previousX:Double? = null,val previousY:Double? = null,val previousUpdatedAtMs:Long = 0L)
 
     private fun publishTrackPositions() {
         _trackPositions.value=positionMeta.map { (number,pos) ->
             val driver=driverMeta[number]
             val timing=timingMeta[number] ?: TimingMeta()
-            TrackDriverPosition(number=number,name=driver?.name ?: number,acronym=driver?.acronym ?: number,team=driver?.team ?: "-",teamColor=driver?.teamColor ?: "FFFFFF",x=pos.x,y=pos.y,z=pos.z,position=timing.position,speed=timing.speed,lap=timing.lap,inPit=timing.inPit,stopped=timing.stopped,retired=timing.retired,updatedAtMs=pos.updatedAtMs,trail=pos.trail)
+            TrackDriverPosition(number=number,name=driver?.name ?: number,acronym=driver?.acronym ?: number,team=driver?.team ?: "-",teamColor=driver?.teamColor ?: "FFFFFF",x=pos.x,y=pos.y,z=pos.z,position=timing.position,speed=timing.speed,lap=timing.lap,inPit=timing.inPit,stopped=timing.stopped,retired=timing.retired,updatedAtMs=pos.updatedAtMs,trail=pos.trail,previousX=pos.previousX,previousY=pos.previousY,previousUpdatedAtMs=pos.previousUpdatedAtMs)
         }.sortedWith(compareBy<TrackDriverPosition> { it.position.takeIf { p -> p > 0 } ?: 999 }.thenBy { it.number })
     }
     private fun parseDriverList(data:JSONObject?) {
@@ -474,7 +474,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                     moved->(previous.trail+TrackPoint(x,y)).takeLast(12)
                     else->previous.trail
                 }
-                positionMeta[number]=TrackPositionRaw(x,y,z,System.currentTimeMillis(),trail)
+                val nowMs=System.currentTimeMillis()
+                positionMeta[number]=TrackPositionRaw(
+                    x=x,y=y,z=z,updatedAtMs=nowMs,trail=trail,
+                    previousX=previous?.x ?: x,
+                    previousY=previous?.y ?: y,
+                    previousUpdatedAtMs=previous?.updatedAtMs ?: nowMs
+                )
                 // Publish valid packets even when a car has not moved beyond the trail
                 // threshold: updatedAtMs is feed freshness, not a movement timestamp.
                 changed=true
