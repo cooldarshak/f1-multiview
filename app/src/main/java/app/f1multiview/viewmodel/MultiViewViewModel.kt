@@ -248,6 +248,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null
         )
         loadStreams(session)
+        if (!session.live) loadReplayTiming(session)
     }
     private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
         provider.streams(session.id).fold(
@@ -536,19 +537,42 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         )
     }
     fun loadReplayTiming(session:Session)=viewModelScope.launch {
-        val year=session.seasonYear ?: return@launch
-        val meeting=session.meetingNumber ?: return@launch
+        replayTimingClient.clear()
+        val year = session.seasonYear
+        val meeting = session.meetingNumber
         _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
             liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(), currentLap=0, totalLaps=0,
-            trackGeometry=null, timingStatus="REPLAY_LOADING")
+            trackGeometry=null, timingStatus="REPLAY_LOADING", providerError=null)
+        if (year == null || year <= 0 || meeting == null || meeting <= 0) {
+            val missing = buildList {
+                if (year == null || year <= 0) add("season year")
+                if (meeting == null || meeting <= 0) add("meeting number")
+            }.joinToString(" and ")
+            if (_ui.value.session?.id == session.id) {
+                _ui.value = _ui.value.copy(
+                    timingStatus="REPLAY_UNAVAILABLE",
+                    providerError="Replay timing unavailable: missing $missing for ${session.name}"
+                )
+            }
+            AppLogger.w("ReplayTiming", "REPLAY_DATA_UNAVAILABLE sessionId=${session.id} missing=$missing")
+            return@launch
+        }
+        AppLogger.i("ReplayTiming", "REPLAY_ARCHIVE_LOAD_START year=$year meeting=$meeting sessionType=${session.sessionType}")
         replayTimingClient.load(year,meeting,session.sessionType)
-            .onSuccess { _ui.value=_ui.value.copy(
-                replayChannelDiffs=replayTimingClient.sync().channelDiffs,
-                driverInfo=replayTimingClient.driverInfo(),
-                liveSessionInfo=replayTimingClient.sessionInfo() ?: LiveSessionInfo(),
-                timingStatus="REPLAY"
-            ) }
-            .onFailure { if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found"), timingStatus="REPLAY_UNAVAILABLE") }
+            .onSuccess {
+                if (_ui.value.session?.id != session.id) return@onSuccess
+                _ui.value=_ui.value.copy(
+                    replayChannelDiffs=replayTimingClient.sync().channelDiffs,
+                    driverInfo=replayTimingClient.driverInfo(),
+                    liveSessionInfo=replayTimingClient.sessionInfo() ?: LiveSessionInfo(),
+                    timingStatus="REPLAY", providerError=null
+                )
+                AppLogger.i("ReplayTiming", "REPLAY_TIMING_SNAPSHOT_COUNT count=${replayTimingClient.snapshotCount()} positionSnapshots=${replayTimingClient.positionSnapshotCount()}")
+            }
+            .onFailure {
+                if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found"), timingStatus="REPLAY_UNAVAILABLE")
+                AppLogger.w("ReplayTiming", "REPLAY_DATA_UNAVAILABLE year=$year meeting=$meeting reason=${it.javaClass.simpleName}")
+            }
     }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta);replayTimingClient.nudge(delta)}
     fun setReplayTimingOffset(offsetMs:Long){_ui.value=_ui.value.copy(syncOffsetMs=offsetMs);replayTimingClient.setSyncOffset(offsetMs)}
