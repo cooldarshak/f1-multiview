@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -1346,7 +1347,31 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     Text(emptyMessage, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth().height(22.dp).background(Color(0xFF292A2D))
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("POS / DRIVER", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(1.1f))
+                        Text("TYRE", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(.48f), textAlign = TextAlign.Center)
+                        Text("TELEMETRY", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(.62f))
+                        Text("LAP TIMES", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(.55f))
+                        Text("GAP", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(.42f))
+                        Row(Modifier.weight(1.35f), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            listOf("S1", "S2", "S3").forEach { label ->
+                                Text(label, color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                                    modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     items(rows, key = { it.position }) { row ->
                         val driverInfo = ui.driverInfo.firstOrNull {
                             it.number == row.driverNumber || it.acronym.equals(row.driver, true)
@@ -1419,6 +1444,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                                 DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
                             }
                         }
+                    }
                     }
                 }
             }
