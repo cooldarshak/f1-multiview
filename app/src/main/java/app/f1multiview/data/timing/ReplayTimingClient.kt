@@ -216,7 +216,7 @@ class ReplayTimingClient {
         val stints=findSnapshot(stintSnapshots,target){it.offsetMs}?.stints.orEmpty()
         return rows.map { row ->
             val stint=stints[row.driverNumber]
-            val car = telemetryAt(videoPositionMs).firstOrNull { it.driver == row.driverNumber }
+            val car = findSnapshot(telemetrySnapshots, target) { it.offsetMs }?.telemetry?.firstOrNull { it.driver == row.driverNumber }
             row.copy(
                 tyre=stint?.compound?.takeIf{it.isNotBlank()} ?: row.tyre,
                 pitStops=stint?.pitStops ?: row.pitStops,
