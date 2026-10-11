@@ -3,6 +3,7 @@ package app.f1multiview.data.timing
 import android.content.Context
 
 import app.f1multiview.model.TrackCorner
+import app.f1multiview.model.TrackDriverPosition
 import app.f1multiview.model.TrackMapGeometry
 import app.f1multiview.model.TrackPoint
 import app.f1multiview.media.AppLogger
@@ -21,6 +22,8 @@ import kotlin.math.*
  * system using the published corner distances/positions; corner points are annotations,
  * never used as a substitute for the track path.
  */
+internal data class PositionMappingValidation(val valid: Boolean?, val matched: Int, val total: Int, val reason: String)
+
 class TrackMapClient(private val context: Context? = null) {
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
