@@ -199,7 +199,37 @@ class ReplayTimingClientTest {
         )
         val result = resolveReplayArchiveSession(candidates, "Sprint Qualifying")
         assertEquals("2026/meeting/sprint-qualifying", result.session.path)
-        assertEquals("exact-name", result.reason)
+        assertEquals("exact-title-name", result.reason)
+    }
+
+    @Test
+    fun requestedSessionTitleDisambiguatesSharedArchiveTypes() {
+        val candidates = listOf(
+            ReplayArchiveSession("Practice 1", "Practice", "p1"),
+            ReplayArchiveSession("Practice 2", "Practice", "p2"),
+            ReplayArchiveSession("Practice 3", "Practice", "p3")
+        )
+        val result = resolveReplayArchiveSession(
+            candidates,
+            requestedSessionType = "Practice",
+            requestedSessionTitle = "2026 Singapore Grand Prix - Practice 2"
+        )
+        assertEquals("p2", result.session.path)
+        assertEquals("title-suffix-name", result.reason)
+    }
+
+    @Test
+    fun titleEvidenceCanPreferSprintQualifyingOverBroadQualifyingType() {
+        val candidates = listOf(
+            ReplayArchiveSession("Sprint Qualifying", "Qualifying", "sprint-qualifying"),
+            ReplayArchiveSession("Qualifying", "Qualifying", "qualifying")
+        )
+        val result = resolveReplayArchiveSession(
+            candidates,
+            requestedSessionType = "Qualifying",
+            requestedSessionTitle = "Singapore Grand Prix - Sprint Qualifying"
+        )
+        assertEquals("sprint-qualifying", result.session.path)
     }
 
     @Test
