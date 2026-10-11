@@ -9,6 +9,15 @@ import org.junit.Assert.assertTrue
 
 class ReplayTimingClientTest {
     @Test
+    fun archiveLookupUsesSessionRelativeMillisecondsNotAbsoluteUtcEpoch() {
+        val client = ReplayTimingClient()
+        assertEquals(0L, client.archiveOffsetForVideoPosition(0L))
+        assertEquals(2_500L, client.archiveOffsetForVideoPosition(2_500L))
+        client.setSyncOffset(750L)
+        assertEquals(3_250L, client.archiveOffsetForVideoPosition(2_500L))
+    }
+
+    @Test
     fun calibrationReturnsTimingMinusVideoPosition() {
         val client = ReplayTimingClient()
         assertEquals(1500L, client.calibratedOffset(10_000L, 11_500L))

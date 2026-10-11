@@ -53,11 +53,18 @@ class ReplayTimingClient {
             telemetrySnapshots=runCatching { parseCarTelemetry(getText("https://livetiming.formula1.com/static/$path/CarData.z.jsonStream")) }.getOrDefault(emptyList())
             positionSnapshots=runCatching { parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream")) }.getOrDefault(emptyList())
             syncData=loadCuratedSync(meeting.optString("Key"),session.optString("Key")) ?: ReplaySyncData(0L, emptyMap())
-            syncOffsetMs=syncData.sessionStartMs
+            // sessionStartMs is absolute UTC epoch metadata; JSONStream timestamps are relative
+            // session offsets (HH:mm:ss.mmm). Adding the epoch made every replay lookup select
+            // the last snapshot, freezing the tower and car positions at the end of the session.
+            // Start at relative offset zero; manual calibration may adjust this offset later.
+            syncOffsetMs=0L
         }
     }
+    internal fun archiveOffsetForVideoPosition(videoPositionMs:Long):Long =
+        (videoPositionMs + syncOffsetMs).coerceAtLeast(0L)
+
     fun rowsAt(videoPositionMs:Long):List<TimingRow> {
-        val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
+        val target=archiveOffsetForVideoPosition(videoPositionMs)
         val rows=findSnapshot(snapshots,target){it.offsetMs}?.rows ?: return emptyList()
         val stints=findSnapshot(stintSnapshots,target){it.offsetMs}?.stints.orEmpty()
         return rows.map { row ->
@@ -71,7 +78,7 @@ class ReplayTimingClient {
     }
 
     fun telemetryAt(videoPositionMs:Long):List<DriverTelemetry> {
-        val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
+        val target=archiveOffsetForVideoPosition(videoPositionMs)
         val snapshot=findSnapshot(telemetrySnapshots,target){it.offsetMs} ?: return emptyList()
         val rows=rowsAt(videoPositionMs).associateBy{it.driverNumber}
         return snapshot.telemetry.map { item ->
@@ -81,7 +88,7 @@ class ReplayTimingClient {
     }
 
     fun positionsAt(videoPositionMs:Long):List<TrackDriverPosition> {
-        val target=(videoPositionMs+syncOffsetMs).coerceAtLeast(0L)
+        val target=archiveOffsetForVideoPosition(videoPositionMs)
         return findSnapshot(positionSnapshots,target){it.offsetMs}?.positions.orEmpty()
     }
 
