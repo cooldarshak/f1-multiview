@@ -297,6 +297,24 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun archivedTimingAppDataRetainsCompoundPitAndStintState() {
+        val stream = """00:00:01.000{"Lines":{"1":{"Stints":{"0":{"Compound":"SOFT"},"1":{"Compound":"MEDIUM"}},"NumberOfPitStops":1,"InPit":true,"Stopped":false}}}
+00:00:02.000{"Lines":{"1":{"Stints":{"1":{"Compound":"HARD"}},"NumberOfPitStops":2,"InPit":false,"Stopped":false}}}"""
+        val snapshots = ReplayTimingClient().parseTimingAppData(stream)
+        assertEquals(2, snapshots.size)
+        val earlier = snapshots[0].stints.getValue("1")
+        val latest = snapshots[1].stints.getValue("1")
+        assertEquals("MEDIUM", earlier.compound)
+        assertEquals(2, earlier.stintNumber)
+        assertEquals(1, earlier.pitStops)
+        assertTrue(earlier.inPit)
+        assertEquals("HARD", latest.compound)
+        assertEquals(2, latest.pitStops)
+        assertEquals(2, latest.stintNumber)
+        assertFalse(latest.inPit)
+    }
+
+    @Test
     fun replayTimingDeltasMergeIntoPersistentDriverState() {
         val stream = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}},"4":{"Position":2,"Tla":"NOR","GapToLeader":"+1.2"}}}
 00:00:02.000{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"4":{"GapToLeader":"+0.8"}}}
