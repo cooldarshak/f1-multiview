@@ -163,7 +163,7 @@ class ReplayTimingClient {
             // the replay media clock, including backwards seeks. No live values are mixed in.
             telemetrySnapshots=runCatching { parseCarTelemetry(getText("https://livetiming.formula1.com/static/$path/CarData.z.jsonStream")) }.getOrDefault(emptyList())
             positionSnapshots=runCatching { parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream")) }.getOrDefault(emptyList())
-            val curatedSync=loadCuratedSync(meeting.optString("Key"),session.optString("Key"))
+            val curatedSync=loadCuratedSync(meeting.optString("Key"),session.key)
             syncData=curatedSync ?: ReplaySyncData(0L, emptyMap())
             // The MultiViewer sync endpoint's session_start is NOT an epoch timestamp. It is the
             // video position (seconds) at the official session start/lights-out. The archive's
