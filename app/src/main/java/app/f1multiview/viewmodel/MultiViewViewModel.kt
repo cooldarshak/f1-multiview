@@ -266,11 +266,17 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
      }
     private fun shouldLoadReplayTiming(session: Session): Boolean {
         if (session.live) return false
-        val type = session.sessionType.trim().lowercase().replace(Regex("[_\\s]+"), "-")
-        return type !in setOf(
+        fun normalize(value: String) = value.trim().lowercase().replace(Regex("[_\\s]+"), "-")
+        val type = normalize(session.sessionType)
+        val stage = normalize(session.dateLabel)
+        val title = normalize(session.name)
+        val excludedStages = setOf(
             "editorial", "show", "shows", "documentary", "highlight", "highlights",
             "pre-show", "post-show", "promo", "trailer", "unknown-editorial"
         )
+        if (type in excludedStages || stage in excludedStages) return false
+        if (listOf("documentary", "highlights", "pre-show", "post-show", "promo", "trailer").any { title.contains(it) }) return false
+        return true
     }
 
     fun setSession(session:Session)=viewModelScope.launch{
@@ -647,7 +653,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 "ReplayTiming",
                 "REPLAY_ARCHIVE_LOAD_START year=$year meeting=$meeting sessionType=${session.sessionType} title=${session.name}"
             )
-            client.load(year, meeting, session.sessionType, session.name)
+            client.load(year, meeting, session.dateLabel.takeIf { it.isNotBlank() && !it.equals("Replay", true) } ?: session.sessionType, session.name)
                 .onSuccess {
                     if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onSuccess
                     _ui.value = _ui.value.copy(
