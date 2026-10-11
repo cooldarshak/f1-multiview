@@ -357,7 +357,6 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         )
         AppLogger.i("LiveTiming","SESSION_INFO yearPresent=${year!=null} circuitKeyPresent=${circuitKey!=null} circuitNamePresent=${circuitName.isNotBlank()}")
     }
-
     private fun parseCarData(data:JSONObject?) {        if(data==null)return
         var updated=false
         fun consumeCars(cars:JSONObject){
