@@ -98,8 +98,13 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
             ) {
                 Text("CIRCUIT GEOMETRY UNAVAILABLE", color = MapWhite, fontSize = 10.sp, fontWeight = FontWeight.Black)
                 Text(
-                    if (ui.liveSessionInfo.circuitKey == null) "Waiting for session circuit metadata" else "No validated centreline matched this circuit",
-                    color = MapMuted, fontSize = 8.sp
+                    when {
+                        ui.liveSessionInfo.circuitKey == null -> "Waiting for session circuit metadata"
+                        !ui.providerError.isNullOrBlank() -> ui.providerError!!
+                        else -> "No validated centreline matched this circuit"
+                    },
+                    color = MapMuted, fontSize = 8.sp,
+                    modifier = Modifier.widthIn(max = 320.dp)
                 )
             }
         }
