@@ -740,10 +740,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         val direct=lastLap?.optJSONObject(key) ?: line.optJSONObject(key)
         if(direct!=null) return direct
         val index=key.removePrefix("Sector").toIntOrNull()?.minus(1) ?: return null
-        val array=line.optJSONArray("Sectors")
-        if(array!=null) return array.optJSONObject(index)
-        val keyed=line.optJSONObject("Sectors") ?: return null
-        return keyed.optJSONObject(index.toString())
+        val lastArray=lastLap?.optJSONArray("Sectors")
+        if(lastArray!=null) return lastArray.optJSONObject(index)
+        val lineArray=line.optJSONArray("Sectors")
+        if(lineArray!=null) return lineArray.optJSONObject(index)
+        val keyed=lastLap?.optJSONObject("Sectors") ?: line.optJSONObject("Sectors") ?: return null
+        val sectorKey = if (keyed.has("0")) index.toString() else (index + 1).toString()
+        return keyed.optJSONObject(key) ?: keyed.optJSONObject(sectorKey)
     }
 
     private fun sectorSegments(lastLap:JSONObject?, line:JSONObject, key:String):List<String>{
