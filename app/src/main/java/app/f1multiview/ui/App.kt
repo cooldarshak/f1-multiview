@@ -1341,14 +1341,20 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
             } else {
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     items(rows, key = { it.position }) { row ->
+                        val driverInfo = ui.driverInfo.firstOrNull {
+                            it.number == row.driverNumber || it.acronym.equals(row.driver, true)
+                        }
                         val meta = ui.trackPositions.firstOrNull {
                             it.number == row.driverNumber || it.acronym.equals(row.driver, true)
                         }
+                        val driverLabel = driverInfo?.acronym?.takeIf { it.isNotBlank() && it != "-" } ?: row.driver
                         val telemetry = ui.telemetry.firstOrNull {
                             it.driver.equals(row.driverNumber, true) ||
                                 (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
                         }
-                        val teamColor = meta?.teamColor?.let(::parseTeamColor) ?: Color(0xFF55565D)
+                        val teamColor = meta?.teamColor?.let(::parseTeamColor)
+                            ?: driverInfo?.teamColor?.let(::parseTeamColor)
+                            ?: Color(0xFF55565D)
                         val lapColor = if (row.position == 1) Color(0xFFD84BEB) else Color(0xFF55A95A)
                         Row(
                             Modifier.fillMaxWidth().height(rowHeight)
@@ -1360,7 +1366,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                             Surface(color = teamColor, shape = RoundedCornerShape(2.dp), modifier = Modifier.widthIn(min = 52.dp, max = 76.dp).weight(1.1f)) {
                                 Row(Modifier.fillMaxSize().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(14.dp))
-                                    Text(row.driver.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                                    Text(driverLabel.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
                                 }
                             }
                             Column(Modifier.weight(.48f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
