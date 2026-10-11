@@ -62,7 +62,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val timingLinesState=JSONObject()
     private val timingLock=Any()
     private val telemetryByDriver = linkedMapOf<String, DriverTelemetry>()
-    private val observedFeeds = mutableSetOf<String>()
+    private val observedFeeds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val raceControlState = JSONObject()
     private val raceControlLock = Any()
     private var currentSessionIdentity: String? = null
@@ -104,6 +104,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         _lapCount.value = 0 to 0
         _sessionClock.value = "-"
         lastTimingRowsAtMs = 0L
+        observedFeeds.clear()
         synchronized(historyLock) {
             liveHistory.clear()
             lastHistorySampleAtMs = 0L
@@ -458,8 +459,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 year?.toString().orEmpty(),
                 meetingName.lowercase().trim(),
                 name.lowercase().trim(),
-                sessionType.lowercase().trim(),
-                circuitKey?.toString().orEmpty()
+                sessionType.lowercase().trim()
             ).joinToString("|")
         } else null
         if (identity != null) {
