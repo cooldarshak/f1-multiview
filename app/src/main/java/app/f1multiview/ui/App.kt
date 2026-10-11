@@ -1304,7 +1304,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                 WeatherMetric("Track", if (ui.weather.track == "-") "-" else ui.weather.track + "°C")
                 WeatherMetric("Air", if (ui.weather.air == "-") "-" else ui.weather.air + "°C")
                 WeatherMetric("Humidity", if (ui.weather.humidity == "-") "-" else ui.weather.humidity + "%")
-                WeatherMetric("Pressure", "-")
+                WeatherMetric("Pressure", if (ui.weather.pressure == "-") "-" else ui.weather.pressure + " mb")
                 WeatherMetric("Rain", if (ui.weather.rainfall == "-") "No" else ui.weather.rainfall)
             }
 
