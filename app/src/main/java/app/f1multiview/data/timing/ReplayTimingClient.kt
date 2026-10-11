@@ -517,7 +517,7 @@ class ReplayTimingClient {
         obj?.optBoolean("OverallFastest",false)==true -> "PURPLE"
         obj?.optBoolean("PersonalFastest",false)==true -> "GREEN"
         value=="-" || value.isBlank() -> "NORMAL"
-        else -> "YELLOW"
+        else -> "NORMAL"
     }
 
     private fun sectorValue(lastLap:JSONObject?,line:JSONObject,key:String):Pair<String,String> {
