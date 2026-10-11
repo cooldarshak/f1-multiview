@@ -63,6 +63,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val timingLock=Any()
     private val telemetryByDriver = linkedMapOf<String, DriverTelemetry>()
     private val observedFeeds = mutableSetOf<String>()
+    private val raceControlState = JSONObject()
+    private val raceControlLock = Any()
     private var currentSessionIdentity: String? = null
     private val historyLock=Any()
     private val liveHistory=java.util.ArrayDeque<LiveTimingSnapshot>()
@@ -79,6 +81,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         }
         synchronized(timingAppLock) {
             timingAppLinesState.keys().asSequence().toList().forEach { key -> timingAppLinesState.remove(key) }
+        }
+        synchronized(raceControlLock) {
+            raceControlState.keys().asSequence().toList().forEach { key -> raceControlState.remove(key) }
         }
         driverMeta.clear()
         timingMeta.clear()
@@ -667,16 +672,27 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         return 0
     }
 
-    private fun parseRaceControl(data:JSONObject?) {
-        val messages=data?.optJSONObject("Messages")?:data?.optJSONObject("messages")?:return
-        val out=mutableListOf<RaceControlEvent>()
-        val keys=messages.keys()
-        while(keys.hasNext()){
-            val m=messages.optJSONObject(keys.next())?:continue
-            val message=m.optString("Message").ifBlank{m.optString("Category")}
-            if(message.isNotBlank()) out+=RaceControlEvent(m.optString("Utc").ifBlank{m.optString("Time")}.ifBlank{"-"},message,m.optString("Flag").ifBlank{"INFO"})
+    internal fun parseRaceControl(data: JSONObject?) {
+        if (data == null) return
+        val snapshot = synchronized(raceControlLock) {
+            mergeJsonObject(raceControlState, data)
+            JSONObject(raceControlState.toString())
         }
-        if(out.isNotEmpty()) _raceControl.value=out.takeLast(30)
+        val rawMessages = snapshot.opt("Messages") ?: snapshot.opt("messages") ?: return
+        val records = when (rawMessages) {
+            is JSONArray -> (0 until rawMessages.length()).mapNotNull { rawMessages.optJSONObject(it) }
+            is JSONObject -> rawMessages.keys().asSequence().mapNotNull { rawMessages.optJSONObject(it) }.toList()
+            else -> emptyList()
+        }
+        val out = records.mapNotNull { messageObject ->
+            val message = messageObject.optString("Message").ifBlank { messageObject.optString("Category") }
+            if (message.isBlank()) null else RaceControlEvent(
+                messageObject.optString("Utc").ifBlank { messageObject.optString("Time") }.ifBlank { "-" },
+                message,
+                messageObject.optString("Flag").ifBlank { messageObject.optString("Scope").ifBlank { "INFO" } }
+            )
+        }.sortedByDescending { it.time }.take(30)
+        if (out.isNotEmpty()) _raceControl.value = out
     }
     private fun parseExtrapolatedClock(data:JSONObject?) {
         if(data==null)return
