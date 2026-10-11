@@ -125,7 +125,7 @@ class ReplayTimingClient {
     fun clear() {
         snapshots=emptyList(); positionSnapshots=emptyList(); telemetrySnapshots=emptyList(); stintSnapshots=emptyList()
         archivedDriverInfo=emptyList(); archivedSessionInfo=null; weatherSnapshots=emptyList(); trackStatusSnapshots=emptyList()
-        lapSnapshots=emptyList(); clockSnapshots=emptyList(); syncOffsetMs=0L; syncData=ReplaySyncData(0L, emptyMap())
+        lapSnapshots=emptyList(); clockSnapshots=emptyList(); syncOffsetMs=0L; syncCalibrated=false; syncData=ReplaySyncData(0L, emptyMap())
     }
     /**
      * Archive endpoints can return a valid HTTP response whose lines do not match the parser's
@@ -158,6 +158,7 @@ class ReplayTimingClient {
     private var lapSnapshots:List<ReplayLapSnapshot> = emptyList()
     private var clockSnapshots:List<ReplayClockSnapshot> = emptyList()
     private var syncOffsetMs:Long = 0L
+    private var syncCalibrated:Boolean = false
     private var syncData = ReplaySyncData(0L, emptyMap())
     suspend fun load(year:Int, meetingNumber:Int, sessionType:String, sessionTitle:String = sessionType):Result<Unit> = withContext(Dispatchers.IO) {
         clear()
@@ -199,10 +200,11 @@ class ReplayTimingClient {
             // Convert video position to archive position with: archive = video + K - session_start.
             // This is what keeps tower, sectors, car telemetry and map markers on the video playhead.
             val clockStart=clockSnapshots.firstOrNull { it.extrapolating }?.offsetMs
-            syncOffsetMs=if(curatedSync!=null && clockStart!=null) {
-                syncOffsetForSessionStart(clockStart,curatedSync.sessionStartMs)
+            syncCalibrated = curatedSync != null && clockStart != null
+            syncOffsetMs=if(syncCalibrated) {
+                syncOffsetForSessionStart(clockStart!!,curatedSync!!.sessionStartMs)
             } else {
-                // Without curated video sync data, zero remains an explicit uncalibrated fallback.
+                // Zero is only a fallback origin, never proof of video/archive alignment.
                 0L
             }
         }
@@ -267,9 +269,11 @@ class ReplayTimingClient {
     internal fun syncOffsetForSessionStart(clockStartOffsetMs:Long, videoSecondsToSessionStartMs:Long):Long =
         clockStartOffsetMs-videoSecondsToSessionStartMs
 
-    fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs }
+    fun setSyncOffset(offsetMs:Long){ syncOffsetMs=offsetMs; syncCalibrated=true }
 
-    fun nudge(deltaMs:Long){ syncOffsetMs += deltaMs }
+    fun nudge(deltaMs:Long){ syncOffsetMs += deltaMs; syncCalibrated=true }
+
+    fun isSyncCalibrated():Boolean = syncCalibrated
 
     fun calibratedOffset(videoPositionMs:Long, timingPositionMs:Long):Long =
         (timingPositionMs-videoPositionMs).coerceIn(-300_000L,300_000L)
