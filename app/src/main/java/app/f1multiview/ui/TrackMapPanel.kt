@@ -372,7 +372,9 @@ private fun teamColor(hex:String):Color=runCatching{
 @Composable
 fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
     val drivers = ui.trackPositions
-    val selected = drivers.firstOrNull()?.number
+    val mappingValid = ui.trackPositionMappingValid
+    val drawableDrivers = if (mappingValid == true) drivers else emptyList()
+    val selected = drawableDrivers.firstOrNull()?.number
     val clockNowMs by produceState(initialValue = System.currentTimeMillis()) {
         while (true) {
             delay(250L)
@@ -389,6 +391,8 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
     }
     val gpsStatus = when {
         drivers.isEmpty() -> "WAITING FOR POSITION DATA"
+        mappingValid == false -> "COORDINATE MISMATCH · MARKERS HIDDEN"
+        mappingValid != true -> "CHECKING CIRCUIT ALIGNMENT"
         freshCount == 0 -> "POSITION DATA STALE"
         ui.session?.live == false -> "REPLAY POSITION DATA"
         else -> "LIVE POSITION DATA"
@@ -408,7 +412,11 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("${freshCount}/${drivers.size} GPS", color = if (freshCount > 0) Color(0xFF66E07A) else MapMuted, fontSize = 6.sp, fontWeight = FontWeight.Black)
+                Text(
+                    if (mappingValid == true) "${freshCount}/${drivers.size} GPS" else "${drivers.size} POSITION SAMPLES",
+                    color = if (mappingValid == true && freshCount > 0) Color(0xFF66E07A) else MapMuted,
+                    fontSize = 6.sp, fontWeight = FontWeight.Black
+                )
                 Text(gpsStatus, color = MapMuted, fontSize = 5.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -444,7 +452,7 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
             ) {
                 TrackCanvas(
                     geometry = ui.trackGeometry,
-                    drivers = drivers,
+                    drivers = drawableDrivers,
                     selectedNumber = selected,
                     zoom = 1f,
                     focusSelected = false,
@@ -457,11 +465,11 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
                 )
             }
             Spacer(Modifier.height(4.dp))
-            Row(
+            if (mappingValid == true) Row(
                 Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                drivers.take(6).forEach { d ->
+                drawableDrivers.take(6).forEach { d ->
                     Surface(
                         color = teamColor(d.teamColor).copy(alpha = .9f),
                         shape = RoundedCornerShape(2.dp)
