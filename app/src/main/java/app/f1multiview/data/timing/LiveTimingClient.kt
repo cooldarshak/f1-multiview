@@ -419,21 +419,24 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         val info=data.optJSONObject("SessionInfo") ?: data
         val meeting=info.optJSONObject("Meeting") ?: JSONObject()
         val circuit=meeting.optJSONObject("Circuit") ?: info.optJSONObject("Circuit") ?: JSONObject()
+        val currentInfo = _sessionInfo.value
         val year=info.optString("StartDate").takeIf{it.length>=4}?.take(4)?.toIntOrNull()
             ?: info.optString("EndDate").takeIf{it.length>=4}?.take(4)?.toIntOrNull()
+            ?: currentInfo.year
         val countryObj=meeting.optJSONObject("Country") ?: JSONObject()
         val keyRaw=circuit.opt("Key") ?: circuit.opt("CircuitKey") ?: meeting.opt("CircuitKey")
         val circuitKey=when(keyRaw){
             is Number->keyRaw.toInt().takeIf{it>0}
             is String->keyRaw.toIntOrNull()?.takeIf{it>0}
             else->null
-        } ?: meeting.optInt("CircuitKey",0).takeIf{it>0}
+        } ?: meeting.optInt("CircuitKey",0).takeIf{it>0} ?: currentInfo.circuitKey
         val rawName = info.optString("Name")
         val rawMeeting = info.optString("MeetingName").ifBlank { meeting.optString("Name") }
-        val name=rawName.ifBlank{info.optString("MeetingName")}.ifBlank{"-"}
-        val meetingName=rawMeeting.ifBlank{name}
-        val sessionType = info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"}
-        val circuitName=circuit.optString("Name").ifBlank{circuit.optString("ShortName")}.ifBlank{meeting.optString("Location")}
+        val rawType = info.optString("Type").ifBlank { info.optString("SessionType") }
+        val name=rawName.ifBlank{info.optString("MeetingName")}.ifBlank{currentInfo.name.takeUnless { it == "-" }.orEmpty()}.ifBlank{"-"}
+        val meetingName=rawMeeting.ifBlank{currentInfo.meeting.takeUnless { it == "-" }.orEmpty()}.ifBlank{name}
+        val sessionType = rawType.ifBlank{currentInfo.sessionType.takeUnless { it == "-" }.orEmpty()}.ifBlank{"-"}
+        val circuitName=circuit.optString("Name").ifBlank{circuit.optString("ShortName")}.ifBlank{meeting.optString("Location")}.ifBlank{currentInfo.circuitName}
         // Do not reset on a partial SessionInfo delta. We need both a meeting identity and a
         // session identity to avoid treating a short update such as {"Status":"Started"} as
         // a different session.
@@ -441,7 +444,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         val hasSessionIdentity = rawName.isNotBlank() || info.optString("Type").isNotBlank() || info.optString("SessionType").isNotBlank()
         val identity = if (hasMeetingIdentity && hasSessionIdentity) {
             listOf(
-                info.optString("StartDate").ifBlank { info.optString("EndDate") },
+                year?.toString().orEmpty(),
                 meetingName.lowercase().trim(),
                 name.lowercase().trim(),
                 sessionType.lowercase().trim(),
@@ -456,9 +459,9 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         _sessionInfo.value=LiveSessionInfo(
             name=name,
             meeting=meetingName,
-            country=countryObj.optString("Name").ifBlank{countryObj.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{info.optString("Location")}.ifBlank{"-"},
+            country=countryObj.optString("Name").ifBlank{countryObj.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{info.optString("Location")}.ifBlank{currentInfo.country}.ifBlank{"-"},
             sessionType=sessionType,
-            status=info.optString("Status").ifBlank{_status.value},
+            status=info.optString("Status").ifBlank{currentInfo.status.takeUnless { it == "-" }.orEmpty()}.ifBlank{_status.value},
             circuitKey=circuitKey,
             year=year,
             circuitName=circuitName
