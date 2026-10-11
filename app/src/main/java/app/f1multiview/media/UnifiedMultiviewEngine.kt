@@ -381,13 +381,27 @@ class UnifiedMultiviewEngine(context: Context) {
         if (multiFeedBlocked) {
             protectedRuntimes[id]?.play()
             if (selectedAudioFeedId == id) decoderManager.play(id)
-        } else if (decoderManager.hasDecoder(id)) decoderManager.play(id)
+        } else if (
+            (singleFeedFallbackMainId == null || id == singleFeedFallbackMainId) &&
+            decoderManager.hasDecoder(id)
+        ) {
+            decoderManager.play(id)
+        }
     }
     fun playAll() {
         if (multiFeedBlocked) {
             protectedRuntimes.values.forEach(ProtectedCmafFeedRuntime::play)
             decoderManager.playAll()
-        } else decoderManager.playAll()
+        } else {
+            val fallbackMain = singleFeedFallbackMainId
+            if (fallbackMain == null) {
+                decoderManager.playAll()
+            } else {
+                decoderManager.pauseAll()
+                decoderManager.activeDecoderIds().filterNot { it == fallbackMain }.forEach(::suspend)
+                if (decoderManager.hasDecoder(fallbackMain)) decoderManager.play(fallbackMain)
+            }
+        }
     }
     fun pauseAll() {
         if (multiFeedBlocked) {
