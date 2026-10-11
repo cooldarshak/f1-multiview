@@ -417,7 +417,11 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     } else {
         Result.failure(IllegalStateException("Circuit key is not available for this session; use meeting lookup"))
     }
-    val resolved = if (existing.isSuccess) existing else {
+    // A successful circuit API response can still lack a validated centreline.
+    // Do not treat corner metadata alone as a usable map: retry through meeting lookup
+    // so the centreline matcher gets the canonical circuit name from OpenF1.
+    val hasUsableGeometry = existing.getOrNull()?.centerline?.size?.let { it >= 20 } == true
+    val resolved = if (hasUsableGeometry) existing else {
         trackMapClient.loadByName(year, meeting, circuitName)
     }
     resolved.onSuccess { geometry ->
