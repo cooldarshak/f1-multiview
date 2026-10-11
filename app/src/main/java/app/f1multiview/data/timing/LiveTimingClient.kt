@@ -63,6 +63,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private val timingLock=Any()
     private val telemetryByDriver = linkedMapOf<String, DriverTelemetry>()
     private val observedFeeds = mutableSetOf<String>()
+    private var currentSessionIdentity: String? = null
     private val historyLock=Any()
     private val liveHistory=java.util.ArrayDeque<LiveTimingSnapshot>()
     private var lastHistorySampleAtMs=0L
@@ -72,6 +73,41 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     @Volatile private var lastTimingRowsAtMs = 0L
     private var freshnessWatcher: Job? = null
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
+    private fun clearSessionCaches(nextIdentity: String) {
+        synchronized(timingLock) {
+            val keys = timingLinesState.keys()
+            while (keys.hasNext()) timingLinesState.remove(keys.next())
+        }
+        synchronized(timingAppLock) {
+            val keys = timingAppLinesState.keys()
+            while (keys.hasNext()) timingAppLinesState.remove(keys.next())
+        }
+        driverMeta.clear()
+        timingMeta.clear()
+        positionMeta.clear()
+        telemetryByDriver.clear()
+        tyreByDriver.clear()
+        pitStopsByDriver.clear()
+        stintNumberByDriver.clear()
+        _rows.value = emptyList()
+        _telemetry.value = emptyList()
+        _driverInfo.value = emptyList()
+        _trackPositions.value = emptyList()
+        _raceControl.value = emptyList()
+        _teamRadio.value = emptyList()
+        _weather.value = TimingWeather()
+        _trackStatus.value = TrackStatusInfo()
+        _lapCount.value = 0 to 0
+        _sessionClock.value = "-"
+        lastTimingRowsAtMs = 0L
+        synchronized(historyLock) {
+            liveHistory.clear()
+            lastHistorySampleAtMs = 0L
+        }
+        if (_status.value == "LIVE" || _status.value == "STALE") _status.value = "SUBSCRIBED"
+        AppLogger.i("LiveTiming", "LIVE_TIMING_SESSION_CHANGED cacheReset=true")
+    }
+
     fun start(){if(socket!=null||reconnect?.isActive==true)return;connect()}
     fun stop(){reconnect?.cancel();reconnect=null;keepAlive?.cancel();keepAlive=null;freshnessWatcher?.cancel();freshnessWatcher=null;socket?.close(1000,"stop");socket=null;affinityCookie=null;_status.value="OFFLINE"}
     fun restart(){ stop(); start() }
@@ -380,7 +416,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         AppLogger.i("LiveTiming","DRIVER_LIST_UPDATED drivers=${_driverInfo.value.size}")
         publishTrackPositions()
     }
-    private fun parseSessionInfo(data:JSONObject?) {
+    internal fun parseSessionInfo(data:JSONObject?) {
         if(data == null) return
         val info=data.optJSONObject("SessionInfo") ?: data
         val meeting=info.optJSONObject("Meeting") ?: JSONObject()
@@ -394,14 +430,36 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             is String->keyRaw.toIntOrNull()?.takeIf{it>0}
             else->null
         } ?: meeting.optInt("CircuitKey",0).takeIf{it>0}
-        val name=info.optString("Name").ifBlank{info.optString("MeetingName")}.ifBlank{"-"}
-        val meetingName=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{name}
+        val rawName = info.optString("Name")
+        val rawMeeting = info.optString("MeetingName").ifBlank { meeting.optString("Name") }
+        val name=rawName.ifBlank{info.optString("MeetingName")}.ifBlank{"-"}
+        val meetingName=rawMeeting.ifBlank{name}
+        val sessionType = info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"}
         val circuitName=circuit.optString("Name").ifBlank{circuit.optString("ShortName")}.ifBlank{meeting.optString("Location")}
+        // Do not reset on a partial SessionInfo delta. We need both a meeting identity and a
+        // session identity to avoid treating a short update such as {"Status":"Started"} as
+        // a different session.
+        val hasMeetingIdentity = info.optString("MeetingName").isNotBlank() || meeting.optString("Name").isNotBlank()
+        val hasSessionIdentity = rawName.isNotBlank() || info.optString("Type").isNotBlank() || info.optString("SessionType").isNotBlank()
+        val identity = if (hasMeetingIdentity && hasSessionIdentity) {
+            listOf(
+                info.optString("StartDate").ifBlank { info.optString("EndDate") },
+                meetingName.lowercase().trim(),
+                name.lowercase().trim(),
+                sessionType.lowercase().trim(),
+                circuitKey?.toString().orEmpty()
+            ).joinToString("|")
+        } else null
+        if (identity != null) {
+            val previousIdentity = currentSessionIdentity
+            if (previousIdentity != null && previousIdentity != identity) clearSessionCaches(identity)
+            currentSessionIdentity = identity
+        }
         _sessionInfo.value=LiveSessionInfo(
             name=name,
             meeting=meetingName,
             country=countryObj.optString("Name").ifBlank{countryObj.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{info.optString("Location")}.ifBlank{"-"},
-            sessionType=info.optString("Type").ifBlank{info.optString("SessionType")}.ifBlank{"-"},
+            sessionType=sessionType,
             status=info.optString("Status").ifBlank{_status.value},
             circuitKey=circuitKey,
             year=year,
