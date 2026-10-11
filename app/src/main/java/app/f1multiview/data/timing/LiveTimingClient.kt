@@ -284,7 +284,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 return
             }
             if(observedFeeds.add(feed)) AppLogger.i("LiveTiming","LIVE_TIMING_FEED_RECEIVED feed=$feed keys=${data.length()}")
-            if(feed in setOf("TimingData","TimingDataF1")) AppLogger.i("LiveTiming","LIVE_TIMING_DECODE_SUCCESS feed=$feed keys=${data.length()}")
+            if(feed in setOf("TimingData","TimingDataF1") && observedFeeds.add("$feed:decode-success")) AppLogger.i("LiveTiming","LIVE_TIMING_DECODE_SUCCESS feed=$feed keys=${data.length()}")
             when(feed){
                 "TimingData","TimingDataF1"->parseTiming(data)
                 "TimingAppData"->parseTimingAppData(data)
