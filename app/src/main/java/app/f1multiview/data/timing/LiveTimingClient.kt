@@ -205,6 +205,20 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 AppLogger.i("LiveTiming","FEED_SUMMARY timingRows=${_rows.value.size} gpsDrivers=${positionMeta.size} telemetryDrivers=${telemetryByDriver.size} status=${_status.value}")
             }
         }
+        override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){
+            if(socket===ws)socket=null
+            keepAlive?.cancel();keepAlive=null
+            AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_FAILED reason=${t.javaClass.simpleName} httpStatus=${response?.code ?: -1}")
+            _status.value="RETRYING"
+            scheduleReconnect()
+        }
+        override fun onClosed(ws:WebSocket,code:Int,reason:String){
+            if(socket===ws)socket=null
+            keepAlive?.cancel();keepAlive=null
+            AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_CLOSED code=$code")
+            if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"
+        }
+    }
     /**
      * Return one internally consistent timing/map snapshot from the requested broadcast instant.
      * Media3's live offset tells how far the playing frame trails the live edge.
@@ -241,20 +255,6 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         sessionClock=_sessionClock.value
     )
 
-        override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){
-            if(socket===ws)socket=null
-            keepAlive?.cancel();keepAlive=null
-            AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_FAILED reason=${t.javaClass.simpleName} httpStatus=${response?.code ?: -1}")
-            _status.value="RETRYING"
-            scheduleReconnect()
-        }
-        override fun onClosed(ws:WebSocket,code:Int,reason:String){
-            if(socket===ws)socket=null
-            keepAlive?.cancel();keepAlive=null
-            AppLogger.w("LiveTiming","SIGNALR_WEBSOCKET_CLOSED code=$code")
-            if(code!=1000){_status.value="RETRYING";scheduleReconnect()}else _status.value="OFFLINE"
-        }
-    }
     private fun decodeFeedObject(raw:Any?):JSONObject? {
         if(raw is JSONObject)return raw
         if(raw is JSONArray)return JSONObject().put("Position",raw)
