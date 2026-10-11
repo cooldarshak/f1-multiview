@@ -42,7 +42,7 @@ data class UiState(
     val standings: List<StandingRow> = emptyList(),
     val results: List<ResultRow> = emptyList(),
     val showsDocs: List<EditorialItem> = emptyList(),
-    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(),
+    val teamRadio: List<TeamRadioItem> = emptyList(), val replayChannelDiffs: Map<String,Long> = emptyMap(), val replayPlayheadMs: Long = 0L,
     val trackPositions: List<TrackDriverPosition> = emptyList(), val trackStatus: TrackStatusInfo = TrackStatusInfo(), val trackGeometry: TrackMapGeometry? = null,
     val customRadioUrl:String = "", val radioDelayMs:Long = 0L, val preferCustomRadio:Boolean = false, val selectedSeries:String = "F1",
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
@@ -249,7 +249,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
-            timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null
+            timingStatus=if(session.live)"CONNECTING" else "REPLAY_LOADING",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,replayPlayheadMs=0L
         )
         if (!session.live) loadReplayTiming(session)
         loadStreams(session)
@@ -537,7 +537,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             weather=metadataState.weather, trackStatus=metadataState.trackStatus,
             currentLap=metadataState.currentLap, totalLaps=metadataState.totalLaps,
             sessionClock=metadataState.sessionClock,
-            timingStatus="REPLAY"
+            timingStatus="REPLAY",
+            replayPlayheadMs=positionMs.coerceAtLeast(0L)
         )
     }
     private fun cancelReplayTimingLoad() {
