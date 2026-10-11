@@ -57,9 +57,27 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
                 return PositionMappingValidation(false, 0, samples.size, "degenerate centreline bounds")
             }
             val margin = span * marginRatio.coerceIn(0.0, 1.0)
+            val maxCenterlineDistance = span * 0.02
+            fun distanceToCenterline(point: TrackDriverPosition): Double {
+                var best = Double.POSITIVE_INFINITY
+                for (index in 0 until line.lastIndex) {
+                    val a = line[index]
+                    val b = line[index + 1]
+                    val dx = b.x - a.x
+                    val dy = b.y - a.y
+                    val lengthSquared = dx * dx + dy * dy
+                    val t = if (lengthSquared <= 1e-12) 0.0 else
+                        (((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared).coerceIn(0.0, 1.0)
+                    val nearestX = a.x + t * dx
+                    val nearestY = a.y + t * dy
+                    best = min(best, hypot(point.x - nearestX, point.y - nearestY))
+                }
+                return best
+            }
             val matched = samples.count { point ->
-                point.x >= minX - margin && point.x <= maxX + margin &&
+                val insideBounds = point.x >= minX - margin && point.x <= maxX + margin &&
                     point.y >= minY - margin && point.y <= maxY + margin
+                insideBounds && distanceToCenterline(point) <= maxCenterlineDistance
             }
             val ratio = matched.toDouble() / samples.size.toDouble()
             val valid = ratio >= minimumMatchRatio.coerceIn(0.0, 1.0)
@@ -67,7 +85,8 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
                 valid = valid,
                 matched = matched,
                 total = samples.size,
-                reason = if (valid) "position samples overlap selected circuit bounds" else "position samples fall outside selected circuit bounds"
+                reason = if (valid) "position samples are near the selected circuit centreline"
+                    else "position samples do not fit the selected circuit coordinate frame"
             )
         }
         /** Parse a bundled circuit only when it contains a complete, finite native centreline. */
