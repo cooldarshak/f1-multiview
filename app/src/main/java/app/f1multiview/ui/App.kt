@@ -2082,7 +2082,24 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
         colors = CardDefaults.cardColors(containerColor = Color.Black)
     ) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id, onVideoTap = onVideoTap)
+            if (engine.isSecondaryVideoFeedBlocked(stream.id)) {
+                Column(
+                    Modifier.fillMaxSize().background(Color(0xFF08090C)).padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(stream.title, color = White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(8.dp))
+                    Text("SECONDARY VIDEO PAUSED", color = Color(0xFFFFD28A), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "The main feed remains playable. This selected feed needs an authorized tiled-stream pipeline before it can render alongside the main feed.",
+                        color = Muted, fontSize = 8.sp, textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                F1HdrPlayerSurface(engine = engine, player = player, stream = stream, modifier = Modifier.fillMaxSize(), source = "multiview-" + stream.id, onVideoTap = onVideoTap)
+            }
             if (subtitleText.isNotBlank()) {
                 Text(
                     subtitleText,
@@ -2140,6 +2157,7 @@ private fun PlayerTile(stream: StreamSource, engine: UnifiedMultiviewEngine, err
                 Text(
                     when {
                         error != null -> "ERROR"
+                        engine.isSecondaryVideoFeedBlocked(stream.id) -> "VIDEO PAUSED"
                         ownProtectedPlaying -> "PLAYING"
                         ownProtectedSelected -> ownProtectedStatus?.substringBefore(":") ?: "PREPARING"
                         !ready -> "LOADING"

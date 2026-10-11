@@ -33,6 +33,8 @@ class UnifiedMultiviewEngine(context: Context) {
     private val protectedQualities = linkedMapOf<String, Quality>()
     private var selectedAudioFeedId: String? = null
     private var multiFeedBlocked = false
+    // Keep the designated main feed on the proven single-feed path when a provider-tiled stream is unavailable.
+    private var singleFeedFallbackMainId: String? = null
 
     val errors: StateFlow<Map<String, String>> = decoderManager.errors
     private val _decoderGeneration = MutableStateFlow(0L)
@@ -132,14 +134,52 @@ class UnifiedMultiviewEngine(context: Context) {
         decoderManager.clear(id)
     }
 
+    fun isSecondaryVideoFeedBlocked(feedId: String): Boolean =
+        singleFeedFallbackMainId?.let { mainId -> feedId != mainId } == true
+
     fun updateViewport(
         streams: List<StreamSource>,
         visibleIds: Set<String>,
         referenceId: String?,
         autoplay: Boolean = false
+    ): Set<String> = updateViewportInternal(streams, visibleIds, referenceId, autoplay, fallbackApplied = false)
+
+    private fun updateViewportInternal(
+        streams: List<StreamSource>,
+        visibleIds: Set<String>,
+        referenceId: String?,
+        autoplay: Boolean,
+        fallbackApplied: Boolean
     ): Set<String> {
         streams.forEach(feedRegistry::put)
         val visibleVideoCount = ProtectedMultiviewFeedPolicy.visibleVideoCount(streams, visibleIds)
+        if (visibleVideoCount > 1 && !fallbackApplied) {
+            val mainStream = streams.firstOrNull { it.id == referenceId && it.id in visibleIds }
+                ?: streams.firstOrNull { it.id in visibleIds }
+            if (mainStream != null) {
+                // Keep one authorized Media3 video alive; do not turn the main feed into an
+                // audio-only player because more than one official feed has been selected.
+                // Followers remain blocked until an authorized provider-tiled stream is integrated.
+                singleFeedFallbackMainId = mainStream.id
+                AppLogger.w(
+                    "OwnMultiviewEngine",
+                    "SINGLE_FEED_FALLBACK requestedVisibleVideoFeeds=$visibleVideoCount main=" + mainStream.id +
+                        " reason=authorized-tiled-stream-not-integrated secondaryVideoFeeds=paused"
+                )
+                val scheduled = updateViewportInternal(
+                    streams = listOf(mainStream),
+                    visibleIds = setOf(mainStream.id),
+                    referenceId = mainStream.id,
+                    autoplay = autoplay,
+                    fallbackApplied = true
+                )
+                _multiviewStatus.value =
+                    "MULTIVIEW LIMITED: playing main feed " + mainStream.title +
+                    "; secondary video feeds are paused until an authorized tiled stream is integrated."
+                return scheduled
+            }
+        }
+        if (!fallbackApplied) singleFeedFallbackMainId = null
         if (visibleVideoCount > 1) {
             // Production must never fall back to one decoder per feed. Until the authorized
             // provider-tiled HEVC stream and its Widevine contract are resolved and passed into
