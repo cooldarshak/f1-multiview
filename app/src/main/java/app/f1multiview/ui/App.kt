@@ -1301,12 +1301,27 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     Text(sessionTitle, color = Color(0xFFD0D0D4), fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(dashboardClock(ui.sessionClock) ?: ("LAP " + currentLap + (totalLaps?.let { "/" + it } ?: "")), color = White, fontSize = 13.sp, fontWeight = FontWeight.Black, maxLines = 1)
                 }
+                val statusKnown = status != "—"
+                val statusGreen = status.equals("GREEN", true) || status.equals("CLEAR", true)
                 Surface(
-                    color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF315E36) else Color(0xFF542A2A),
+                    color = when {
+                        !statusKnown -> Color(0xFF25262B)
+                        statusGreen -> Color(0xFF315E36)
+                        else -> Color(0xFF542A2A)
+                    },
                     shape = RoundedCornerShape(3.dp)
                 ) {
-                    Text(if (status.equals("GREEN", true) || status.equals("CLEAR", true)) "Track Clear" else status,
-                        color = if (status.equals("GREEN", true) || status.equals("CLEAR", true)) Color(0xFF70C96D) else Color(0xFFFF8C82),
+                    Text(
+                        when {
+                            !statusKnown -> "STATUS N/A"
+                            status.equals("CLEAR", true) -> "Track Clear"
+                            else -> status
+                        },
+                        color = when {
+                            !statusKnown -> Color(0xFFB6B7BD)
+                            statusGreen -> Color(0xFF70C96D)
+                            else -> Color(0xFFFF8C82)
+                        },
                         fontSize = 8.sp, fontWeight = FontWeight.Black,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 5.dp), maxLines = 1)
                 }
