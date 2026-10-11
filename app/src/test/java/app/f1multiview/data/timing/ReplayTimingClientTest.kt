@@ -287,6 +287,16 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun replayPositionsBeforeFirstSampleAreUnavailableRatherThanFutureProjected() {
+        val future = TrackDriverPosition(number = "1", x = 50.0, y = 12.0, updatedAtMs = 5_000L)
+        val positions = interpolateReplayPositionSnapshots(
+            listOf(ReplayPositionSnapshot(5_000L, listOf(future))),
+            targetOffsetMs = 2_000L
+        )
+        assertTrue(positions.isEmpty())
+    }
+
+    @Test
     fun replayPositionsDoNotInterpolateAcrossLargeMissingDataGaps() {
         val first = TrackDriverPosition(number = "1", x = 0.0, y = 10.0, updatedAtMs = 1_000L)
         val second = TrackDriverPosition(number = "1", x = 100.0, y = 30.0, updatedAtMs = 5_000L)
