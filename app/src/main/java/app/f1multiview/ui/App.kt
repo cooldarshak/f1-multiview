@@ -1279,7 +1279,8 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
 
     BoxWithConstraints(modifier.background(Color(0xFF111214))) {
         val headerHeight = maxHeight.coerceIn(42.dp, 62.dp)
-        val rowHeight = if (rows.isEmpty()) 28.dp else ((maxHeight - headerHeight) / rows.size.coerceAtLeast(1)).coerceIn(24.dp, 68.dp)
+        val tabHeight = 28.dp
+        val rowHeight = if (rows.isEmpty()) 28.dp else ((maxHeight - headerHeight - tabHeight) / rows.size.coerceAtLeast(1)).coerceIn(24.dp, 68.dp)
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().height(headerHeight).background(Color(0xFF17181A)).padding(horizontal = 6.dp),
@@ -1308,14 +1309,41 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                 WeatherMetric("Rain", if (ui.weather.rainfall == "-") "No" else ui.weather.rainfall)
             }
 
+            Row(
+                Modifier.fillMaxWidth().height(tabHeight).background(Color(0xFF111214)).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("RACE", color = Color(0xFF9A9BA2), fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp))
+                Column(Modifier.fillMaxHeight().padding(horizontal = 8.dp), verticalArrangement = Arrangement.Bottom) {
+                    Text("OVERVIEW", color = Color(0xFF63B7FF), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(4.dp))
+                    Box(Modifier.width(54.dp).height(2.dp).background(Color(0xFF319DFF)))
+                }
+                Spacer(Modifier.weight(1f))
+                Text("LIVE TIMING", color = if (ui.timingStatus == "LIVE") Color(0xFF68C96B) else Muted,
+                    fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+                Text("✎", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+
             if (rows.isEmpty()) {
+                val emptyMessage = when (ui.timingStatus) {
+                    "REPLAY_LOADING" -> "LOADING REPLAY TIMING"
+                    "REPLAY_UNAVAILABLE" -> "REPLAY TIMING UNAVAILABLE"
+                    "LIVE" -> "WAITING FOR LIVE TIMING DATA"
+                    "OFFLINE", "RETRYING", "ERROR" -> "LIVE TIMING " + ui.timingStatus
+                    else -> "CONNECTING TO LIVE TIMING"
+                }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("WAITING FOR F1 DASH DATA", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(emptyMessage, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     items(rows, key = { it.position }) { row ->
-                        val meta = ui.trackPositions.firstOrNull { it.acronym.equals(row.driver, true) }
+                        val meta = ui.trackPositions.firstOrNull {
+                            it.number == row.driverNumber || it.acronym.equals(row.driver, true)
+                        }
                         val telemetry = ui.telemetry.firstOrNull {
                             it.driver.equals(row.driverNumber, true) ||
                                 (row.driverNumber.isBlank() && it.driver.equals(meta?.number ?: "", true))
@@ -1348,7 +1376,14 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                             Column(Modifier.weight(.55f), verticalArrangement = Arrangement.Center) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("LAST", color = Muted, fontSize = 5.sp, modifier = Modifier.width(22.dp))
-                                    Text(row.lastLap, color = lapColor, fontSize = 7.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Clip)
+                                    if (meta?.inPit == true || row.lastLap.equals("IN PIT", true)) {
+                                        Surface(color = Color(0xFFF04444), shape = RoundedCornerShape(2.dp)) {
+                                            Text("IN PIT", color = White, fontSize = 6.sp, fontWeight = FontWeight.Black,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), maxLines = 1)
+                                        }
+                                    } else {
+                                        Text(row.lastLap, color = lapColor, fontSize = 7.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Clip)
+                                    }
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("BEST", color = Muted, fontSize = 5.sp, modifier = Modifier.width(22.dp))
@@ -1364,10 +1399,6 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                                     Text("LDR", color = Muted, fontSize = 5.sp, modifier = Modifier.width(18.dp))
                                     Text(row.leaderGap, color = White, fontSize = 7.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                                 }
-                            }
-                            Column(Modifier.weight(.25f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Text((telemetry?.speed ?: row.speed.toIntOrNull() ?: 0).toString(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                                Text("km/h", color = Muted, fontSize = 5.sp)
                             }
                             Row(Modifier.weight(1.35f), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                 DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
@@ -1394,8 +1425,8 @@ private fun MiniGearGauge(gear: Int, rpm: Int, speed: Int, modifier: Modifier = 
             Text(gear.toString(), color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
         }
         Column(verticalArrangement = Arrangement.Center) {
-            Text(rpm.toString(), color = White, fontSize = 5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(speed.toString() + " km/h", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(if (speed > 0) speed.toString() + " km/h" else "— km/h", color = White, fontSize = 6.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Text(if (rpm > 0) rpm.toString() + " rpm" else "— rpm", color = Muted, fontSize = 5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
