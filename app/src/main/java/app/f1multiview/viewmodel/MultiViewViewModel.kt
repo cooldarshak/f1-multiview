@@ -478,18 +478,19 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         onSuccess = { geometry ->
             if (geometry.centerline.size < 20) {
                 val reason = "Matched circuit returned only ${geometry.centerline.size} centreline points (minimum 20)"
-                _ui.value = _ui.value.copy(trackGeometry=null, providerError="Track map geometry unavailable: " + reason)
+                _ui.value = _ui.value.copy(trackGeometry=null, trackPositionMappingValid=null, providerError="Track map geometry unavailable: " + reason)
                 AppLogger.w("TrackMap", "GEOMETRY_REJECTED circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}")
             } else {
-                _ui.value = _ui.value.copy(trackGeometry=geometry, providerError=null)
+                _ui.value = _ui.value.copy(trackGeometry=geometry, trackPositionMappingValid=null, providerError=null)
                 AppLogger.i(
                     "TrackMap",
-                    "TRACK_GEOMETRY_COORDINATE_MAPPING_VALIDATED circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}"
+                    "TRACK_GEOMETRY_READY circuitKey=${geometry.circuitKey} year=${geometry.year} centerlinePoints=${geometry.centerline.size}"
                 )
+                validateTrackPositionMapping(_ui.value.trackPositions, geometry)
             }
         },
         onFailure = { failure ->
-            _ui.value = _ui.value.copy(trackGeometry=null, providerError="Track map geometry unavailable: " + (failure.message ?: "unknown error"))
+            _ui.value = _ui.value.copy(trackGeometry=null, trackPositionMappingValid=null, providerError="Track map geometry unavailable: " + (failure.message ?: "unknown error"))
             AppLogger.w("TrackMap", "TRACK_GEOMETRY_UNAVAILABLE year=$year meetingNamePresent=${meeting.isNotBlank()} circuitNamePresent=${circuitName.isNotBlank()} reason=${failure.javaClass.simpleName}")
         }
     )
