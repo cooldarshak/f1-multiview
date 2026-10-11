@@ -141,7 +141,6 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 }
                 // The first post-handshake frame is the SignalR handshake acknowledgement.
                 if(_status.value=="HANDSHAKING"){
-                    _status.value="SUBSCRIBED"
                     val feedArray=JSONArray()
                     FEEDS.forEach(feedArray::put)
                     val subscribe=JSONObject()
@@ -149,8 +148,13 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                         .put("invocationId","1")
                         .put("target","Subscribe")
                         .put("arguments",JSONArray().put(feedArray))
-                    ws.send(subscribe.toString()+RS)
-                    AppLogger.i("LiveTiming","SIGNALR_SUBSCRIBE_SENT feedCount=${FEEDS.size}")
+                    val sent = ws.send(subscribe.toString()+RS)
+                    _status.value = if (sent) "SUBSCRIBE_SENT" else "ERROR"
+                    AppLogger.i("LiveTiming","SIGNALR_SUBSCRIBE_SENT acceptedBySocket=$sent feedCount=${FEEDS.size}")
+                    if (!sent) {
+                        ws.close(1011, "Subscribe message was not queued")
+                        return@forEach
+                    }
                     keepAlive?.cancel()
                     keepAlive=scope.launch{
                         while(isActive){
