@@ -151,13 +151,7 @@ class TrackMapClient {
             val props = feature.optJSONObject("properties") ?: continue
             val name = normalize(props.optString("Name"))
             val location = normalize(props.optString("Location"))
-            val score = when {
-                name.isNotBlank() && name == wanted -> 100
-                name.isNotBlank() && (name.contains(wanted) || wanted.contains(name)) -> 80
-                location.isNotBlank() && location == wanted -> 90
-                location.isNotBlank() && (wanted.contains(location) || location.contains(wanted)) -> 30
-                else -> 0
-            }
+            val score = scoreGeoJsonCircuit(name, location, wanted)
             scoredFeatures += feature to score
         }
         // Circuit labels can be shared by alternate layouts or historic venues. Never
@@ -216,6 +210,18 @@ class TrackMapClient {
     }
 
     private data class GeoPoint(val lon: Double, val lat: Double)
+
+    /** Scores GeoJSON features against the normalized circuit label without guessing on vague location matches. */
+    internal fun scoreGeoJsonCircuit(name: String, location: String, wanted: String): Int {
+        if (wanted.isBlank()) return 0
+        return when {
+            name.isNotBlank() && name == wanted -> 100
+            name.isNotBlank() && (name.contains(wanted) || wanted.contains(name)) -> 80
+            location.isNotBlank() && location == wanted -> 90
+            location.isNotBlank() && (wanted.contains(location) || location.contains(wanted)) -> 30
+            else -> 0
+        }
+    }
 
     /** Returns the index of the sole highest-scoring candidate, or null for no match/ties. */
     internal fun uniqueBestIndex(scores: List<Int>, minimumScore: Int): Int? {
