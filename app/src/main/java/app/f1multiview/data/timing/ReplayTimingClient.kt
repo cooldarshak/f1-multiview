@@ -230,7 +230,7 @@ class ReplayTimingClient {
                 gear=car?.gear ?: row.gear,
                 rpm=car?.rpm ?: row.rpm,
                 speed=car?.speed?.takeIf { it > 0 }?.toString() ?: row.speed,
-                drsActive=car?.drs?.takeIf { it > 0 }?.let { it >= 8 }
+                drsActive=car?.drs?.let { it >= 8 }
             )
         }
     }
@@ -625,7 +625,7 @@ class ReplayTimingClient {
                         brake=numberChannel(channels,"5","Brake"),
                         lap=existing?.lap ?: 0,
                         lapTime=existing?.lapTime ?: "-",
-                        drs=numberChannel(channels,"45","DRS")
+                        drs=if (channels.has("45") || channels.has("DRS")) numberChannel(channels,"45","DRS") else null
                     )
                     changed=true
                 }
