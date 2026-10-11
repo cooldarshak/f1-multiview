@@ -222,6 +222,35 @@ class LiveTimingClientTest {
         assertEquals("YELLOW", messages.getJSONObject(1).getString("Flag"))
     }
     @Test
+    fun parsesZeroBasedSectorObjectWithSegmentsAndFastestFlags() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(JSONObject(
+            """{"Lines":{"1":{"Position":1,"Tla":"VER","Sectors":{"0":{"Value":"25.100","OverallFastest":true,"Segments":[{"Status":2049},{"Status":2051}]},"1":{"Value":"33.200","PersonalFastest":true,"Segments":[{"Status":2049}]},"2":{"Value":"34.000","Segments":[{"Status":2048}]}},"LastLapTime":{"Value":"1:32.300"}}}}"""
+        ))
+
+        val row = client.rows.value.single()
+        assertEquals("25.100", row.sector1)
+        assertEquals("PURPLE", row.sector1Status)
+        assertEquals(listOf("GREEN","PURPLE"), row.sector1Segments)
+        assertEquals("33.200", row.sector2)
+        assertEquals("GREEN", row.sector2Status)
+        assertEquals("34.000", row.sector3)
+        assertEquals("NORMAL", row.sector3Status)
+    }
+
+    @Test
+    fun parsesOneBasedSectorObjectKeysWithoutReassigningSectorNumbers() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(JSONObject(
+            """{"Lines":{"44":{"Position":2,"Tla":"HAM","Sectors":{"1":{"Value":"26.100"},"2":{"Value":"32.200"},"3":{"Value":"35.000"}}}}}"""
+        ))
+
+        val row = client.rows.value.single()
+        assertEquals("26.100", row.sector1)
+        assertEquals("32.200", row.sector2)
+        assertEquals("35.000", row.sector3)
+    }
+    @Test
     fun sparseTimingUpdatesPreserveUntouchedNestedFields() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val current = JSONObject(
