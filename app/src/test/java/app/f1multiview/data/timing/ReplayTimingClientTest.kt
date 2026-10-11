@@ -97,7 +97,7 @@ class ReplayTimingClientTest {
 
     @Test
     fun parsesCompressedCarTelemetryForSpeedGearRpmThrottleAndBrake() {
-        val json = """{"Entries":[{"Cars":{"1":{"Channels":{"0":11250,"2":318,"3":8,"4":100,"5":0}},"16":{"Channels":{"0":9800,"2":256,"3":7,"4":93,"5":0}}}}]}"""
+        val json = """{"Entries":[{"Cars":{"1":{"Channels":{"0":11250,"2":318,"3":8,"4":100,"5":0,"45":8}},"16":{"Channels":{"0":9800,"2":256,"3":7,"4":93,"5":0,"45":0}}}}]}"""
         val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
         val compressed = ByteArrayOutputStream()
         try {
@@ -123,9 +123,11 @@ class ReplayTimingClientTest {
         assertEquals(8, leader.gear)
         assertEquals(100, leader.throttle)
         assertEquals(0, leader.brake)
+        assertEquals(8, leader.drs)
         val second = snapshots.single().telemetry.first { it.driver == "16" }
         assertEquals(256, second.speed)
         assertEquals(7, second.gear)
+        assertEquals(0, second.drs)
     }
 
     @Test
