@@ -220,7 +220,7 @@ class ReplayTimingClient {
             row.copy(
                 tyre=stint?.compound?.takeIf{it.isNotBlank()} ?: row.tyre,
                 pitStops=stint?.pitStops ?: row.pitStops,
-                lastLap=if(stint?.inPit==true) "IN PIT" else row.lastLap,
+                lastLap=row.lastLap,
                 inPit=stint?.inPit ?: row.inPit,
                 stopped=stint?.stopped ?: row.stopped,
                 stintNumber=stint?.stintNumber?.takeIf { it > 0 } ?: row.stintNumber,
@@ -462,7 +462,7 @@ class ReplayTimingClient {
                 val lastObj=d.optJSONObject("LastLapTime")
                 val lastRaw=lastObj?.optString("Value").orEmpty()
                     .ifBlank{d.optString("LastLapTime").takeIf{!it.startsWith("{")} ?: d.optString("LastLap")}
-                val last=if(d.optBoolean("InPit",false)) "IN PIT" else lastRaw.ifBlank{"-"}
+                val last=lastRaw.ifBlank{"-"}
                 val bestObj=d.optJSONObject("BestLapTime")
                 val best=bestObj?.optString("Value").orEmpty()
                     .ifBlank{d.optString("BestLapTime").takeIf{!it.startsWith("{")}.orEmpty()}.ifBlank{"-"}
