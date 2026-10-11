@@ -140,7 +140,8 @@ class MultiviewSurfaceManager(private val context: Context) {
                 view.post {
                     val current = bindings[feedId]
                     if (
-                        current?.surfaceView !== view ||
+                        current == null ||
+                        current.surfaceView !== view ||
                         !current.playerOutputAttached ||
                         !view.isAttachedToWindow ||
                         !view.holder.surface.isValid
