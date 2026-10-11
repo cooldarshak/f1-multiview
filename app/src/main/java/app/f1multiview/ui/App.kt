@@ -1356,8 +1356,6 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     ) {
                         Text("POS / DRIVER", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
                             modifier = Modifier.weight(1.1f))
-                        Text("TYRE", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
-                            modifier = Modifier.weight(.48f), textAlign = TextAlign.Center)
                         Text("TELEMETRY", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
                             modifier = Modifier.weight(.62f))
                         Text("LAP TIMES", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
@@ -1370,6 +1368,8 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                                     modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                             }
                         }
+                        Text("TYRE", color = Color(0xFFB8BAC1), fontSize = 6.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(.48f), textAlign = TextAlign.Center)
                     }
                     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     items(rows, key = { it.position }) { row ->
@@ -1400,10 +1400,6 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                                     Text(row.position.toString(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(14.dp))
                                     Text(driverLabel.uppercase(), color = if (isLightColor(teamColor)) Color.Black else White, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
                                 }
-                            }
-                            Column(Modifier.weight(.48f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Text(tyreLabel(row.tyre), color = tyreDisplayColor(row.tyre), fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                                Text("L" + row.lap, color = Muted, fontSize = 6.sp, maxLines = 1)
                             }
                             MiniGearGauge(
                                 gear = telemetry?.gear,
@@ -1442,6 +1438,10 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                                 DashSectorColumn(row.sector1, row.sector1Status, row.sector1Segments)
                                 DashSectorColumn(row.sector2, row.sector2Status, row.sector2Segments)
                                 DashSectorColumn(row.sector3, row.sector3Status, row.sector3Segments)
+                            }
+                            Column(Modifier.weight(.48f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Text(tyreLabel(row.tyre), color = tyreDisplayColor(row.tyre), fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                                Text("L" + row.lap, color = Muted, fontSize = 6.sp, maxLines = 1)
                             }
                         }
                     }
