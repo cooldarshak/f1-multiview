@@ -263,6 +263,40 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun replayPositionsInterpolateAtTheExactVideoPlayhead() {
+        val first = TrackDriverPosition(
+            number = "1", x = 0.0, y = 10.0, updatedAtMs = 1_000L
+        )
+        val second = TrackDriverPosition(
+            number = "1", x = 100.0, y = 30.0, updatedAtMs = 1_100L
+        )
+        val snapshots = listOf(
+            ReplayPositionSnapshot(1_000L, listOf(first)),
+            ReplayPositionSnapshot(1_100L, listOf(second))
+        )
+
+        val positions = interpolateReplayPositionSnapshots(snapshots, 1_050L)
+
+        assertEquals(1, positions.size)
+        assertEquals(50.0, positions.single().x, 0.0001)
+        assertEquals(20.0, positions.single().y, 0.0001)
+        // Keep the timestamp of the latest real source sample behind the interpolated point.
+        assertEquals(1_000L, positions.single().updatedAtMs)
+    }
+
+    @Test
+    fun replayPositionsDoNotInterpolateAcrossLargeMissingDataGaps() {
+        val first = TrackDriverPosition(number = "1", x = 0.0, y = 10.0, updatedAtMs = 1_000L)
+        val second = TrackDriverPosition(number = "1", x = 100.0, y = 30.0, updatedAtMs = 5_000L)
+        val positions = interpolateReplayPositionSnapshots(
+            listOf(ReplayPositionSnapshot(1_000L, listOf(first)), ReplayPositionSnapshot(5_000L, listOf(second))),
+            3_000L
+        )
+        assertEquals(0.0, positions.single().x, 0.0)
+        assertEquals(10.0, positions.single().y, 0.0)
+    }
+
+    @Test
     fun replayTimingDeltasMergeIntoPersistentDriverState() {
         val stream = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}},"4":{"Position":2,"Tla":"NOR","GapToLeader":"+1.2"}}}
 00:00:02.000{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"4":{"GapToLeader":"+0.8"}}}
