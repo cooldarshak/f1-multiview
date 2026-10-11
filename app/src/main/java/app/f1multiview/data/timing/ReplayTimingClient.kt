@@ -180,7 +180,7 @@ class ReplayTimingClient {
             val meetingName=info.optString("MeetingName").ifBlank{meeting.optString("Name")}.ifBlank{name}
             val circuitName=circuit.optString("Name").ifBlank{circuit.optString("ShortName")}.ifBlank{meeting.optString("Location")}
             if(name.isNotBlank()||meetingName.isNotBlank()||key!=null) {
-                return LiveSessionInfo(
+                return@runCatching LiveSessionInfo(
                     name=name.ifBlank{"-"},
                     meeting=meetingName.ifBlank{"-"},
                     country=country.optString("Name").ifBlank{country.optString("Code")}.ifBlank{info.optString("Country")}.ifBlank{"-"},
