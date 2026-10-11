@@ -99,8 +99,11 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
                 Text("CIRCUIT GEOMETRY UNAVAILABLE", color = MapWhite, fontSize = 10.sp, fontWeight = FontWeight.Black)
                 Text(
                     when {
-                        ui.liveSessionInfo.circuitKey == null -> "Waiting for session circuit metadata"
                         !ui.providerError.isNullOrBlank() -> ui.providerError!!
+                        ui.liveSessionInfo.circuitKey == null && ui.liveSessionInfo.meeting.isBlank() ->
+                            "Waiting for live session metadata (meeting/circuit not received)"
+                        ui.liveSessionInfo.circuitKey == null ->
+                            "Circuit key missing; attempting meeting-name lookup"
                         else -> "No validated centreline matched this circuit"
                     },
                     color = MapMuted, fontSize = 8.sp,
