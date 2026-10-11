@@ -42,31 +42,55 @@ internal data class ReplaySessionResolution(val session:ReplayArchiveSession,val
 
 internal fun resolveReplayArchiveSession(
     candidates: List<ReplayArchiveSession>,
-    requestedSessionType: String
+    requestedSessionType: String,
+    requestedSessionTitle: String = requestedSessionType
 ): ReplaySessionResolution {
-    fun normalize(value:String) = value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
-    val requested = normalize(requestedSessionType)
-    val wanted = when {
-        requested.contains("sprint") && requested.contains("qual") -> "sprint qualifying"
-        requested.contains("sprint") -> "sprint"
-        requested.contains("practice 1") -> "practice 1"
-        requested.contains("practice 2") -> "practice 2"
-        requested.contains("practice 3") -> "practice 3"
-        requested.contains("qual") -> "qualifying"
-        requested.contains("race") -> "race"
-        else -> requested
+    fun normalize(value: String) =
+        value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
+
+    fun canonical(value: String): String {
+        val normalized = normalize(value)
+        return when {
+            normalized.contains("sprint") && normalized.contains("qual") -> "sprint qualifying"
+            normalized.contains("practice 1") -> "practice 1"
+            normalized.contains("practice 2") -> "practice 2"
+            normalized.contains("practice 3") -> "practice 3"
+            normalized.contains("sprint") && normalized.contains("race") -> "sprint"
+            normalized.contains("sprint") -> "sprint"
+            normalized.contains("qual") -> "qualifying"
+            normalized.contains("race") -> "race"
+            else -> normalized
+        }
     }
-    val normalizedWanted = normalize(wanted)
-    val exactName = candidates.filter { normalize(it.name) == normalizedWanted }
-    if (exactName.size == 1) return ReplaySessionResolution(exactName.single(), "exact-name")
-    if (exactName.size > 1) error("Ambiguous exact archive session name '$wanted' (${exactName.size} candidates)")
-    val exactType = candidates.filter { normalize(it.type) == normalizedWanted }
-    if (exactType.size == 1) return ReplaySessionResolution(exactType.single(), "exact-type")
-    if (exactType.size > 1) error("Ambiguous archive session type '$wanted' (${exactType.size} candidates)")
-    val nameMatches = candidates.filter { normalize(it.name).contains(normalizedWanted) }
-    if (nameMatches.size == 1) return ReplaySessionResolution(nameMatches.single(), "unique-name-containment")
-    if (nameMatches.size > 1) error("Ambiguous archive session name '$wanted' (${nameMatches.size} candidates)")
-    error("No archive session matches '$requestedSessionType' (normalized='$wanted')")
+
+    val wantedType = canonical(requestedSessionType)
+    val title = normalize(requestedSessionTitle)
+    val scored = candidates.mapNotNull { candidate ->
+        val name = normalize(candidate.name)
+        val type = canonical(candidate.type)
+        if (name.isBlank() || candidate.path.isBlank()) return@mapNotNull null
+        val (score, reason) = when {
+            title.isNotBlank() && title == name -> 140 to "exact-title-name"
+            title.isNotBlank() && title.endsWith(name) -> 130 + name.length.coerceAtMost(20) to "title-suffix-name"
+            title.isNotBlank() && title.contains(name) -> 110 + name.length.coerceAtMost(20) to "title-contains-name"
+            name == wantedType -> 100 to "exact-name"
+            type == wantedType -> 80 to "exact-type"
+            name.contains(wantedType) || wantedType.contains(name) -> 60 to "name-containment"
+            else -> 0 to "no-match"
+        }
+        Triple(candidate, score, reason)
+    }
+
+    val bestScore = scored.maxOfOrNull { it.second } ?: 0
+    if (bestScore <= 0) {
+        error("No archive session matches type='$requestedSessionType' title='$requestedSessionTitle'")
+    }
+    val best = scored.filter { it.second == bestScore }
+    if (best.size != 1) {
+        error("Ambiguous archive session match type='$requestedSessionType' title='$requestedSessionTitle' score=$bestScore candidates=${best.joinToString { it.first.name }}")
+    }
+    val selected = best.single()
+    return ReplaySessionResolution(selected.first, selected.third)
 }
 
 class ReplayTimingClient {
@@ -107,7 +131,7 @@ class ReplayTimingClient {
     private var clockSnapshots:List<ReplayClockSnapshot> = emptyList()
     private var syncOffsetMs:Long = 0L
     private var syncData = ReplaySyncData(0L, emptyMap())
-    suspend fun load(year:Int, meetingNumber:Int, sessionType:String):Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun load(year:Int, meetingNumber:Int, sessionType:String, sessionTitle:String = sessionType):Result<Unit> = withContext(Dispatchers.IO) {
         clear()
         runCatching {
             val index=getJson("https://livetiming.formula1.com/static/$year/Index.json")
@@ -121,7 +145,8 @@ class ReplayTimingClient {
                 val path=item.optString("Path").trim('/')
                 if (name.isBlank() || path.isBlank()) null else ReplayArchiveSession(name,type,path,item.optString("Key"))
             }
-            val resolution=resolveReplayArchiveSession(candidates,sessionType)
+            AppLogger.i("ReplayTiming", "REPLAY_SESSION_CANDIDATES year=$year meeting=$meetingNumber candidates=${candidates.joinToString { it.name + ":" + it.type }}")
+            val resolution=resolveReplayArchiveSession(candidates,sessionType,sessionTitle)
             val session=resolution.session
             AppLogger.i("ReplayTiming", "REPLAY_SESSION_SELECTED name=${session.name} type=${session.type} path=${session.path} reason=${resolution.reason}")
             val path=session.path
