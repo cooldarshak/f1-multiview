@@ -308,13 +308,16 @@ class F1TvApiClient {
         http.newCall(builder.build()).execute().use{r->HttpResponse(r.code,r.isSuccessful,r.body?.string().orEmpty())}
     }
     fun fallbackLicense(contentId:String,channelId:String?,platform:String,pipelineVersion:Int?,streamType:String?,drmType:String?=null):String?{
-        // pipelineVersion describes the playback pipeline, not the content's DRM scheme.
-        // F1 also returns pipelineVersion=6 for SDR_HD_DASH_SINGLE; synthesizing a Widevine
-        // endpoint for that response misclassifies clear feeds as protected and causes a
-        // guaranteed DRM-session failure. Only explicit Widevine metadata may enable this fallback.
+        // Prefer explicit DRM metadata. For older F1 responses, pipelineVersion >= 3 was the
+        // provider-compatible fallback used by the known working ExoPlayer path. This only
+        // supplies F1's documented license endpoint; it does not fabricate PSSH or bypass DRM.
+        // Media3 still has to parse the authorized manifest/init segment and complete a valid
+        // Widevine session before encrypted samples can render. A license URL alone is not proof
+        // that the stream is protected, so callers must not use this value to skip manifest/DRM
+        // validation or permit clear output when the stream explicitly declares Widevine.
         val declaresWidevine = streamType?.contains("DASHWV",true)==true ||
             streamType?.contains("WIDEVINE",true)==true || drmType?.contains("WIDEVINE",true)==true
-        if(!declaresWidevine)return null
+        if (!declaresWidevine && (pipelineVersion ?: -1) < 3) return null
         return BASE+"/2.0/R/"+LANG+"/"+platform+"/ALL/CONTENT/LA/widevine?contentId="+java.net.URLEncoder.encode(contentId,"UTF-8")+(if(channelId.isNullOrBlank())"" else "&channelId="+java.net.URLEncoder.encode(channelId,"UTF-8"))
     }
     private fun extractPlayToken(url:String):String?{
