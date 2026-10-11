@@ -9,6 +9,16 @@ import org.junit.Assert.assertTrue
 
 class ReplayTimingClientTest {
     @Test
+    fun rejectsArchiveThatHasNoParseableTimingRows() {
+        val failure = runCatching {
+            ReplayTimingClient().requireTimingRows(emptyList(), 2026, 4, "Race")
+        }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure?.message?.contains("No parseable TimingData rows") == true)
+        assertTrue(failure?.message?.contains("year=2026, meeting=4, session=Race") == true)
+    }
+
+    @Test
     fun archiveLookupUsesSessionRelativeMillisecondsNotAbsoluteUtcEpoch() {
         val client = ReplayTimingClient()
         assertEquals(0L, client.archiveOffsetForVideoPosition(0L))

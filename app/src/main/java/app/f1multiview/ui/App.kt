@@ -1355,6 +1355,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                 val emptyMessage = when (ui.timingStatus) {
                     "REPLAY_LOADING" -> "LOADING REPLAY TIMING"
                     "REPLAY_UNAVAILABLE" -> "REPLAY TIMING UNAVAILABLE"
+                    "REPLAY" -> "WAITING FOR REPLAY TIMING AT THIS PLAYHEAD"
                     "LIVE" -> "WAITING FOR LIVE TIMING DATA"
                     "HANDSHAKING" -> "LIVE TIMING SOCKET OPEN · HANDSHAKING"
                     "SUBSCRIBE_SENT" -> "SUBSCRIBE SENT · WAITING FOR F1 DATA"

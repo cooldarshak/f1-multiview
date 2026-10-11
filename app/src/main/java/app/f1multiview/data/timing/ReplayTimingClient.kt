@@ -37,6 +37,25 @@ data class ReplayMetadataState(
 )
 data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Long>)
 class ReplayTimingClient {
+    /**
+     * Archive endpoints can return a valid HTTP response whose lines do not match the parser's
+     * supported TimingData shape. Do not report the replay timing service as ready unless it
+     * produced actual timestamped driver rows.
+     */
+    internal fun requireTimingRows(
+        parsed: List<ReplayTimingSnapshot>,
+        year: Int,
+        meetingNumber: Int,
+        sessionType: String
+    ) {
+        if (parsed.isEmpty()) {
+            throw IllegalStateException(
+                "No parseable TimingData rows in F1 archive " +
+                    "(year=$year, meeting=$meetingNumber, session=$sessionType)"
+            )
+        }
+    }
+
     private val http=OkHttpClient()
     private var snapshots:List<ReplayTimingSnapshot> = emptyList()
     private var positionSnapshots:List<ReplayPositionSnapshot> = emptyList()
@@ -69,6 +88,7 @@ class ReplayTimingClient {
             val session=(0 until sessions.length()).map{sessions.getJSONObject(it)}.firstOrNull{it.optString("Name").contains(wanted,true) || it.optString("Type").equals(wanted,true)} ?: error("Timing archive session not found")
             val path=session.optString("Path").trim('/').ifBlank{error("Timing archive session has no path")}
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
+            requireTimingRows(snapshots, year, meetingNumber, sessionType)
             archivedDriverInfo=runCatching { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }.getOrDefault(emptyList())
             archivedSessionInfo=runCatching { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }.getOrNull()
             weatherSnapshots=runCatching { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }.getOrDefault(emptyList())
