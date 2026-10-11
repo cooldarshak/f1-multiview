@@ -73,14 +73,12 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     @Volatile private var lastTimingRowsAtMs = 0L
     private var freshnessWatcher: Job? = null
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
-    private fun clearSessionCaches(nextIdentity: String) {
+    private fun clearSessionCaches() {
         synchronized(timingLock) {
-            val keys = timingLinesState.keys()
-            while (keys.hasNext()) timingLinesState.remove(keys.next())
+            timingLinesState.keys().asSequence().toList().forEach(timingLinesState::remove)
         }
         synchronized(timingAppLock) {
-            val keys = timingAppLinesState.keys()
-            while (keys.hasNext()) timingAppLinesState.remove(keys.next())
+            timingAppLinesState.keys().asSequence().toList().forEach(timingAppLinesState::remove)
         }
         driverMeta.clear()
         timingMeta.clear()
@@ -452,7 +450,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         } else null
         if (identity != null) {
             val previousIdentity = currentSessionIdentity
-            if (previousIdentity != null && previousIdentity != identity) clearSessionCaches(identity)
+            if (previousIdentity != null && previousIdentity != identity) clearSessionCaches()
             currentSessionIdentity = identity
         }
         _sessionInfo.value=LiveSessionInfo(
