@@ -17,6 +17,7 @@ import app.f1multiview.data.timing.ReplayTimingClient
 import app.f1multiview.data.timing.TrackMapClient
 import app.f1multiview.media.AppLogger
 import app.f1multiview.model.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -53,7 +54,8 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val provider:PlaybackGateway=AuthorizedF1TvGateway(application)
     private val trackMapClient=TrackMapClient(application)
     private val timingClient=LiveTimingClient(viewModelScope){ provider.liveTimingHeaders() }
-    private val replayTimingClient=ReplayTimingClient()
+    private var replayTimingClient=ReplayTimingClient()
+    private var replayTimingLoadJob: Job? = null
     private val featureClient=UgisFeatureClient(application)
     private val prefs=application.getSharedPreferences("f1_multiview_radio",0)
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
@@ -104,7 +106,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     }
     fun signInWithSessionToken(token:String)=viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signInWithSessionToken(token).fold({ _ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Browser sign-in failed"),providerError=it.message)})}
     fun signIn(username:String,password:String){if(username.isBlank()||password.isBlank())return;viewModelScope.launch{_ui.value=_ui.value.copy(auth=AuthState.SigningIn,providerError=null);provider.signIn(ProviderCredentials(username.trim(),password)).fold({_ui.value=_ui.value.copy(auth=AuthState.SignedIn);timingClient.restart();loadSessions();loadVodSeasons();loadShowsDocs()},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Sign-in failed"),providerError=it.message)})}}
-    fun signOut()=viewModelScope.launch{provider.signOut();_ui.value=UiState(auth=AuthState.SignedOut)}
+    fun signOut()=viewModelScope.launch{cancelReplayTimingLoad();provider.signOut();_ui.value=UiState(auth=AuthState.SignedOut)}
     private suspend fun loadSessions(){provider.sessions().fold({sessions->val first=sessions.firstOrNull();_ui.value=_ui.value.copy(auth=AuthState.SignedIn,sessions=sessions,session=first);if(first!=null)loadStreams(first)},{_ui.value=_ui.value.copy(auth=AuthState.Error(it.message?:"Unable to load F1 TV sessions"),providerError=it.message)})}
     fun loadVodSeasons()=viewModelScope.launch{provider.vodSeasons().onSuccess{seasons->val selected=seasons.firstOrNull();_ui.value=_ui.value.copy(vodSeasons=seasons,selectedSeason=selected);if(selected!=null)loadVodEvents(selected)}.onFailure{_ui.value=_ui.value.copy(providerError=it.message)}}
     private suspend fun loadVodEvents(season:VodSeason){provider.vodEvents(season).onSuccess{allEvents->
@@ -115,6 +117,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     fun selectVodSeason(season:VodSeason)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedSeason=season,selectedEvent=null,vodEvents=emptyList(),vodSessions=emptyList());loadVodEvents(season)}
     fun selectVodEvent(event:VodEvent)=viewModelScope.launch{_ui.value=_ui.value.copy(selectedEvent=event,vodSessions=emptyList());loadVodSessions(event)}
     fun playEditorial(item: EditorialItem)=viewModelScope.launch {
+        cancelReplayTimingLoad()
         // Editorial cards are real F1 TV content, not decorative tiles. Resolve the
         // item's content id through the same playback gateway used by race sessions.
         val session = Session(
@@ -240,6 +243,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          loadReplayTiming(session)
      }
     fun setSession(session:Session)=viewModelScope.launch{
+        if (session.live) cancelReplayTimingLoad()
         livePlaybackSyncActive=false
         _ui.value=_ui.value.copy(
             session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
@@ -536,43 +540,69 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             timingStatus="REPLAY"
         )
     }
-    fun loadReplayTiming(session:Session)=viewModelScope.launch {
-        replayTimingClient.clear()
-        val year = session.seasonYear
-        val meeting = session.meetingNumber
-        _ui.value = _ui.value.copy(timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
-            liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(), currentLap=0, totalLaps=0,
-            trackGeometry=null, timingStatus="REPLAY_LOADING", providerError=null)
-        if (year == null || year <= 0 || meeting == null || meeting <= 0) {
-            val missing = buildList {
-                if (year == null || year <= 0) add("season year")
-                if (meeting == null || meeting <= 0) add("meeting number")
-            }.joinToString(" and ")
-            if (_ui.value.session?.id == session.id) {
-                _ui.value = _ui.value.copy(
-                    timingStatus="REPLAY_UNAVAILABLE",
-                    providerError="Replay timing unavailable: missing $missing for ${session.name}"
-                )
+    private fun cancelReplayTimingLoad() {
+        replayTimingLoadJob?.cancel()
+        replayTimingLoadJob = null
+        replayTimingClient = ReplayTimingClient()
+    }
+
+    fun loadReplayTiming(session: Session) {
+        replayTimingLoadJob?.cancel()
+        val client = ReplayTimingClient()
+        replayTimingClient = client
+        replayTimingLoadJob = viewModelScope.launch {
+            client.clear()
+            val year = session.seasonYear
+            val meeting = session.meetingNumber
+            _ui.value = _ui.value.copy(
+                timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
+                liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(),
+                currentLap=0, totalLaps=0, trackGeometry=null, timingStatus="REPLAY_LOADING", providerError=null
+            )
+            if (year == null || year <= 0 || meeting == null || meeting <= 0) {
+                val missing = buildList {
+                    if (year == null || year <= 0) add("season year")
+                    if (meeting == null || meeting <= 0) add("meeting number")
+                }.joinToString(" and ")
+                if (_ui.value.session?.id == session.id && replayTimingClient === client) {
+                    _ui.value = _ui.value.copy(
+                        timingStatus="REPLAY_UNAVAILABLE",
+                        providerError="Replay timing unavailable: missing $missing for ${session.name}"
+                    )
+                }
+                AppLogger.w("ReplayTiming", "REPLAY_DATA_UNAVAILABLE sessionId=${session.id} missing=$missing")
+                return@launch
             }
-            AppLogger.w("ReplayTiming", "REPLAY_DATA_UNAVAILABLE sessionId=${session.id} missing=$missing")
-            return@launch
+            AppLogger.i(
+                "ReplayTiming",
+                "REPLAY_ARCHIVE_LOAD_START year=$year meeting=$meeting sessionType=${session.sessionType} title=${session.name}"
+            )
+            client.load(year, meeting, session.sessionType, session.name)
+                .onSuccess {
+                    if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onSuccess
+                    _ui.value = _ui.value.copy(
+                        replayChannelDiffs=client.sync().channelDiffs,
+                        driverInfo=client.driverInfo(),
+                        liveSessionInfo=client.sessionInfo() ?: LiveSessionInfo(),
+                        timingStatus="REPLAY", providerError=null
+                    )
+                    AppLogger.i(
+                        "ReplayTiming",
+                        "REPLAY_TIMING_SNAPSHOT_COUNT count=${client.snapshotCount()} positionSnapshots=${client.positionSnapshotCount()}"
+                    )
+                }
+                .onFailure {
+                    if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onFailure
+                    _ui.value = _ui.value.copy(
+                        providerError="Replay timing unavailable: " + (it.message ?: "archive not found"),
+                        timingStatus="REPLAY_UNAVAILABLE"
+                    )
+                    AppLogger.w(
+                        "ReplayTiming",
+                        "REPLAY_DATA_UNAVAILABLE year=$year meeting=$meeting reason=${it.javaClass.simpleName}"
+                    )
+                }
         }
-        AppLogger.i("ReplayTiming", "REPLAY_ARCHIVE_LOAD_START year=$year meeting=$meeting sessionType=${session.sessionType}")
-        replayTimingClient.load(year,meeting,session.sessionType)
-            .onSuccess {
-                if (_ui.value.session?.id != session.id) return@onSuccess
-                _ui.value=_ui.value.copy(
-                    replayChannelDiffs=replayTimingClient.sync().channelDiffs,
-                    driverInfo=replayTimingClient.driverInfo(),
-                    liveSessionInfo=replayTimingClient.sessionInfo() ?: LiveSessionInfo(),
-                    timingStatus="REPLAY", providerError=null
-                )
-                AppLogger.i("ReplayTiming", "REPLAY_TIMING_SNAPSHOT_COUNT count=${replayTimingClient.snapshotCount()} positionSnapshots=${replayTimingClient.positionSnapshotCount()}")
-            }
-            .onFailure {
-                if(_ui.value.session?.id==session.id) _ui.value=_ui.value.copy(providerError="Replay timing unavailable: "+(it.message?:"archive not found"), timingStatus="REPLAY_UNAVAILABLE")
-                AppLogger.w("ReplayTiming", "REPLAY_DATA_UNAVAILABLE year=$year meeting=$meeting reason=${it.javaClass.simpleName}")
-            }
     }
     fun sync(delta:Long){_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta);replayTimingClient.nudge(delta)}
     fun setReplayTimingOffset(offsetMs:Long){_ui.value=_ui.value.copy(syncOffsetMs=offsetMs);replayTimingClient.setSyncOffset(offsetMs)}
