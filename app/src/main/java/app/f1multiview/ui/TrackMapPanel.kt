@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.Text
 import app.f1multiview.model.*
+import app.f1multiview.data.timing.interpolateLivePosition
+import app.f1multiview.data.timing.isLivePositionStale
 import app.f1multiview.viewmodel.UiState
 import kotlin.math.cos
 import kotlin.math.max
@@ -89,7 +91,9 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
             focusSelected = focusSelected,
             panX = panX,
             panY = panY,
-            modifier = Modifier.fillMaxSize().padding(if (isTv) 10.dp else 4.dp)
+            modifier = Modifier.fillMaxSize().padding(if (isTv) 10.dp else 4.dp),
+            isLive = ui.session?.live == true,
+            replayPlayheadMs = ui.replayPlayheadMs
         )
         if (ui.trackGeometry?.centerline.isNullOrEmpty()) {
             Column(
@@ -194,14 +198,24 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
     focusSelected:Boolean,
     panX:Float,
     panY:Float,
-    modifier:Modifier
+    modifier:Modifier,
+    isLive:Boolean = false,
+    replayPlayheadMs:Long = 0L
 ){
+    var frameTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(isLive, drivers.isNotEmpty()) {
+        if (!isLive || drivers.isEmpty()) return@LaunchedEffect
+        while (true) {
+            withFrameNanos { frameTimeMs = System.currentTimeMillis() }
+        }
+    }
     Canvas(modifier){
         // Refuse to draw a cluster of GPS dots as if it were a circuit. The marker coordinates
         // are only meaningful when the matching validated centreline has been resolved.
         val circuit = geometry?.centerline.orEmpty()
         if(circuit.size < 20)return@Canvas
-        val selected=drivers.firstOrNull{it.number==selectedNumber}
+        val selectedRaw=drivers.firstOrNull{it.number==selectedNumber}
+        val selected=selectedRaw?.let { if (isLive) interpolateLivePosition(it, frameTimeMs) else it }
         val trackPoints=mutableListOf<TrackPoint>().apply {
             addAll(circuit)
             geometry?.corners?.forEach{add(TrackPoint(it.x,it.y))}
@@ -254,10 +268,16 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             }
         }
 
-        drivers.forEach{d->
+        drivers.forEach{source->
+            val d = if (isLive) interpolateLivePosition(source, frameTimeMs) else source
+            val stale = if (isLive) {
+                isLivePositionStale(source, frameTimeMs)
+            } else {
+                replayPlayheadMs > source.updatedAtMs && replayPlayheadMs - source.updatedAtMs > 2_500L
+            }
             val p=screen(TrackPoint(d.x,d.y))
-            val color=teamColor(d.teamColor)
-            d.trail.takeLast(6).forEachIndexed{index,t->
+            val color=teamColor(d.teamColor).copy(alpha=if (stale) 0.35f else 1f)
+            source.trail.takeLast(6).forEachIndexed{index,t->
                 val alpha=(index+1)/10f
                 drawCircle(color.copy(alpha=alpha),radius=2.5f,center=screen(t))
             }
@@ -386,7 +406,9 @@ fun CompactDriverTrackerFeed(ui: UiState, isTv: Boolean, modifier: Modifier = Mo
                     focusSelected = false,
                     panX = 0f,
                     panY = 0f,
-                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                    modifier = Modifier.fillMaxSize().padding(4.dp),
+                    isLive = ui.session?.live == true,
+                    replayPlayheadMs = ui.replayPlayheadMs
                 )
             }
             Spacer(Modifier.height(4.dp))
