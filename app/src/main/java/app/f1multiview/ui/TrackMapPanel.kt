@@ -50,68 +50,67 @@ private val MapMuted=Color(0xFF9698A2)
 private val MapRed=Color(0xFFE10600)
 
 @Composable
-fun TrackMapPanel(ui:UiState,isTv:Boolean){
-    val drivers=ui.trackPositions
+fun TrackMapPanel(ui: UiState, isTv: Boolean) {
+    val drivers = ui.trackPositions
     var selected by remember { mutableStateOf<String?>(null) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var focusSelected by remember { mutableStateOf(false) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
-    val mapFocusRequester=remember{FocusRequester()}
+    val mapFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit){ mapFocusRequester.requestFocus() }
     LaunchedEffect(drivers) {
-        if(selected==null || drivers.none{it.number==selected}) selected=drivers.firstOrNull()?.number
+        if (selected == null || drivers.none { it.number == selected }) {
+            selected = drivers.firstOrNull()?.number
+        }
     }
 
-    Column(
-        Modifier.fillMaxSize().background(MapBg).padding(if(isTv) 6.dp else 2.dp).focusGroup()
+    Box(
+        Modifier.fillMaxSize()
+            .background(Color(0xFF101010))
+            .focusGroup()
             .onPreviewKeyEvent {
-                if(it.type!=KeyEventType.KeyUp) return@onPreviewKeyEvent false
-                when(it.key){
-                    Key.DirectionLeft -> { selected=previousDriver(drivers,selected); focusSelected=true; true }
-                    Key.DirectionRight -> { selected=nextDriver(drivers,selected); focusSelected=true; true }
-                    Key.DirectionUp -> { zoom=min(4f,zoom+0.25f); true }
-                    Key.DirectionDown -> { zoom=max(1f,zoom-0.25f); true }
-                    Key.Enter, Key.NumPadEnter -> { focusSelected=!focusSelected; true }
+                if (it.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+                when (it.key) {
+                    Key.DirectionLeft -> { selected = previousDriver(drivers, selected); focusSelected = true; true }
+                    Key.DirectionRight -> { selected = nextDriver(drivers, selected); focusSelected = true; true }
+                    Key.DirectionUp -> { zoom = min(4f, zoom + 0.25f); true }
+                    Key.DirectionDown -> { zoom = max(1f, zoom - 0.25f); true }
+                    Key.Enter, Key.NumPadEnter -> { focusSelected = !focusSelected; true }
                     else -> false
                 }
             }
-    ){
-        RaceHeader(ui,drivers.size)
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            Surface(Modifier.weight(1.65f).fillMaxHeight().focusRequester(mapFocusRequester).focusable(),color=MapBg,shape=RoundedCornerShape(5.dp),border=BorderStroke(1.dp,Color.White.copy(alpha=.08f))){
-                Box(Modifier.fillMaxSize()) {
-                    TrackCanvas(geometry=ui.trackGeometry,drivers=drivers,selectedNumber=selected,zoom=zoom,focusSelected=focusSelected,panX=panX,panY=panY,modifier=Modifier.fillMaxSize().padding(5.dp))
-                    if (ui.trackGeometry?.centerline.isNullOrEmpty()) {
-                        Column(Modifier.align(Alignment.Center).padding(18.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                            Text("CIRCUIT GEOMETRY UNAVAILABLE",color=MapWhite,fontSize=10.sp,fontWeight=FontWeight.Black)
-                            Text(
-                                if (ui.liveSessionInfo.circuitKey == null) "Waiting for session circuit metadata" else "No validated centreline matched this circuit",
-                                color=MapMuted,fontSize=8.sp
-                            )
-                        }
-                    }
-                }
-            }
-            Column(Modifier.weight(.85f).fillMaxHeight()){
-                RaceLeaderboard(drivers,selected){selected=it;focusSelected=true}
-                Spacer(Modifier.height(6.dp))
-                RaceControlCompact(ui.raceControl)
+    ) {
+        TrackCanvas(
+            geometry = ui.trackGeometry,
+            drivers = drivers,
+            selectedNumber = selected,
+            zoom = zoom,
+            focusSelected = focusSelected,
+            panX = panX,
+            panY = panY,
+            modifier = Modifier.fillMaxSize().padding(if (isTv) 10.dp else 4.dp)
+        )
+        if (ui.trackGeometry?.centerline.isNullOrEmpty()) {
+            Column(
+                Modifier.align(Alignment.Center).padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("CIRCUIT GEOMETRY UNAVAILABLE", color = MapWhite, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text(
+                    if (ui.liveSessionInfo.circuitKey == null) "Waiting for session circuit metadata" else "No validated centreline matched this circuit",
+                    color = MapMuted, fontSize = 8.sp
+                )
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth().focusGroup(),horizontalArrangement=Arrangement.spacedBy(5.dp)){
-            TrackControl("−"){zoom=max(1f,zoom-.25f)}
-            TrackControl("+"){zoom=min(4f,zoom+.25f)}
-            TrackControl(if(focusSelected)"UNFOCUS" else "FOCUS"){focusSelected=!focusSelected}
-            TrackControl("◀"){panX-=.12f}
-            TrackControl("▶"){panX+=.12f}
-            TrackControl("▲"){panY-=.12f}
-            TrackControl("▼"){panY+=.12f}
-            Spacer(Modifier.weight(1f))
-            Text("D-PAD  DRIVER  •  ▲▼ ZOOM  •  OK FOCUS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=5.dp,vertical=8.dp))
+        // Minimal controls stay out of the way of the track, matching the supplied map reference.
+        Row(
+            Modifier.align(Alignment.BottomEnd).padding(6.dp).focusGroup(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            TrackControl("−") { zoom = max(1f, zoom - 0.25f) }
+            TrackControl("+") { zoom = min(4f, zoom + 0.25f) }
+            TrackControl("RESET") { zoom = 1f; panX = 0f; panY = 0f; focusSelected = false }
         }
     }
 }
