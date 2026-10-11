@@ -474,7 +474,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         if(data==null)return
         val root=data.optJSONObject("WeatherData") ?: data
         fun v(vararg n:String)=n.firstNotNullOfOrNull{root.optString(it).takeIf{value->value.isNotBlank() && value!="null"}}?:"-"
-        _weather.value=TimingWeather(v("AirTemp","AirTemperature"),v("TrackTemp","TrackTemperature"),v("Humidity"),v("WindSpeed","Wind"),v("Rainfall","RainfallIntensity"),v("WindDirection"))
+        _weather.value=TimingWeather(v("AirTemp","AirTemperature"),v("TrackTemp","TrackTemperature"),v("Humidity"),v("WindSpeed","Wind"),v("Rainfall","RainfallIntensity"),v("WindDirection"),v("Pressure","PressureMbar","AirPressure"))
     }
     private fun parseTeamRadio(data:JSONObject?) {
         if(data==null)return
