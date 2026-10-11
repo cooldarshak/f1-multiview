@@ -160,7 +160,6 @@ class TrackMapClient {
         // silently pick whichever equal-scoring feature happens to appear first.
         val selectedIndex = uniqueBestIndex(scoredFeatures.map { it.second }, minimumScore = 80) ?: return emptyList()
         val feature = scoredFeatures[selectedIndex].first
-        val properties = feature.optJSONObject("properties") ?: return emptyList()
         val geometry = feature.optJSONObject("geometry") ?: return emptyList()
         if (!geometry.optString("type").equals("LineString", true)) return emptyList()
         val coordinates = geometry.optJSONArray("coordinates") ?: return emptyList()
