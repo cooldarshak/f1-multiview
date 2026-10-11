@@ -216,13 +216,18 @@ class ReplayTimingClient {
         val stints=findSnapshot(stintSnapshots,target){it.offsetMs}?.stints.orEmpty()
         return rows.map { row ->
             val stint=stints[row.driverNumber]
+            val car = telemetryAt(videoPositionMs).firstOrNull { it.driver == row.driverNumber }
             row.copy(
                 tyre=stint?.compound?.takeIf{it.isNotBlank()} ?: row.tyre,
                 pitStops=stint?.pitStops ?: row.pitStops,
                 lastLap=if(stint?.inPit==true) "IN PIT" else row.lastLap,
                 inPit=stint?.inPit ?: row.inPit,
                 stopped=stint?.stopped ?: row.stopped,
-                stintNumber=stint?.stintNumber?.takeIf { it > 0 } ?: row.stintNumber
+                stintNumber=stint?.stintNumber?.takeIf { it > 0 } ?: row.stintNumber,
+                gear=car?.gear ?: row.gear,
+                rpm=car?.rpm ?: row.rpm,
+                speed=car?.speed?.takeIf { it > 0 }?.toString() ?: row.speed,
+                drsActive=car?.drs?.takeIf { it > 0 }?.let { it >= 8 }
             )
         }
     }
@@ -605,7 +610,8 @@ class ReplayTimingClient {
                         throttle=numberChannel(channels,"4","Throttle"),
                         brake=numberChannel(channels,"5","Brake"),
                         lap=existing?.lap ?: 0,
-                        lapTime=existing?.lapTime ?: "-"
+                        lapTime=existing?.lapTime ?: "-",
+                        drs=numberChannel(channels,"45","DRS")
                     )
                     changed=true
                 }
