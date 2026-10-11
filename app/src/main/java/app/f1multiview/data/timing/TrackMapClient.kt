@@ -162,6 +162,11 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
         return Result.failure(failure)
     }
 
+    private fun readBundledCatalogue(): JSONObject? = runCatching {
+        val appContext = context ?: return@runCatching null
+        appContext.assets.open("circuit_geometry_2026.json").bufferedReader().use { JSONObject(it.readText()) }
+    }.getOrNull()
+
     private suspend fun loadSingleYear(
         circuitKey: Int,
         geometryYear: Int,
