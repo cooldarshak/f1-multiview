@@ -55,6 +55,8 @@ private val MapRed=Color(0xFFE10600)
 @Composable
 fun TrackMapPanel(ui: UiState, isTv: Boolean) {
     val drivers = ui.trackPositions
+    val mappingValid = ui.trackPositionMappingValid
+    val drawableDrivers = if (mappingValid == true) drivers else emptyList()
     var selected by remember { mutableStateOf<String?>(null) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var focusSelected by remember { mutableStateOf(false) }
@@ -86,7 +88,7 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
     ) {
         TrackCanvas(
             geometry = ui.trackGeometry,
-            drivers = drivers,
+            drivers = drawableDrivers,
             selectedNumber = selected,
             zoom = zoom,
             focusSelected = focusSelected,
@@ -117,6 +119,23 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
                 )
             }
         }
+        if (!ui.trackGeometry?.centerline.isNullOrEmpty() && drivers.isNotEmpty() && mappingValid != true) {
+            Surface(
+                Modifier.align(Alignment.TopCenter).padding(8.dp),
+                color = Color(0xDD101116),
+                shape = RoundedCornerShape(3.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+            ) {
+                Text(
+                    if (mappingValid == false) "POSITION COORDINATES DO NOT MATCH THIS CIRCUIT · MARKERS HIDDEN"
+                    else "CHECKING DRIVER-TO-CIRCUIT ALIGNMENT · MARKERS HIDDEN",
+                    color = if (mappingValid == false) Color(0xFFFFC857) else MapMuted,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                )
+            }
+        }
         // Minimal controls stay out of the way of the track, matching the supplied map reference.
         Row(
             Modifier.align(Alignment.BottomEnd).padding(6.dp).focusGroup(),
@@ -134,9 +153,9 @@ private fun RaceHeader(ui:UiState,carCount:Int){
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
         Column(Modifier.weight(1f)){
             Text(ui.liveSessionInfo.meeting.ifBlank{"FORMULA 1"}.uppercase()+"  ·  "+ui.liveSessionInfo.sessionType.uppercase(),color=MapWhite,fontSize=13.sp,fontWeight=FontWeight.Black)
-            Text(ui.liveSessionInfo.name+"  ·  LAP DATA / LIVE GPS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold)
+            Text(ui.liveSessionInfo.name+"  ·  LAP DATA / DRIVER POSITIONS",color=MapMuted,fontSize=8.sp,fontWeight=FontWeight.Bold)
         }
-        RaceStat("CARS",carCount.toString());RaceStat("STATUS",ui.trackStatus.label);RaceStat("GPS",if(carCount>0)"LIVE" else "WAIT")
+        RaceStat("CARS",carCount.toString());RaceStat("STATUS",ui.trackStatus.label);RaceStat("MAP",when(ui.trackPositionMappingValid){true->"MAPPED";false->"MISMATCH";null->"CHECK"})
     }
 }
 @Composable private fun RaceStat(label:String,value:String){
