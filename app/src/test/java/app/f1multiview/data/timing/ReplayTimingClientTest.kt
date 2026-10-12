@@ -152,6 +152,24 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun parsesOfficialF1TimingArchiveDeltaShapeWithStringPositionsAndRacingNumberKeys() = runBlocking {
+        // Mirrors the public F1 TimingData.jsonStream shape: timestamp + Lines, racing-number
+        // object keys, string Position values, and sparse optional fields.
+        val timing = """00:00:03.703{"Lines":{"3":{"Line":1,"Position":"1","RacingNumber":"3","GapToLeader":"LEADER","InPit":true},"16":{"Line":2,"Position":"2","RacingNumber":"16","GapToLeader":"+1.2","IntervalToPositionAhead":{"Value":"+1.2"}}}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing))
+
+        val result = client.load(2026, 4, "Race", "Race")
+
+        assertTrue(result.isSuccess)
+        val rows = client.rowsAt(3_703L)
+        assertEquals(2, rows.size)
+        assertEquals(listOf(1, 2), rows.map { it.position })
+        assertEquals(listOf("3", "16"), rows.map { it.driverNumber })
+        assertEquals("LEADER", rows.first().gap)
+        assertEquals(true, rows.first().inPit)
+    }
+
+    @Test
     fun emptyTimingArchiveReturnsUnavailableInsteadOfSuccess() = runBlocking {
         val result = ReplayTimingClient(archiveHttpClient("")).load(2026, 4, "Race", "Race")
         assertTrue(result.isFailure)

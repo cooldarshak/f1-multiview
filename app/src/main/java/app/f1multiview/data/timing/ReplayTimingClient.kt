@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.StringReader
@@ -173,7 +174,15 @@ internal fun interpolateReplayPositionSnapshots(
     }
 }
 
-class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
+class ReplayTimingClient(httpClient: OkHttpClient = OkHttpClient()) {
+    // OkHttp execute() is blocking; coroutine withTimeout alone cannot stop a stalled read.
+    // Network-level timeouts prevent an archived feed from leaving the UI loading indefinitely.
+    private val http: OkHttpClient = httpClient.newBuilder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(75, TimeUnit.SECONDS)
+        .build()
+
     fun clear() {
         snapshots=emptyList(); positionSnapshots=emptyList(); telemetrySnapshots=emptyList(); stintSnapshots=emptyList()
         archivedDriverInfo=emptyList(); archivedSessionInfo=null; weatherSnapshots=emptyList(); trackStatusSnapshots=emptyList()

@@ -20,6 +20,27 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
+/**
+ * App-owned native data panels. These are presentation feeds, not F1 TV media streams:
+ * they do not resolve a manifest, request a licence, or create another decoder.
+ */
+internal fun appOwnedDashboardSources(sessionId: String): List<StreamSource> = listOf(
+    StreamSource(
+        id = "f1-dash-data-" + sessionId,
+        title = "F1 Dash Data",
+        kind = StreamKind.F1_DASH_DATA,
+        contentId = null,
+        channelId = null
+    ),
+    StreamSource(
+        id = "track-map-" + sessionId,
+        title = "Driver Tracker Map",
+        kind = StreamKind.TRACK_MAP,
+        contentId = null,
+        channelId = null
+    )
+)
+
 class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     private val api=F1TvApiClient()
     private val store=SessionStore(context)

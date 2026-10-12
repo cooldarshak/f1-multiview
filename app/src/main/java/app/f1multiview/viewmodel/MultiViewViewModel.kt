@@ -1,5 +1,7 @@
 package app.f1multiview.viewmodel
 
+import app.f1multiview.data.f1tv.appOwnedDashboardSources
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -176,8 +178,9 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
          val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl)
          val resume=continueStore.entries.first().firstOrNull { it.contentId == vod.contentId }
          _ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,replayTimingError=null,pendingResume=resume)
-         loadReplayTiming(session)
-         loadStreams(session, autoSelectFeeds = true)
+         val replayEligible = shouldLoadReplayTiming(session)
+         if (replayEligible) loadReplayTiming(session) else cancelReplayTimingLoad()
+         loadStreams(session, autoSelectFeeds = replayEligible)
      }
     fun prepareStream(id:String)=viewModelScope.launch {
         val source=_ui.value.streams.firstOrNull{it.id==id} ?: return@launch
@@ -303,7 +306,16 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     }
     private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
         provider.streams(session.id).fold(
-            { sources ->
+            { returnedSources ->
+                // Some single-asset replay responses have no additionalStreams array. Keep
+                // the authorised video source and still expose app-owned native timing/map
+                // panels for race sessions. These panels have no URL/contentId and never
+                // enter the DRM player or decoder scheduling path.
+                val exposeNativeDashboard = session.live ||
+                    (autoSelectFeeds && shouldLoadReplayTiming(session))
+                val sources = if (exposeNativeDashboard) {
+                    (returnedSources + appOwnedDashboardSources(session.id)).distinctBy { it.id }
+                } else returnedSources
                 val mainSource = sources.firstOrNull { it.kind == StreamKind.WORLD } ?: sources.firstOrNull()
                 val nativeDataKinds = setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
                 val nativeDataSources = sources
