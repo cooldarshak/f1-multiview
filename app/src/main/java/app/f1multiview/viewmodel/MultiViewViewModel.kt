@@ -661,8 +661,27 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 "ReplayTiming",
                 "REPLAY_ARCHIVE_LOAD_START year=$year meeting=$meeting sessionType=${session.sessionType} title=${session.name}"
             )
-            client.load(year, meeting, session.dateLabel.takeIf { it.isNotBlank() && !it.equals("Replay", true) } ?: session.sessionType, session.name)
-                .onSuccess {
+            client.load(
+                year,
+                meeting,
+                session.dateLabel.takeIf { it.isNotBlank() && !it.equals("Replay", true) } ?: session.sessionType,
+                session.name
+            ) { firstVideoPositionMs ->
+                // TimingData is the critical path. Show it immediately, instead of waiting for the
+                // much larger optional telemetry/position archives to finish downloading.
+                if (replayTimingClient === client && _ui.value.session?.id == session.id) {
+                    val initialRows = client.rowsAt(firstVideoPositionMs)
+                    _ui.value = _ui.value.copy(
+                        timing = initialRows,
+                        replayPlayheadMs = firstVideoPositionMs,
+                        replayDataOffsetMs = client.archiveOffsetForVideoPosition(firstVideoPositionMs)
+                    )
+                    AppLogger.i(
+                        "ReplayTiming",
+                        "REPLAY_TIMING_ROWS_READY rows=${initialRows.size} firstOffsetMs=$firstVideoPositionMs"
+                    )
+                }
+            }.onSuccess {
                     if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onSuccess
                     _ui.value = _ui.value.copy(
                         replayChannelDiffs=client.sync().channelDiffs,
