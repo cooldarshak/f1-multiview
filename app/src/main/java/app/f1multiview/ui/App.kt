@@ -1161,9 +1161,20 @@ private fun PitWall(
             Text(multiviewStatus, color = Color(0xFFFFD28A), fontSize = 10.sp,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
         }
+        val nativeTimingMapDashboard = selected.size == 3 &&
+            selected.any { it.kind == StreamKind.F1_DASH_DATA } &&
+            selected.any { it.kind == StreamKind.TRACK_MAP }
         CanonicalMultiviewLayout(
             ui, selected, engine, errors, if (isTv) tvResizeMode else false, {},
-            modifier = Modifier.fillMaxWidth().aspectRatio(wallAspect)
+            compactPhone = compactPhone,
+            modifier = if (compactPhone && nativeTimingMapDashboard) {
+                // A 16:9 wall only 200dp high on a phone squeezes the timing tower and
+                // circuit into postage stamps. Give the native panels their own vertical
+                // space on portrait phones; TVs retain the left-video/right-column layout.
+                Modifier.fillMaxWidth().height(720.dp)
+            } else {
+                Modifier.fillMaxWidth().aspectRatio(wallAspect)
+            }
         )
     }
 }
@@ -1631,7 +1642,8 @@ private fun CanonicalMultiviewLayout(
     activeId: String? = null,
     modifier: Modifier = Modifier,
     surfaceType: Int = SURFACE_TYPE_SURFACE_VIEW,
-    onVideoTap: (() -> Unit)? = null
+    onVideoTap: (() -> Unit)? = null,
+    compactPhone: Boolean = false
 ) {
     val gap = 6.dp
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -1680,12 +1692,14 @@ private fun CanonicalMultiviewLayout(
                     modifier = Modifier.layoutId("handle-main")
                 ) { splitX = (splitX + it / 1000f).coerceIn(.2f, .8f) }
                 3 -> {
-                    ResizeHandle(
-                        Orientation.Horizontal, editSize, firstResizeFocusRequester,
-                        modifier = Modifier.layoutId("handle-main")
-                    ) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
-                    ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-right-1")) {
-                        splitY = (splitY + it / 900f).coerceIn(.35f, .7f)
+                    if (!compactPhone) {
+                        ResizeHandle(
+                            Orientation.Horizontal, editSize, firstResizeFocusRequester,
+                            modifier = Modifier.layoutId("handle-main")
+                        ) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
+                        ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-right-1")) {
+                            splitY = (splitY + it / 900f).coerceIn(.35f, .7f)
+                        }
                     }
                 }
                 4 -> {
@@ -1747,7 +1761,22 @@ private fun CanonicalMultiviewLayout(
         val referenceDashLayout = layoutFeeds.size == 3 &&
             layoutFeeds[1].kind == StreamKind.F1_DASH_DATA &&
             layoutFeeds[2].kind == StreamKind.TRACK_MAP
-        if (referenceDashLayout) {
+        if (referenceDashLayout && compactPhone) {
+            // Responsive portrait phone mode: keep the video at a natural 16:9 ratio,
+            // then give the full-width timing tower and driver tracker useful touch-sized
+            // canvases below it. A narrow right-hand column on a 16:9 phone wall makes
+            // both native panels unreadable; the TV reference composition remains unchanged.
+            val videoHeight = (width.toFloat() / (16f / 9f)).toInt()
+                .coerceIn(0, height)
+            val remainingHeight = (height - videoHeight - 4 * gapPx - 2 * dividerPx).coerceAtLeast(0)
+            val timingHeight = (remainingHeight * 0.52f).toInt().coerceIn(0, remainingHeight)
+            val mapHeight = remainingHeight - timingHeight
+            placeVideo(0, 0, 0, width, videoHeight)
+            val timingY = videoHeight + gapPx + dividerPx + gapPx
+            placeVideo(1, 0, timingY, width, timingHeight)
+            val mapY = timingY + timingHeight + gapPx + dividerPx + gapPx
+            placeVideo(2, 0, mapY, width, mapHeight)
+        } else if (referenceDashLayout) {
             // F1Dash-style three-feed composition: main video owns the left two-thirds;
             // timing tower sits upper-right and the track map/driver tracker lower-right.
             val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
