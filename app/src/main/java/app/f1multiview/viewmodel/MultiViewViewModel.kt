@@ -691,6 +691,14 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                         liveSessionInfo=client.sessionInfo() ?: LiveSessionInfo(),
                         timingStatus=if (client.isSyncCalibrated()) "REPLAY" else "REPLAY_UNCALIBRATED", providerError=null
                     )
+                    // Rebuild replay rows/positions against the final sync offset now that the
+                    // ancillary feeds have loaded, then resolve circuit geometry from archived
+                    // session metadata so the tracker is usable without opening the separate panel.
+                    val loadedPlayheadMs = _ui.value.replayPlayheadMs
+                    if (client.rowsAt(loadedPlayheadMs).isNotEmpty()) {
+                        updateReplayTiming(loadedPlayheadMs)
+                    }
+                    loadTrackMapGeometry()
                     AppLogger.i(
                         "ReplayTiming",
                         "REPLAY_TIMING_SNAPSHOT_COUNT count=${client.snapshotCount()} positionSnapshots=${client.positionSnapshotCount()}"
