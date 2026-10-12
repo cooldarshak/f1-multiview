@@ -73,6 +73,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
     private var lastRowsLogAtMs = 0L
     private var lastPositionLogAtMs = 0L
     @Volatile private var lastTimingRowsAtMs = 0L
+    @Volatile private var subscriptionStartedAtMs = 0L
     private var freshnessWatcher: Job? = null
     private var socket:WebSocket?=null;private var reconnect:Job?=null;private var keepAlive:Job?=null;@Volatile private var affinityCookie:String?=null
     private fun clearSessionCaches() {
@@ -104,6 +105,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         _lapCount.value = 0 to 0
         _sessionClock.value = "-"
         lastTimingRowsAtMs = 0L
+        subscriptionStartedAtMs = System.currentTimeMillis()
         observedFeeds.clear()
         synchronized(historyLock) {
             liveHistory.clear()
@@ -205,6 +207,7 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                         .put("arguments",JSONArray().put(feedArray))
                     val sent = ws.send(subscribe.toString()+RS)
                     _status.value = if (sent) "SUBSCRIBE_SENT" else "ERROR"
+                    subscriptionStartedAtMs = if (sent) System.currentTimeMillis() else 0L
                     AppLogger.i("LiveTiming","LIVE_TIMING_SUBSCRIPTION_SENT acceptedBySocket=$sent feedCount=${FEEDS.size}")
                     if (!sent) {
                         ws.close(1011, "Subscribe message was not queued")
@@ -221,10 +224,16 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                     freshnessWatcher=scope.launch {
                         while (isActive && socket===ws) {
                             delay(1_000L)
-                            val last=lastTimingRowsAtMs
-                            if (last > 0L && System.currentTimeMillis()-last > 5_000L && _status.value=="LIVE") {
-                                _status.value="STALE"
-                                AppLogger.w("LiveTiming","LIVE_TIMING_STALE lastTimingUpdateMs=${last} staleAfterMs=5000")
+                            val now = System.currentTimeMillis()
+                            val last = lastTimingRowsAtMs
+                            val started = subscriptionStartedAtMs
+                            if (last > 0L && now - last > 5_000L && _status.value == "LIVE") {
+                                _status.value = "STALE"
+                                AppLogger.w("LiveTiming", "LIVE_TIMING_STALE lastTimingUpdateMs=${last} staleAfterMs=5000")
+                            } else if (last == 0L && started > 0L &&
+                                now - started > 15_000L && _status.value in setOf("SUBSCRIBE_SENT", "SUBSCRIBED")) {
+                                _status.value = "NO_DATA"
+                                AppLogger.w("LiveTiming", "LIVE_TIMING_NO_DATA receivedTimingRows=false waitMs=${now - started}")
                             }
                         }
                     }
