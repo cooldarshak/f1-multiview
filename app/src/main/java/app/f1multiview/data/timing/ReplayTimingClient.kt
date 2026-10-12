@@ -124,7 +124,7 @@ internal fun interpolateReplayPositionSnapshots(
     }
 }
 
-class ReplayTimingClient {
+class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
     fun clear() {
         snapshots=emptyList(); positionSnapshots=emptyList(); telemetrySnapshots=emptyList(); stintSnapshots=emptyList()
         archivedDriverInfo=emptyList(); archivedSessionInfo=null; weatherSnapshots=emptyList(); trackStatusSnapshots=emptyList()
@@ -149,7 +149,6 @@ class ReplayTimingClient {
         }
     }
 
-    private val http=OkHttpClient()
     private var snapshots:List<ReplayTimingSnapshot> = emptyList()
     private var positionSnapshots:List<ReplayPositionSnapshot> = emptyList()
     private var telemetrySnapshots:List<ReplayTelemetrySnapshot> = emptyList()
@@ -170,6 +169,11 @@ class ReplayTimingClient {
         sessionTitle: String = sessionType,
         onTimingRowsAvailable: suspend (firstVideoPositionMs: Long) -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        if (year <= 0 || meetingNumber <= 0) {
+            val failure = IllegalArgumentException("Replay timing requires positive year and meeting number (year=$year, meeting=$meetingNumber)")
+            AppLogger.w("ReplayTiming", "REPLAY_LOAD_REJECTED reason=missing_identifier year=$year meeting=$meetingNumber")
+            return@withContext Result.failure(failure)
+        }
         clear()
         runCatching {
             val index=getJson("https://livetiming.formula1.com/static/$year/Index.json")
