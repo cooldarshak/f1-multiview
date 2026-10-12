@@ -1345,7 +1345,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     Box(Modifier.width(54.dp).height(2.dp).background(Color(0xFF319DFF)))
                 }
                 Spacer(Modifier.weight(1f))
-                Text("LIVE TIMING", color = if (ui.timingStatus == "LIVE") Color(0xFF68C96B) else Muted,
+                Text(if (ui.session?.live == true) "LIVE TIMING" else "REPLAY TIMING", color = if (ui.timingStatus == "LIVE") Color(0xFF68C96B) else Muted,
                     fontSize = 7.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(8.dp))
                 Text("✎", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -1354,7 +1354,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
             if (rows.isEmpty()) {
                 val emptyMessage = when (ui.timingStatus) {
                     "REPLAY_LOADING" -> "LOADING REPLAY TIMING"
-                    "REPLAY_UNAVAILABLE" -> ui.providerError?.takeIf { it.isNotBlank() } ?: "REPLAY TIMING UNAVAILABLE"
+                    "REPLAY_UNAVAILABLE" -> ui.replayTimingError?.takeIf { it.isNotBlank() } ?: "REPLAY TIMING UNAVAILABLE"
                     "REPLAY" -> "WAITING FOR REPLAY TIMING AT THIS PLAYHEAD"
                     "LIVE" -> "WAITING FOR LIVE TIMING DATA"
                     "HANDSHAKING" -> "LIVE TIMING SOCKET OPEN · HANDSHAKING"
