@@ -53,7 +53,7 @@ private val MapMuted=Color(0xFF9698A2)
 private val MapRed=Color(0xFFE10600)
 
 @Composable
-fun TrackMapPanel(ui: UiState, isTv: Boolean) {
+fun TrackMapPanel(ui: UiState, isTv: Boolean, modifier: Modifier = Modifier) {
     val drivers = ui.trackPositions
     val mappingValid = ui.trackPositionMappingValid
     val drawableDrivers = if (mappingValid == true) drivers else emptyList()
@@ -71,7 +71,7 @@ fun TrackMapPanel(ui: UiState, isTv: Boolean) {
     }
 
     Box(
-        Modifier.fillMaxSize()
+        modifier.fillMaxSize()
             .background(Color(0xFF101010))
             .focusGroup()
             .onPreviewKeyEvent {
