@@ -828,7 +828,15 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
         val obj=sectorObject(lastLap,line,key)
         if(obj!=null){
             val value=obj.optString("Value").ifBlank{obj.optString("value")}.ifBlank{"-"}
-            val status=when{obj.optBoolean("OverallFastest",false)->"PURPLE";obj.optBoolean("PersonalFastest",false)->"GREEN";else->"NORMAL"}
+            val status=when {
+                obj.optBoolean("OverallFastest",false) -> "PURPLE"
+                obj.optBoolean("PersonalFastest",false) -> "GREEN"
+                obj.optInt("Status",0) == 2048 -> "YELLOW"
+                obj.optInt("Status",0) == 2049 -> "GREEN"
+                obj.optInt("Status",0) == 2051 -> "PURPLE"
+                obj.optInt("Status",0) == 2064 -> "BLUE"
+                else -> "NORMAL"
+            }
             return value to status
         }
         val raw=lastLap?.opt(key) ?: line.opt(key)

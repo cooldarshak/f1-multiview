@@ -646,6 +646,10 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
     private fun sectorStatus(obj:JSONObject?,value:String):String=when{
         obj?.optBoolean("OverallFastest",false)==true -> "PURPLE"
         obj?.optBoolean("PersonalFastest",false)==true -> "GREEN"
+        obj?.optInt("Status",0)==2048 -> "YELLOW"
+        obj?.optInt("Status",0)==2049 -> "GREEN"
+        obj?.optInt("Status",0)==2051 -> "PURPLE"
+        obj?.optInt("Status",0)==2064 -> "BLUE"
         value=="-" || value.isBlank() -> "NORMAL"
         else -> "NORMAL"
     }

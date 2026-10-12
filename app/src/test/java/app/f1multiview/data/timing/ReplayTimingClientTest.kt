@@ -521,6 +521,25 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun parsesOfficialArchivePositionStringsAndArraySectorStatuses() = runBlocking {
+        // Sanitized row shape captured from the official 2026 TimingData/DriverList archives.
+        val timing = """00:00:03.703{"Lines":{"3":{"GapToLeader":"","IntervalToPositionAhead":{"Value":"","Catching":false},"Line":1,"Position":"1","ShowPosition":true,"RacingNumber":"3","Retired":false,"InPit":true,"PitOut":false,"Stopped":false,"Status":80,"Sectors":[{"Stopped":false,"Value":"","Status":0,"OverallFastest":false,"PersonalFastest":false},{"Stopped":false,"Value":"","Status":2048,"OverallFastest":false,"PersonalFastest":false},{"Stopped":false,"Value":"","Status":2064,"OverallFastest":false,"PersonalFastest":false}],"BestLapTime":{"Value":""},"LastLapTime":{"Value":"","Status":0,"OverallFastest":false,"PersonalFastest":false}}}}"""
+        val driverList = """00:00:03.703{"3":{"RacingNumber":"3","BroadcastName":"M VERSTAPPEN","FullName":"Max VERSTAPPEN","Tla":"VER","Line":1,"TeamName":"Red Bull Racing","TeamColour":"4781D7"}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing, driverListData = driverList))
+
+        val result = client.load(2026, 4, "Race", "Race")
+
+        assertTrue(result.isSuccess)
+        val row = client.rowsAt(3_703L).single()
+        assertEquals("VER", row.driver)
+        assertEquals(1, row.position)
+        assertEquals("3", row.driverNumber)
+        assertTrue(row.inPit)
+        assertEquals("YELLOW", row.sector2Status)
+        assertEquals("BLUE", row.sector3Status)
+    }
+
+    @Test
     fun replayTimingDeltasMergeIntoPersistentDriverState() {
         val stream = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}},"4":{"Position":2,"Tla":"NOR","GapToLeader":"+1.2"}}}
 00:00:02.000{"Lines":{"1":{"LastLapTime":{"Value":"1:31.900"}},"4":{"GapToLeader":"+0.8"}}}

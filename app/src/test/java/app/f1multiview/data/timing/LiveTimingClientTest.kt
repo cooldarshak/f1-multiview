@@ -255,6 +255,19 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun mapsOfficialSectorStatusCodesWithoutFastestFlags() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(JSONObject(
+            """{"Lines":{"1":{"Position":1,"Tla":"VER","Sectors":[{"Value":"25.100","Status":2048},{"Value":"33.200","Status":2064},{"Value":"34.000","Status":2051}]}}}"""
+        ))
+
+        val row = client.rows.value.single()
+        assertEquals("YELLOW", row.sector1Status)
+        assertEquals("BLUE", row.sector2Status)
+        assertEquals("PURPLE", row.sector3Status)
+    }
+
+    @Test
     fun parsesOneBasedSectorObjectKeysWithoutReassigningSectorNumbers() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         client.parseTiming(JSONObject(
