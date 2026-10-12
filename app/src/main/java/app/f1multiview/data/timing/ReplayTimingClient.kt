@@ -41,6 +41,41 @@ data class ReplaySyncData(val sessionStartMs:Long,val channelDiffs:Map<String,Lo
 internal data class ReplayArchiveSession(val name:String,val type:String,val path:String,val key:String="")
 internal data class ReplaySessionResolution(val session:ReplayArchiveSession,val reason:String)
 
+private data class ReplayArchiveRecord(val offsetMs: Long, val payload: String)
+
+private val replayArchiveTimestampPrefix = Regex("""^(\d{1,2}:\d{2}:\d{2}[:.]\d{1,9})""")
+private val replayArchiveTimestampValue = Regex("""^(\d{1,2}):(\d{2}):(\d{2})[:.](\d{1,9})$""")
+
+private fun parseReplayArchiveOffset(value: String): Long? {
+    val match = replayArchiveTimestampValue.matchEntire(value.trim()) ?: return null
+    val hours = match.groupValues[1].toLongOrNull() ?: return null
+    val minutes = match.groupValues[2].toLongOrNull() ?: return null
+    val seconds = match.groupValues[3].toLongOrNull() ?: return null
+    val millis = match.groupValues[4].padEnd(3, '0').take(3).toLongOrNull() ?: return null
+    if (minutes !in 0..59 || seconds !in 0..59) return null
+    return ((hours * 60L + minutes) * 60L + seconds) * 1000L + millis
+}
+
+private fun parseReplayArchiveRecord(line: String): ReplayArchiveRecord? {
+    val cleaned = line.trimStart('\uFEFF', ' ', '\t')
+    val timestamp = replayArchiveTimestampPrefix.find(cleaned) ?: return null
+    if (timestamp.range.first != 0) return null
+    val offset = parseReplayArchiveOffset(timestamp.groupValues[1]) ?: return null
+    val payload = cleaned.substring(timestamp.range.last + 1).trimStart(' ', '\t', ',', ':')
+    if (payload.isBlank()) return null
+    return ReplayArchiveRecord(offset, payload)
+}
+
+private fun replayArchiveJsonObject(line: String): JSONObject? {
+    val payload = parseReplayArchiveRecord(line)?.payload ?: run {
+        val cleaned = line.trimStart('\uFEFF', ' ', '\t')
+        val brace = cleaned.indexOf('{')
+        if (brace < 0) return null
+        cleaned.substring(brace)
+    }
+    return runCatching { org.json.JSONTokener(payload).nextValue() as? JSONObject }.getOrNull()
+}
+
 internal fun resolveReplayArchiveSession(
     candidates: List<ReplayArchiveSession>,
     requestedSessionType: String,
@@ -192,7 +227,16 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
             val session=resolution.session
             AppLogger.i("ReplayTiming", "REPLAY_SESSION_SELECTED name=${session.name} type=${session.type} path=${session.path} reason=${resolution.reason}")
             val path=session.path
-            snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
+            // TimingData keys drivers by racing number. Load the archive's driver identity map
+            // first; relying on Tla embedded in TimingData silently drops every row when absent.
+            archivedDriverInfo=loadOptionalArchive("DriverList.jsonStream", emptyList()) {
+                parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream"))
+            }
+            AppLogger.i("ReplayTiming", "REPLAY_DRIVER_LIST_PARSED count=" + archivedDriverInfo.size)
+            snapshots=parse(
+                getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"),
+                archivedDriverInfo
+            )
             AppLogger.i(
                 "ReplayTiming",
                 "REPLAY_TIMING_PARSE_COMPLETE session=${session.name} snapshots=${snapshots.size} rowsAtFirst=${snapshots.firstOrNull()?.rows?.size ?: 0}"
@@ -203,7 +247,6 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
             // rendering rows already available for this replay.
             val firstTimingOffsetMs = snapshots.first().offsetMs.coerceAtLeast(0L)
             onTimingRowsAvailable(firstTimingOffsetMs)
-            archivedDriverInfo=loadOptionalArchive("DriverList.jsonStream", emptyList()) { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }
             archivedSessionInfo=loadOptionalArchive<LiveSessionInfo?>("SessionInfo.jsonStream", null) { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }
             weatherSnapshots=loadOptionalArchive("WeatherData.jsonStream", emptyList()) { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }
             trackStatusSnapshots=loadOptionalArchive("TrackStatus.jsonStream", emptyList()) { parseTrackStatusSnapshots(getText("https://livetiming.formula1.com/static/$path/TrackStatus.jsonStream")) }
@@ -317,8 +360,7 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
     internal fun parseSessionInfo(text:String):LiveSessionInfo? {
         var parsed: LiveSessionInfo? = null
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val root=replayArchiveJsonObject(line) ?: return@forEachLine
             val info=root.optJSONObject("SessionInfo") ?: root
             val meeting=info.optJSONObject("Meeting") ?: JSONObject()
             val circuit=meeting.optJSONObject("Circuit") ?: info.optJSONObject("Circuit") ?: JSONObject()
@@ -355,9 +397,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val merged=JSONObject()
         val out=ArrayList<ReplayWeatherSnapshot>()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
+            val root=runCatching{org.json.JSONTokener(record.payload).nextValue() as? JSONObject}.getOrNull() ?: return@forEachLine
             val delta=root.optJSONObject("WeatherData") ?: root
             mergeObject(merged,delta)
             fun value(vararg keys:String):String=keys.firstNotNullOfOrNull{merged.optString(it).takeIf{v->v.isNotBlank()&&v!="null"}} ?: "-"
@@ -378,9 +420,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val out=ArrayList<ReplayTrackStatusSnapshot>()
         var latest=TrackStatusInfo()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
+            val root=runCatching{org.json.JSONTokener(record.payload).nextValue() as? JSONObject}.getOrNull() ?: return@forEachLine
             val data=root.optJSONObject("TrackStatus") ?: root
             val raw=data.optString("Status")
             val code=raw.toIntOrNull() ?: data.optInt("Status",latest.code)
@@ -420,9 +462,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val out=ArrayList<ReplayClockSnapshot>()
         var latest="-"
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
+            val root=runCatching{org.json.JSONTokener(record.payload).nextValue() as? JSONObject}.getOrNull() ?: return@forEachLine
             val data=root.optJSONObject("ExtrapolatedClock") ?: root
             val remaining=data.optString("Remaining").ifBlank{data.optString("Clock").ifBlank{data.optString("Time")}}
             if(remaining.isNotBlank() && remaining!="null")latest=remaining
@@ -437,9 +479,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val out=ArrayList<ReplayLapSnapshot>()
         var current=0;var total=0
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
+            val root=runCatching{org.json.JSONTokener(record.payload).nextValue() as? JSONObject}.getOrNull() ?: return@forEachLine
             val data=root.optJSONObject("LapCount") ?: root
             current=data.optInt("CurrentLap",data.optInt("CurrentLapNumber",current))
             total=data.optInt("TotalLaps",total)
@@ -451,9 +493,8 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
     internal fun parseDriverInfo(text:String):List<DriverInfo> {
         val result=linkedMapOf<String,DriverInfo>()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val body=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
-            val root=body.optJSONObject("DriverList") ?: body.optJSONObject("Drivers") ?: body
+            val body=replayArchiveJsonObject(line) ?: return@forEachLine
+            val root=body.optJSONObject("DriverList") ?: body.optJSONObject("Drivers") ?: body.optJSONObject("Lines") ?: body
             val keys=root.keys()
             while(keys.hasNext()){
                 val key=keys.next()
@@ -472,14 +513,27 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         return result.values.sortedWith(compareBy<DriverInfo>{it.number.toIntOrNull()?:Int.MAX_VALUE}.thenBy{it.number})
     }
 
-    internal fun parse(text:String):List<ReplayTimingSnapshot> {
+    internal fun parse(text:String, driverInfo: List<DriverInfo> = emptyList()):List<ReplayTimingSnapshot> {
         val out=ArrayList<ReplayTimingSnapshot>()
         val mergedLines=JSONObject()
+        val driverByNumber=driverInfo.associateBy { it.number }
+        var totalLines=0
+        var timestampedLines=0
+        var jsonRecords=0
+        var lineDeltas=0
+        var rowsProduced=0
+        var firstLinePrefix=""
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<12)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val json=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            if(line.isBlank())return@forEachLine
+            totalLines++
+            if(firstLinePrefix.isBlank()) firstLinePrefix=line.trimStart('\uFEFF',' ','\t').take(12)
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            timestampedLines++
+            val offset=record.offsetMs
+            val json=runCatching{org.json.JSONTokener(record.payload).nextValue() as? JSONObject}.getOrNull() ?: return@forEachLine
+            jsonRecords++
             val delta=json.optJSONObject("Lines") ?: json.optJSONObject("lines") ?: return@forEachLine
+            lineDeltas++
             // TimingData.jsonStream records after the first snapshot are sparse deltas. Merge
             // recursively before deriving rows so the standings remain stable during replay seeks.
             mergeObject(mergedLines,delta)
@@ -489,8 +543,11 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                 val number=keys.next()
                 val d=mergedLines.optJSONObject(number) ?: continue
                 val pos=d.optInt("Position",d.optInt("PositionNumber",0))
+                val metadata=driverByNumber[number]
                 val driver=d.optString("Tla").ifBlank{d.optString("ShortName")}
                     .ifBlank{d.optString("FullName").ifBlank{d.optString("Driver")}}
+                    .ifBlank{metadata?.acronym.orEmpty()}
+                    .ifBlank{metadata?.name.orEmpty()}
                 if(pos<=0 || driver.isBlank())continue
                 val leaderGap=d.optString("GapToLeader").ifBlank{"-"}
                 val interval=d.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty()
@@ -522,8 +579,15 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                     interval=interval,leaderGap=leaderGap,driverNumber=number,bestLapStatus=bestStatus,inPit=d.optBoolean("InPit",false),stopped=d.optBoolean("Stopped",false)
                 )
             }
-            if(rows.isNotEmpty())out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
+            if(rows.isNotEmpty()) {
+                rowsProduced += rows.size
+                out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
+            }
         }
+        AppLogger.i(
+            "ReplayTiming",
+            "REPLAY_TIMING_PARSE_DIAGNOSTICS lines=$totalLines timestamped=$timestampedLines jsonRecords=$jsonRecords lineDeltas=$lineDeltas snapshots=" + out.size + " rowsProduced=$rowsProduced firstPrefix=$firstLinePrefix"
+        )
         return out
     }
 
@@ -572,9 +636,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val out=ArrayList<ReplayStintSnapshot>()
         val merged=JSONObject()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<12)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val root=runCatching{JSONObject(line.substring(12))}.getOrNull() ?: return@forEachLine
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
+            val root=runCatching{org.json.JSONTokener(record.payload).nextValue() as? JSONObject}.getOrNull() ?: return@forEachLine
             val delta=root.optJSONObject("Lines") ?: root.optJSONObject("lines") ?: return@forEachLine
             mergeObject(merged,delta)
             val stints=linkedMapOf<String,ReplayStint>()
@@ -621,9 +685,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val out=ArrayList<ReplayTelemetrySnapshot>()
         val latest=linkedMapOf<String,DriverTelemetry>()
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
-            val raw=line.substring(12).trim()
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
+            val raw=record.payload.trim()
             val root=runCatching {
                 when(val token=org.json.JSONTokener(raw).nextValue()){
                     is JSONObject->token
@@ -714,12 +778,12 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         val currentPositions=linkedMapOf<String,TrackDriverPosition>()
         var recordIndex=0
         BufferedReader(StringReader(text.removePrefix("\uFEFF"))).forEachLine { line ->
-            if(line.length<13)return@forEachLine
-            val offset=parseOffset(line.substring(0,12)) ?: return@forEachLine
+            val record=parseReplayArchiveRecord(line) ?: return@forEachLine
+            val offset=record.offsetMs
             // Position telemetry is high frequency. Sample every fifth archive record, as the
             // desktop reference does, to bound memory while preserving visibly smooth movement.
             if(recordIndex++ % 5 != 0)return@forEachLine
-            val raw=line.substring(12).trim()
+            val raw=record.payload.trim()
             val root=runCatching {
                 val tok=org.json.JSONTokener(raw).nextValue()
                 when(tok) {
@@ -773,7 +837,7 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
         } catch(_:Throwable) { null } finally { inflater.end() }
     }
 
-    private fun parseOffset(ts:String):Long?=runCatching{val p=ts.split(":",".");if(p.size!=4)null else ((p[0].toLong()*3600+p[1].toLong()*60+p[2].toLong())*1000+p[3].toLong())}.getOrNull()
+    private fun parseOffset(ts:String):Long? = parseReplayArchiveOffset(ts)
     private inline fun <T> loadOptionalArchive(resource: String, fallback: T, loader: () -> T): T {
         return try {
             loader()
