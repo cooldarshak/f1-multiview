@@ -124,6 +124,19 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun parsesObjectValuedLiveTimingPosition() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(JSONObject(
+            """{"Lines":{"44":{"Position":{"Value":"2"},"Tla":"HAM","GapToLeader":"+1.2"}}}"""
+        ))
+
+        val row = client.rows.value.single()
+        assertEquals(2, row.position)
+        assertEquals("HAM", row.driver)
+        assertEquals("+1.2", row.leaderGap)
+    }
+
+    @Test
     fun timingTowerRowsRetainSparseFieldsAndFastestLapFlags() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         client.parseTiming(
