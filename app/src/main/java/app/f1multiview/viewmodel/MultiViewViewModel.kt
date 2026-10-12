@@ -674,7 +674,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                     _ui.value = _ui.value.copy(
                         timing = initialRows,
                         replayPlayheadMs = firstVideoPositionMs,
-                        replayDataOffsetMs = client.archiveOffsetForVideoPosition(firstVideoPositionMs)
+                        replayDataOffsetMs = client.archiveOffsetForVideoPosition(firstVideoPositionMs),
+                        timingStatus = if (initialRows.isNotEmpty()) "REPLAY_UNCALIBRATED" else "REPLAY_LOADING"
                     )
                     AppLogger.i(
                         "ReplayTiming",
