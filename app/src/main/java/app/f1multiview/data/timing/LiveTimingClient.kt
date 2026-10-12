@@ -199,6 +199,14 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
             _status.value="HANDSHAKING"
             AppLogger.i("LiveTiming","LIVE_TIMING_CONNECTED websocket=true httpStatus=${response.code}")
             ws.send("{\"protocol\":\"json\",\"version\":1}$RS")
+            scope.launch {
+                delay(10_000L)
+                if (socket === ws && _status.value == "HANDSHAKING") {
+                    _status.value = "ERROR"
+                    AppLogger.w("LiveTiming", "SIGNALR_HANDSHAKE_TIMEOUT timeoutMs=10000")
+                    ws.close(1011, "SignalR handshake timeout")
+                }
+            }
         }
         override fun onMessage(ws:WebSocket,text:String){
             text.split(RS).filter{it.isNotBlank()}.forEach{frame->
