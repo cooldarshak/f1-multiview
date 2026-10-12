@@ -1747,19 +1747,20 @@ private fun CanonicalMultiviewLayout(
             layoutFeeds[1].kind == StreamKind.F1_DASH_DATA &&
             layoutFeeds[2].kind == StreamKind.TRACK_MAP
         if (referenceDashLayout) {
-            // Video and circuit map stack on the left; live timing fills the right rail.
+            // F1Dash-style three-feed composition: main video owns the left two-thirds;
+            // timing tower sits upper-right and the track map/driver tracker lower-right.
             val availableWidth = (width - 2 * gapPx - dividerPx).coerceAtLeast(0)
             val leftWidth = (availableWidth * mainX).toInt().coerceIn(0, availableWidth)
             val rightWidth = availableWidth - leftWidth
             val rightX = leftWidth + gapPx + dividerPx + gapPx
             val availableHeight = (height - 2 * gapPx - dividerPx).coerceAtLeast(0)
-            val videoHeight = (availableHeight * splitY).toInt().coerceIn(0, availableHeight)
-            val mapHeight = availableHeight - videoHeight
-            placeVideo(0, 0, 0, leftWidth, videoHeight)
+            val timingHeight = (availableHeight * splitY).toInt().coerceIn(0, availableHeight)
+            val mapHeight = availableHeight - timingHeight
+            placeVideo(0, 0, 0, leftWidth, height)
             place("handle-main", leftWidth + gapPx, 0, dividerPx, height)
-            placeVideo(1, rightX, 0, rightWidth, height)
-            place("handle-right-1", 0, videoHeight + gapPx, leftWidth, dividerPx)
-            placeVideo(2, 0, videoHeight + gapPx + dividerPx + gapPx, leftWidth, mapHeight)
+            placeVideo(1, rightX, 0, rightWidth, timingHeight)
+            place("handle-right-1", rightX, timingHeight + gapPx, rightWidth, dividerPx)
+            placeVideo(2, rightX, timingHeight + gapPx + dividerPx + gapPx, rightWidth, mapHeight)
         } else when (layoutFeeds.size) {
             0 -> place("empty", 0, 0, width, height)
             1 -> placeVideo(0, 0, 0, width, height)
