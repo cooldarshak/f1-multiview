@@ -11,6 +11,64 @@ import java.util.zip.Deflater
 import org.junit.Assert.assertTrue
 
 class ReplayTimingClientTest {
+    private fun archiveHttpClient(timingData: String, timingStatus: Int = 200): OkHttpClient =
+        OkHttpClient.Builder().addInterceptor(Interceptor { chain ->
+            val request = chain.request()
+            val url = request.url.toString()
+            val (status, body) = when {
+                url.endsWith("/Index.json") -> 200 to """{"Meetings":[{"Number":4,"Key":"2026/test-meeting","Sessions":[{"Name":"Race","Type":"Race","Path":"2026/test-meeting/race","Key":"Race"}]}]}"""
+                url.endsWith("/TimingData.jsonStream") -> timingStatus to timingData
+                url.contains("api.multiviewer.app") -> 404 to "not found"
+                else -> 200 to "{}"
+            }
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(status)
+                .message(if (status in 200..299) "OK" else "Failure")
+                .body(body.toResponseBody("text/plain".toMediaType()))
+                .build()
+        }).build()
+
+    @Test
+    fun rejectsMissingReplayIdentifiersWithoutMakingRequests() = runBlocking {
+        var requests = 0
+        val http = OkHttpClient.Builder().addInterceptor(Interceptor { chain ->
+            requests++
+            chain.proceed(chain.request())
+        }).build()
+        val result = ReplayTimingClient(http).load(0, 0, "Race")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(0, requests)
+    }
+
+    @Test
+    fun successfulArchivePublishesRealTimingRowsAtFirstTimestamp() = runBlocking {
+        val timing = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}}}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing))
+        var callbackOffset: Long? = null
+        val result = client.load(2026, 4, "Race", "Race") { callbackOffset = it }
+        assertTrue(result.isSuccess)
+        assertEquals(1_000L, callbackOffset)
+        assertEquals(1, client.rowsAt(1_000L).size)
+        assertEquals("VER", client.rowsAt(1_000L).single().driver)
+    }
+
+    @Test
+    fun emptyTimingArchiveReturnsUnavailableInsteadOfSuccess() = runBlocking {
+        val result = ReplayTimingClient(archiveHttpClient("")).load(2026, 4, "Race", "Race")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("No parseable TimingData rows") == true)
+    }
+
+    @Test
+    fun timingHttpFailureReturnsFailureInsteadOfLeavingLoaderPending() = runBlocking {
+        val result = ReplayTimingClient(archiveHttpClient("service unavailable", timingStatus = 503))
+            .load(2026, 4, "Race", "Race")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("HTTP 503") == true)
+    }
     @Test
     fun rejectsArchiveThatHasNoParseableTimingRows() {
         val failure = runCatching {
