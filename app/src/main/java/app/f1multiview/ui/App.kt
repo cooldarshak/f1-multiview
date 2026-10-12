@@ -1634,7 +1634,7 @@ private fun CanonicalMultiviewLayout(
 ) {
     val gap = 6.dp
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var splitY by rememberSaveable { mutableFloatStateOf(.66f) }
+    var splitY by rememberSaveable { mutableFloatStateOf(.58f) }
     var mainX by rememberSaveable { mutableFloatStateOf(.665f) }
     var topX by rememberSaveable { mutableFloatStateOf(.33f) }
     var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
