@@ -262,10 +262,11 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
              selectedStreamIds = emptyList(),
              mainStreamId = null,
              providerError = null,
+             replayTimingError = null,
              pendingResume = entry
          )
          loadReplayTiming(session)
-         loadStreams(session)
+         loadStreams(session, autoSelectFeeds = true)
      }
     private fun shouldLoadReplayTiming(session: Session): Boolean {
         if (session.live) return false
