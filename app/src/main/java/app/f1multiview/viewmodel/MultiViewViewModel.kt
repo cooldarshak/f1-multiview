@@ -470,11 +470,14 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     val state = _ui.value
     val info = state.liveSessionInfo
     val selectedSession = state.session
-    // Prefer the selected session's actual year. Do not silently substitute the device's
-    // current year: that can put markers on a newer layout during an older replay.
-    val year = info.year?.takeIf { it > 0 }
-        ?: selectedSession?.seasonYear?.takeIf { it > 0 }
-        ?: state.selectedSeason?.year?.takeIf { it > 0 }
+    // Resolve the actual year of this session. Only replay/VOD may fall back to the season
+    // selected in the VOD browser; live mode must never inherit a stale VOD season.
+    val year = resolveGeometrySeasonYear(
+        sessionInfoYear = info.year,
+        selectedSessionYear = selectedSession?.seasonYear,
+        selectedVodSeasonYear = state.selectedSeason?.year,
+        replay = selectedSession?.live == false
+    )
     if (year == null) {
         val reason = "Track map geometry unavailable: session year is not available"
         _ui.value = _ui.value.copy(trackGeometry = null, trackPositionMappingValid = null, providerError = reason)

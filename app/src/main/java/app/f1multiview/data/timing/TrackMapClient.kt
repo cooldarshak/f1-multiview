@@ -28,7 +28,23 @@ class TrackMapClient(private val context: Context? = null, httpClient: OkHttpCli
     companion object {
         private const val MAX_NORMALIZED_FIT_RESIDUAL = 0.12
         internal const val MIN_CENTERLINE_POINTS = 20
-internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(requestedYear)
+internal fun geometryLookupYears(requestedYear: Int): List<Int> =
+    if (requestedYear > 0) listOf(requestedYear) else emptyList()
+
+/**
+ * Resolve the year for the active session only. The selected-season filter belongs to the VOD
+ * browser and must not be inherited by a live session after navigating away from a replay.
+ */
+internal fun resolveGeometrySeasonYear(
+    sessionInfoYear: Int?,
+    selectedSessionYear: Int?,
+    selectedVodSeasonYear: Int?,
+    replay: Boolean
+): Int? {
+    sessionInfoYear?.takeIf { it > 0 }?.let { return it }
+    selectedSessionYear?.takeIf { it > 0 }?.let { return it }
+    return selectedVodSeasonYear?.takeIf { replay && it > 0 }
+}
 
         /**
          * Confirm that several actual position-feed samples share the selected centreline coordinate frame.

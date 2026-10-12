@@ -284,4 +284,47 @@ class TrackMapClientTest {
             doubleArrayOf(0.0, 1.0, 0.0)
         ))
     }
+
+    @Test
+    fun geometryYearResolutionNeverUsesVodSeasonForLiveSession() {
+        assertNull(resolveGeometrySeasonYear(
+            sessionInfoYear = null,
+            selectedSessionYear = null,
+            selectedVodSeasonYear = 2026,
+            replay = false
+        ))
+    }
+
+    @Test
+    fun geometryYearResolutionUsesCurrentSessionMetadataBeforeVodFilter() {
+        assertEquals(2025, resolveGeometrySeasonYear(
+            sessionInfoYear = 2025,
+            selectedSessionYear = 2024,
+            selectedVodSeasonYear = 2026,
+            replay = true
+        ))
+        assertEquals(2024, resolveGeometrySeasonYear(
+            sessionInfoYear = null,
+            selectedSessionYear = 2024,
+            selectedVodSeasonYear = 2026,
+            replay = false
+        ))
+    }
+
+    @Test
+    fun geometryYearResolutionAllowsVodSeasonFallbackOnlyForReplay() {
+        assertEquals(2024, resolveGeometrySeasonYear(
+            sessionInfoYear = null,
+            selectedSessionYear = null,
+            selectedVodSeasonYear = 2024,
+            replay = true
+        ))
+        assertNull(resolveGeometrySeasonYear(
+            sessionInfoYear = null,
+            selectedSessionYear = null,
+            selectedVodSeasonYear = null,
+            replay = true
+        ))
+    }
+
 }
