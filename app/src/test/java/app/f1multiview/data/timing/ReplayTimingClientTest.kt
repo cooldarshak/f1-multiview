@@ -105,6 +105,19 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun preservesOfficialTimingRowsWhenDriverListIsUnavailable() {
+        val stream = """00:00:03.703{"Lines":{"3":{"Position":"1","RacingNumber":"3","GapToLeader":"","Line":1,"Sectors":[{"Value":"","Status":0},{"Value":"","Status":0},{"Value":"","Status":0}]}}}"""
+
+        val snapshots = ReplayTimingClient().parse(stream)
+
+        assertEquals(1, snapshots.size)
+        val row = snapshots.single().rows.single()
+        assertEquals(1, row.position)
+        assertEquals("3", row.driver)
+        assertEquals("3", row.driverNumber)
+    }
+
+    @Test
     fun replayTimingParserReadsPositionValueObject() {
         val stream = """00:00:01.250{"Lines":{"1":{"Position":{"Value":"1"},"Tla":"VER","GapToLeader":"LEADER"}}}"""
 

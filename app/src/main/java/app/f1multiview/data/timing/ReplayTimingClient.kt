@@ -581,6 +581,11 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                     .ifBlank{d.optString("FullName").ifBlank{d.optString("Driver")}}
                     .ifBlank{metadata?.acronym.orEmpty()}
                     .ifBlank{metadata?.name.orEmpty()}
+                    // TimingData can still contain valid source-backed positions when the
+                    // optional DriverList archive is unavailable. Preserve the real racing
+                    // number instead of dropping the row or inventing a driver acronym.
+                    .ifBlank{d.optString("RacingNumber")}
+                    .ifBlank{number}
                 if(driver.isBlank())continue
                 val leaderGap=d.optString("GapToLeader").ifBlank{"-"}
                 val interval=d.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty()
