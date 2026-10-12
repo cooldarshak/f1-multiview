@@ -294,8 +294,11 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
             timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,trackPositionMappingValid=null,syncOffsetMs=0L,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
         )
-        if (shouldLoadReplayTiming(session)) loadReplayTiming(session) else cancelReplayTimingLoad()
-        loadStreams(session)
+        val replayEligible = shouldLoadReplayTiming(session)
+        if (replayEligible) loadReplayTiming(session) else cancelReplayTimingLoad()
+        // Every replay entry path gets the same native timing + tracker feed selection,
+        // not just the archive-browser shortcut.
+        loadStreams(session, autoSelectFeeds = replayEligible)
     }
     private suspend fun loadStreams(session: Session, autoSelectFeeds: Boolean = false) {
         provider.streams(session.id).fold(
