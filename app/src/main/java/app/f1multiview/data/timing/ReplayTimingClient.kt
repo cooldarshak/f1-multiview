@@ -188,6 +188,10 @@ class ReplayTimingClient {
             AppLogger.i("ReplayTiming", "REPLAY_SESSION_SELECTED name=${session.name} type=${session.type} path=${session.path} reason=${resolution.reason}")
             val path=session.path
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
+            AppLogger.i(
+                "ReplayTiming",
+                "REPLAY_TIMING_PARSE_COMPLETE session=${session.name} snapshots=${snapshots.size} rowsAtFirst=${snapshots.firstOrNull()?.rows?.size ?: 0}"
+            )
             requireTimingRows(snapshots, year, meetingNumber, sessionType)
             // Publish usable timing rows as soon as the primary TimingData archive is parsed.
             // CarData and Position archives are large and must not block the timing tower from
@@ -756,7 +760,37 @@ class ReplayTimingClient {
     }
 
     private fun parseOffset(ts:String):Long?=runCatching{val p=ts.split(":",".");if(p.size!=4)null else ((p[0].toLong()*3600+p[1].toLong()*60+p[2].toLong())*1000+p[3].toLong())}.getOrNull()
-    private fun getText(url:String):String { val r=http.newCall(Request.Builder().url(url).header("User-Agent","BestHTTP").build()).execute(); r.use{if(!it.isSuccessful)error("Timing archive HTTP "+it.code);return it.body?.string().orEmpty()} }
+    private fun getText(url:String):String {
+        val startedAtMs = System.currentTimeMillis()
+        val resource = url.substringAfterLast('/')
+        AppLogger.i("ReplayTiming", "REPLAY_HTTP_REQUEST_START resource=$resource")
+        try {
+            val response = http.newCall(
+                Request.Builder().url(url).header("User-Agent", "BestHTTP").build()
+            ).execute()
+            response.use {
+                if (!it.isSuccessful) {
+                    AppLogger.w(
+                        "ReplayTiming",
+                        "REPLAY_HTTP_RESPONSE resource=$resource code=${it.code} durationMs=${System.currentTimeMillis() - startedAtMs}"
+                    )
+                    error("Timing archive HTTP " + it.code + " for " + resource)
+                }
+                val body = it.body?.string().orEmpty()
+                AppLogger.i(
+                    "ReplayTiming",
+                    "REPLAY_HTTP_RESPONSE resource=$resource code=${it.code} bytes=${body.toByteArray(Charsets.UTF_8).size} durationMs=${System.currentTimeMillis() - startedAtMs}"
+                )
+                return body
+            }
+        } catch (failure: Exception) {
+            AppLogger.w(
+                "ReplayTiming",
+                "REPLAY_HTTP_FAILURE resource=$resource durationMs=${System.currentTimeMillis() - startedAtMs} reason=${failure.javaClass.simpleName} message=${failure.message}"
+            )
+            throw failure
+        }
+    }
     private fun getJson(url:String)=JSONObject(getText(url))
     private fun loadCuratedSync(meetingKey:String,sessionKey:String):ReplaySyncData?=runCatching{
         if(meetingKey.isBlank()||sessionKey.isBlank())return null
