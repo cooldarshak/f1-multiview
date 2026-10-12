@@ -17,6 +17,9 @@ import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
+internal fun liveTimingStatusAfterSubscriptionAck(lastTimingRowsAtMs: Long): String =
+    if (lastTimingRowsAtMs > 0L) "LIVE" else "SUBSCRIBED"
+
 internal fun liveTimingNoDataStatus(
     status: String,
     lastTimingRowsAtMs: Long,
@@ -286,8 +289,8 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                 if(json.optInt("type")==3){
                     val invocationId = json.optString("invocationId")
                     if (invocationId == "1" && json.optString("error").isBlank()) {
-                        _status.value = "SUBSCRIBED"
-                        AppLogger.i("LiveTiming","LIVE_TIMING_SUBSCRIPTION_ACKNOWLEDGED invocationId=1")
+                        _status.value = liveTimingStatusAfterSubscriptionAck(lastTimingRowsAtMs)
+                        AppLogger.i("LiveTiming","LIVE_TIMING_SUBSCRIPTION_ACKNOWLEDGED invocationId=1 status=" + _status.value)
                     } else if (json.optString("error").isNotBlank()) {
                         _status.value = "ERROR"
                         AppLogger.w("LiveTiming","LIVE_TIMING_SUBSCRIPTION_FAILED invocationId=$invocationId")
