@@ -13,6 +13,12 @@ import java.util.zip.Deflater
 
 class LiveTimingClientTest {
     @Test
+    fun subscriptionAckDoesNotOverwriteLiveStateWhenRowsArriveFirst() {
+        assertEquals("LIVE", liveTimingStatusAfterSubscriptionAck(10_000L))
+        assertEquals("SUBSCRIBED", liveTimingStatusAfterSubscriptionAck(0L))
+    }
+
+    @Test
     fun noDataWatchdogOnlyExpiresAnAcknowledgedOrPendingSubscription() {
         assertEquals("NO_DATA", liveTimingNoDataStatus("SUBSCRIBED", 0L, 1_000L, 16_000L))
         assertEquals("NO_DATA", liveTimingNoDataStatus("SUBSCRIBE_SENT", 0L, 1_000L, 16_000L))
