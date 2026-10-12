@@ -19,6 +19,7 @@ import app.f1multiview.media.AppLogger
 import app.f1multiview.model.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -734,6 +735,12 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                         "ReplayTiming",
                         "REPLAY_DATA_UNAVAILABLE year=$year meeting=$meeting reason=${it.javaClass.simpleName} message=${it.message}"
                     )
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                if (replayTimingClient === client && _ui.value.session?.id == session.id) {
+                    val message = "Replay timing request timed out"
+                    _ui.value = _ui.value.copy(timingStatus = "REPLAY_UNAVAILABLE", providerError = message, replayTimingError = message)
+                    AppLogger.w("ReplayTiming", "REPLAY_LOAD_TIMEOUT sessionId=" + session.id)
                 }
             } catch (cancelled: CancellationException) {
                 // A replaced session owns its own state. Only terminate loading if this
