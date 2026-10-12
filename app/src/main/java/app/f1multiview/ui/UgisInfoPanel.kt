@@ -237,8 +237,8 @@ fun UgisInfoPanel(
                 }
             }
             when(section) {
-                "tracker" -> TrackMapPanel(ui=ui,isTv=isTv)
-                "timing" -> LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                "tracker" -> TrackMapPanel(ui=ui,isTv=isTv,modifier=Modifier.weight(1f).fillMaxWidth())
+                "timing" -> LazyColumn(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     item {
                         Surface(color=InfoSurface,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
