@@ -559,6 +559,7 @@ class ReplayTimingClient(httpClient: OkHttpClient = OkHttpClient()) {
         var lineDeltas=0
         var rowsProduced=0
         var firstLinePrefix=""
+        var lastSnapshotOffset = Long.MIN_VALUE
         reader.forEachLine { line ->
             if(line.isBlank())return@forEachLine
             totalLines++
@@ -630,9 +631,16 @@ class ReplayTimingClient(httpClient: OkHttpClient = OkHttpClient()) {
                     interval=interval,leaderGap=leaderGap,driverNumber=number,bestLapStatus=bestStatus,inPit=d.optBoolean("InPit",false),stopped=d.optBoolean("Stopped",false)
                 )
             }
-            if(rows.isNotEmpty()) {
+            // TimingData can emit multiple sparse deltas within one video frame. Merge
+            // every delta above, but retain only a bounded 4 Hz timeline of complete standings.
+            // Previously every delta retained a full fleet of TimingRow objects, exhausting the
+            // Android heap on a full race archive even though parsing itself was streamed.
+            if(rows.isNotEmpty() &&
+                (lastSnapshotOffset == Long.MIN_VALUE || offset - lastSnapshotOffset >= REPLAY_SNAPSHOT_INTERVAL_MS)
+            ) {
                 rowsProduced += rows.size
-                out += ReplayTimingSnapshot(offset,rows.sortedBy{it.position})
+                out += ReplayTimingSnapshot(offset, rows.sortedBy { it.position })
+                lastSnapshotOffset = offset
             }
         }
         AppLogger.i(
