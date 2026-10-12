@@ -268,6 +268,19 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun missingLiveDriverMetadataUsesSourceNumberInsteadOfSyntheticAcronym() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(JSONObject(
+            """{"Lines":{"3":{"Position":"1","GapToLeader":""}}}"""
+        ))
+
+        val row = client.rows.value.single()
+        assertEquals(1, row.position)
+        assertEquals("3", row.driver)
+        assertEquals("3", row.driverNumber)
+    }
+
+    @Test
     fun blankLeaderIntervalDoesNotLeakJsonAndShowsLeaderState() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         client.parseTiming(JSONObject(
