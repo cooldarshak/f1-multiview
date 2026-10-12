@@ -8,6 +8,7 @@ import java.util.Base64
 import java.util.zip.Deflater
 import org.junit.Assert.assertTrue
 
+import app.f1multiview.model.TrackDriverPosition
 class ReplayTimingClientTest {
     @Test
     fun rejectsArchiveThatHasNoParseableTimingRows() {
