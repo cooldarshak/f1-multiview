@@ -8,6 +8,7 @@ import app.f1multiview.model.TimingWeather
 import app.f1multiview.model.TrackDriverPosition
 import app.f1multiview.model.TrackPoint
 import app.f1multiview.media.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -198,17 +199,17 @@ class ReplayTimingClient {
             // rendering rows already available for this replay.
             val firstTimingOffsetMs = snapshots.first().offsetMs.coerceAtLeast(0L)
             onTimingRowsAvailable(firstTimingOffsetMs)
-            archivedDriverInfo=runCatching { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }.getOrDefault(emptyList())
-            archivedSessionInfo=runCatching { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }.getOrNull()
-            weatherSnapshots=runCatching { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }.getOrDefault(emptyList())
-            trackStatusSnapshots=runCatching { parseTrackStatusSnapshots(getText("https://livetiming.formula1.com/static/$path/TrackStatus.jsonStream")) }.getOrDefault(emptyList())
-            lapSnapshots=runCatching { parseLapSnapshots(getText("https://livetiming.formula1.com/static/$path/LapCount.jsonStream")) }.getOrDefault(emptyList())
-            clockSnapshots=runCatching { parseClockSnapshots(getText("https://livetiming.formula1.com/static/$path/ExtrapolatedClock.jsonStream")) }.getOrDefault(emptyList())
-            stintSnapshots=runCatching { parseTimingAppData(getText("https://livetiming.formula1.com/static/$path/TimingAppData.jsonStream")) }.getOrDefault(emptyList())
+            archivedDriverInfo=loadOptionalArchive("DriverList.jsonStream", emptyList()) { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }
+            archivedSessionInfo=loadOptionalArchive<LiveSessionInfo?>("SessionInfo.jsonStream", null) { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }
+            weatherSnapshots=loadOptionalArchive("WeatherData.jsonStream", emptyList()) { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }
+            trackStatusSnapshots=loadOptionalArchive("TrackStatus.jsonStream", emptyList()) { parseTrackStatusSnapshots(getText("https://livetiming.formula1.com/static/$path/TrackStatus.jsonStream")) }
+            lapSnapshots=loadOptionalArchive("LapCount.jsonStream", emptyList()) { parseLapSnapshots(getText("https://livetiming.formula1.com/static/$path/LapCount.jsonStream")) }
+            clockSnapshots=loadOptionalArchive("ExtrapolatedClock.jsonStream", emptyList()) { parseClockSnapshots(getText("https://livetiming.formula1.com/static/$path/ExtrapolatedClock.jsonStream")) }
+            stintSnapshots=loadOptionalArchive("TimingAppData.jsonStream", emptyList()) { parseTimingAppData(getText("https://livetiming.formula1.com/static/$path/TimingAppData.jsonStream")) }
             // These two compressed feeds are needed to keep car telemetry and map markers tied to
             // the replay media clock, including backwards seeks. No live values are mixed in.
-            telemetrySnapshots=runCatching { parseCarTelemetry(getText("https://livetiming.formula1.com/static/$path/CarData.z.jsonStream")) }.getOrDefault(emptyList())
-            positionSnapshots=runCatching { parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream")) }.getOrDefault(emptyList())
+            telemetrySnapshots=loadOptionalArchive("CarData.z.jsonStream", emptyList()) { parseCarTelemetry(getText("https://livetiming.formula1.com/static/$path/CarData.z.jsonStream")) }
+            positionSnapshots=loadOptionalArchive("Position.z.jsonStream", emptyList()) { parsePositions(getText("https://livetiming.formula1.com/static/$path/Position.z.jsonStream")) }
             val curatedSync=loadCuratedSync(meeting.optString("Key"),session.key)
             syncData=curatedSync ?: ReplaySyncData(0L, emptyMap())
             // The MultiViewer sync endpoint's session_start is NOT an epoch timestamp. It is the
@@ -760,6 +761,20 @@ class ReplayTimingClient {
     }
 
     private fun parseOffset(ts:String):Long?=runCatching{val p=ts.split(":",".");if(p.size!=4)null else ((p[0].toLong()*3600+p[1].toLong()*60+p[2].toLong())*1000+p[3].toLong())}.getOrNull()
+    private inline fun <T> loadOptionalArchive(resource: String, fallback: T, loader: () -> T): T {
+        return try {
+            loader()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            AppLogger.w(
+                "ReplayTiming",
+                "REPLAY_OPTIONAL_ARCHIVE_UNAVAILABLE resource=$resource reason=${failure.javaClass.simpleName} message=${failure.message}"
+            )
+            fallback
+        }
+    }
+
     private fun getText(url:String):String {
         val startedAtMs = System.currentTimeMillis()
         val resource = url.substringAfterLast('/')
