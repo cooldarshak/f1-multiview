@@ -1634,7 +1634,7 @@ private fun CanonicalMultiviewLayout(
 ) {
     val gap = 6.dp
     var splitX by rememberSaveable { mutableFloatStateOf(.5f) }
-    var splitY by rememberSaveable { mutableFloatStateOf(.665f) }
+    var splitY by rememberSaveable { mutableFloatStateOf(.52f) }
     var mainX by rememberSaveable { mutableFloatStateOf(.665f) }
     var topX by rememberSaveable { mutableFloatStateOf(.33f) }
     var fourSideH1 by rememberSaveable { mutableFloatStateOf(.32f) }
@@ -1684,7 +1684,7 @@ private fun CanonicalMultiviewLayout(
                         modifier = Modifier.layoutId("handle-main")
                     ) { mainX = (mainX + it / 1000f).coerceIn(.35f, .78f) }
                     ResizeHandle(Orientation.Vertical, editSize, modifier = Modifier.layoutId("handle-right-1")) {
-                        splitY = (splitY + it / 900f).coerceIn(.2f, .8f)
+                        splitY = (splitY + it / 900f).coerceIn(.35f, .7f)
                     }
                 }
                 4 -> {
