@@ -287,7 +287,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
         livePlaybackSyncActive=false
         lastPositionMappingSignature = null
         _ui.value=_ui.value.copy(
-            session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,
+            session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,replayTimingError=null,
             timing=emptyList(),telemetry=emptyList(),driverInfo=emptyList(),trackPositions=emptyList(),
             trackStatus=TrackStatusInfo(),weather=TimingWeather(),raceControl=emptyList(),sessionClock="-",
             timingStatus=if(session.live)"CONNECTING" else if(shouldLoadReplayTiming(session)) "REPLAY_LOADING" else "OFFLINE",liveSessionInfo=LiveSessionInfo(),trackGeometry=null,trackPositionMappingValid=null,syncOffsetMs=0L,replayPlayheadMs=0L,replayDataOffsetMs=0L,replaySyncCalibrated=false
