@@ -645,9 +645,14 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             val stateAtLoad = _ui.value
             val matchingVod = stateAtLoad.vodSessions.firstOrNull { it.contentId == session.id }
             val eventPageId = session.eventPageId ?: matchingVod?.eventPageId
-            val matchingEvent = eventPageId?.let { pageId ->
-                stateAtLoad.vodEvents.firstOrNull { it.pageId == pageId }
-                    ?: stateAtLoad.selectedEvent?.takeIf { it.pageId == pageId }
+            val matchingEvent = if (eventPageId != null) {
+                stateAtLoad.vodEvents.firstOrNull { it.pageId == eventPageId }
+                    ?: stateAtLoad.selectedEvent?.takeIf { it.pageId == eventPageId }
+            } else {
+                val expectedYear = session.seasonYear ?: stateAtLoad.selectedSeason?.year
+                stateAtLoad.selectedEvent?.takeIf { event ->
+                    expectedYear == null || event.seasonYear == expectedYear
+                }
             }
             val year = session.seasonYear?.takeIf { it > 0 }
                 ?: matchingVod?.let { stateAtLoad.selectedSeason?.year }
