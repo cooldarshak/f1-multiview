@@ -587,9 +587,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                     .ifBlank{d.optString("RacingNumber")}
                     .ifBlank{number}
                 if(driver.isBlank())continue
-                val leaderGap=d.optString("GapToLeader").ifBlank{"-"}
+                val leaderGap=if(pos==1) "LEADER" else d.optString("GapToLeader").ifBlank{"-"}
                 val interval=d.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty()
-                    .ifBlank{d.optString("IntervalToPositionAhead")}.ifBlank{"-"}
+                    .ifBlank{d.opt("IntervalToPositionAhead")?.takeUnless{it is JSONObject || it == JSONObject.NULL}?.toString().orEmpty()}.ifBlank{"-"}
                 val gap=if(pos==1) "LEADER" else interval.takeIf{it.isNotBlank()&&it!="-"} ?: leaderGap
                 val lastObj=d.optJSONObject("LastLapTime")
                 val lastRaw=lastObj?.optString("Value").orEmpty()

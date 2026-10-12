@@ -268,6 +268,18 @@ class LiveTimingClientTest {
     }
 
     @Test
+    fun blankLeaderIntervalDoesNotLeakJsonAndShowsLeaderState() {
+        val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
+        client.parseTiming(JSONObject(
+            """{"Lines":{"3":{"Position":"1","RacingNumber":"3","Tla":"VER","GapToLeader":"","IntervalToPositionAhead":{"Value":"","Catching":false}}}}"""
+        ))
+
+        val row = client.rows.value.single()
+        assertEquals("LEADER", row.leaderGap)
+        assertEquals("-", row.interval)
+    }
+
+    @Test
     fun mapsOfficialSectorStatusCodesWithoutFastestFlags() {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         client.parseTiming(JSONObject(

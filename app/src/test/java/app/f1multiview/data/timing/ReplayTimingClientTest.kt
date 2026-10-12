@@ -548,6 +548,8 @@ class ReplayTimingClientTest {
         assertEquals(1, row.position)
         assertEquals("3", row.driverNumber)
         assertTrue(row.inPit)
+        assertEquals("LEADER", row.leaderGap)
+        assertEquals("-", row.interval)
         assertEquals("YELLOW", row.sector2Status)
         assertEquals("BLUE", row.sector3Status)
     }
