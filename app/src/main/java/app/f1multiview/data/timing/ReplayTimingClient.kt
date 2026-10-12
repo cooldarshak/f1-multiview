@@ -506,7 +506,10 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                 val acronym=item.optString("Tla").ifBlank{item.optString("ShortName")}.ifBlank{number}
                 val team=item.optString("TeamName").ifBlank{item.optString("Team")}.ifBlank{"-"}
                 val color=item.optString("TeamColour").ifBlank{item.optString("TeamColor")}.removePrefix("#").ifBlank{"FFFFFF"}
-                if(number.isNotBlank())result[number]=DriverInfo(number,name,acronym,team,color)
+                // F1OpenViewer/FastF1 fall back to DriverList.Line when a TimingData
+                // delta does not yet carry Position. Preserve that source value explicitly.
+                val line = item.optInt("Line", 0).takeIf { it > 0 }
+                if(number.isNotBlank())result[number]=DriverInfo(number,name,acronym,team,color,line)
             }
             if(result.isNotEmpty())return@forEachLine
         }
@@ -538,17 +541,27 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
             // recursively before deriving rows so the standings remain stable during replay seeks.
             mergeObject(mergedLines,delta)
             val rows=ArrayList<TimingRow>()
-            val keys=mergedLines.keys()
-            while(keys.hasNext()){
-                val number=keys.next()
-                val d=mergedLines.optJSONObject(number) ?: continue
-                val pos=d.optInt("Position",d.optInt("PositionNumber",0))
+            // TimingData is sparse, and Position is not guaranteed to be present in every
+            // archived delta. Build the row set from both feeds, using the official DriverList
+            // Line only as the same explicit fallback used by F1OpenViewer/FastF1.
+            val driverNumbers=linkedSetOf<String>()
+            driverNumbers.addAll(driverByNumber.keys)
+            val timingKeys=mergedLines.keys()
+            while(timingKeys.hasNext()) driverNumbers.add(timingKeys.next())
+            for(number in driverNumbers){
+                val d=mergedLines.optJSONObject(number) ?: JSONObject()
                 val metadata=driverByNumber[number]
+                val pos = sequenceOf(
+                    d.optInt("Position", 0),
+                    d.optInt("PositionNumber", 0),
+                    d.optInt("Line", 0),
+                    metadata?.line ?: 0
+                ).firstOrNull { it > 0 } ?: continue
                 val driver=d.optString("Tla").ifBlank{d.optString("ShortName")}
                     .ifBlank{d.optString("FullName").ifBlank{d.optString("Driver")}}
                     .ifBlank{metadata?.acronym.orEmpty()}
                     .ifBlank{metadata?.name.orEmpty()}
-                if(pos<=0 || driver.isBlank())continue
+                if(driver.isBlank())continue
                 val leaderGap=d.optString("GapToLeader").ifBlank{"-"}
                 val interval=d.optJSONObject("IntervalToPositionAhead")?.optString("Value").orEmpty()
                     .ifBlank{d.optString("IntervalToPositionAhead")}.ifBlank{"-"}

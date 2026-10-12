@@ -88,6 +88,23 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun sparseTimingDeltasUseArchivedDriverListLineWhenPositionIsAbsent() = runBlocking {
+        val timing = """00:00:01.250{"Lines":{"4":{"GapToLeader":"+1.2"},"1":{"GapToLeader":"LEADER"}}}"""
+        val driverList = """00:00:00.000{"1":{"RacingNumber":"1","Line":1,"Tla":"VER","FullName":"Max Verstappen","TeamName":"Red Bull Racing"},"4":{"RacingNumber":"4","Line":2,"Tla":"NOR","FullName":"Lando Norris","TeamName":"McLaren"}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing, driverListData = driverList))
+
+        val result = client.load(2026, 4, "Race", "Race")
+
+        assertTrue(result.isSuccess)
+        val rows = client.rowsAt(1_250L)
+        assertEquals(2, rows.size)
+        assertEquals(listOf("VER", "NOR"), rows.map { it.driver })
+        assertEquals(listOf(1, 2), rows.map { it.position })
+        assertEquals("4", rows.last().driverNumber)
+        assertEquals("+1.2", rows.last().gap)
+    }
+
+    @Test
     fun replayTimingParserSupportsColonMillisAndMicrosecondTimestampPrecision() {
         val stream = """00:00:01:250000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER"}}}"""
         val snapshots = ReplayTimingClient().parse(stream)
