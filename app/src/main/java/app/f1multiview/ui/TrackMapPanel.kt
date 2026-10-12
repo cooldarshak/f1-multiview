@@ -256,8 +256,11 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
         val transformedTrack=trackPoints.map(::transform)
         val minX=transformedTrack.minOf{it.x};val maxX=transformedTrack.maxOf{it.x}
         val minY=transformedTrack.minOf{it.y};val maxY=transformedTrack.maxOf{it.y}
-        val span=max(maxX-minX,maxY-minY).coerceAtLeast(1.0)
-        val scale=min(size.width,size.height)*.78f/span.toFloat()*zoom
+        val spanX=(maxX-minX).coerceAtLeast(1.0).toFloat()
+        val spanY=(maxY-minY).coerceAtLeast(1.0).toFloat()
+        // Fit against both dimensions independently. Using min(width, height) made
+        // long, wide track layouts render as a tiny thumbnail inside a panoramic tile.
+        val scale=min(size.width*.84f/spanX,size.height*.84f/spanY)*zoom
         val center=Offset(size.width/2f + panX*size.width,size.height/2f + panY*size.height)
         fun screen(p:TrackPoint):Offset{
             val t=transform(p)
