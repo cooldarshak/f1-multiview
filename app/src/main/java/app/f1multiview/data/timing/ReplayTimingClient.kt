@@ -162,7 +162,13 @@ class ReplayTimingClient {
     private var syncOffsetMs:Long = 0L
     private var syncCalibrated:Boolean = false
     private var syncData = ReplaySyncData(0L, emptyMap())
-    suspend fun load(year:Int, meetingNumber:Int, sessionType:String, sessionTitle:String = sessionType):Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun load(
+        year: Int,
+        meetingNumber: Int,
+        sessionType: String,
+        sessionTitle: String = sessionType,
+        onTimingRowsAvailable: suspend (firstVideoPositionMs: Long) -> Unit = {}
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         clear()
         runCatching {
             val index=getJson("https://livetiming.formula1.com/static/$year/Index.json")
@@ -183,6 +189,11 @@ class ReplayTimingClient {
             val path=session.path
             snapshots=parse(getText("https://livetiming.formula1.com/static/$path/TimingData.jsonStream"))
             requireTimingRows(snapshots, year, meetingNumber, sessionType)
+            // Publish usable timing rows as soon as the primary TimingData archive is parsed.
+            // CarData and Position archives are large and must not block the timing tower from
+            // rendering rows already available for this replay.
+            val firstTimingOffsetMs = snapshots.first().offsetMs.coerceAtLeast(0L)
+            onTimingRowsAvailable(firstTimingOffsetMs)
             archivedDriverInfo=runCatching { parseDriverInfo(getText("https://livetiming.formula1.com/static/$path/DriverList.jsonStream")) }.getOrDefault(emptyList())
             archivedSessionInfo=runCatching { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }.getOrNull()
             weatherSnapshots=runCatching { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }.getOrDefault(emptyList())
