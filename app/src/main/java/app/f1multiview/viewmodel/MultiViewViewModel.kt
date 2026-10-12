@@ -21,6 +21,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 sealed interface AuthState {
     data object Checking:AuthState
@@ -663,12 +664,13 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 "ReplayTiming",
                 "REPLAY_ARCHIVE_LOAD_START year=$year meeting=$meeting sessionType=${session.sessionType} title=${session.name}"
             )
-            client.load(
-                year,
-                meeting,
-                session.dateLabel.takeIf { it.isNotBlank() && !it.equals("Replay", true) } ?: session.sessionType,
-                session.name
-            ) { firstVideoPositionMs ->
+            withTimeout(120_000L) {
+                client.load(
+                    year,
+                    meeting,
+                    session.dateLabel.takeIf { it.isNotBlank() && !it.equals("Replay", true) } ?: session.sessionType,
+                    session.name
+                ) { firstVideoPositionMs ->
                 // TimingData is the critical path. Show it immediately, instead of waiting for the
                 // much larger optional telemetry/position archives to finish downloading.
                 if (replayTimingClient === client && _ui.value.session?.id == session.id) {
@@ -683,6 +685,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                         "ReplayTiming",
                         "REPLAY_TIMING_ROWS_READY rows=${initialRows.size} firstOffsetMs=$firstVideoPositionMs"
                     )
+                }
                 }
             }.onSuccess {
                     if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onSuccess
