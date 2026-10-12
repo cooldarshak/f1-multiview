@@ -105,6 +105,17 @@ class ReplayTimingClientTest {
     }
 
     @Test
+    fun replayTimingParserReadsPositionValueObject() {
+        val stream = """00:00:01.250{"Lines":{"1":{"Position":{"Value":"1"},"Tla":"VER","GapToLeader":"LEADER"}}}"""
+
+        val snapshots = ReplayTimingClient().parse(stream)
+
+        assertEquals(1, snapshots.size)
+        assertEquals(1, snapshots.single().rows.single().position)
+        assertEquals("VER", snapshots.single().rows.single().driver)
+    }
+
+    @Test
     fun replayTimingParserSupportsColonMillisAndMicrosecondTimestampPrecision() {
         val stream = """00:00:01:250000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER"}}}"""
         val snapshots = ReplayTimingClient().parse(stream)

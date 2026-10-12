@@ -57,6 +57,19 @@ private fun parseReplayArchiveOffset(value: String): Long? {
     return ((hours * 60L + minutes) * 60L + seconds) * 1000L + millis
 }
 
+private fun timingPositionValue(line: JSONObject, key: String): Int {
+    val raw = line.opt(key)
+    val value = when (raw) {
+        is Number -> raw.toInt()
+        is String -> raw.toIntOrNull() ?: 0
+        is JSONObject -> raw.optString("Value").toIntOrNull()
+            ?: raw.optString("Position").toIntOrNull()
+            ?: 0
+        else -> 0
+    }
+    return value.takeIf { it > 0 } ?: 0
+}
+
 private fun parseReplayArchiveRecord(line: String): ReplayArchiveRecord? {
     val cleaned = line.trimStart('\uFEFF', ' ', '\t')
     val timestamp = replayArchiveTimestampPrefix.find(cleaned) ?: return null
@@ -559,9 +572,9 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                 val d=mergedLines.optJSONObject(number) ?: JSONObject()
                 val metadata=driverByNumber[number]
                 val pos = sequenceOf(
-                    d.optInt("Position", 0),
-                    d.optInt("PositionNumber", 0),
-                    d.optInt("Line", 0),
+                    timingPositionValue(d, "Position"),
+                    timingPositionValue(d, "PositionNumber"),
+                    timingPositionValue(d, "Line"),
                     metadata?.line ?: 0
                 ).firstOrNull { it > 0 } ?: continue
                 val driver=d.optString("Tla").ifBlank{d.optString("ShortName")}
