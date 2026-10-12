@@ -35,7 +35,7 @@ data class UiState(
     val sessions: List<Session> =emptyList(),val streams: List<StreamSource> =emptyList(),
     val telemetry: List<DriverTelemetry> = emptyList(), val driverInfo: List<DriverInfo> = emptyList(), val liveSessionInfo: LiveSessionInfo = LiveSessionInfo(),val timing: List<TimingRow> = emptyList(), val currentLap:Int = 0, val totalLaps:Int = 0,
     val raceControl: List<RaceControlEvent> = emptyList(), val weather: TimingWeather = TimingWeather(),val sessionClock:String = "-",val selectedPanel:String?=null,val syncOffsetMs:Long=0,
-    val providerError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
+    val providerError:String?=null,val replayTimingError:String?=null,val vodSeasons: List<VodSeason> =emptyList(),val selectedSeason:VodSeason?=null,
     val vodEvents: List<VodEvent> =emptyList(),val selectedEvent:VodEvent?=null,val vodSessions: List<VodSession> =emptyList(),
     val quality:Quality=Quality.AUTO,val timingStatus:String="OFFLINE",val selectedStreamIds:List<String> = emptyList(),
     val mainStreamId:String? = null,
@@ -150,6 +150,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             selectedStreamIds = emptyList(),
             mainStreamId = null,
             providerError = null,
+            replayTimingError = null,
             pendingResume = null,
             timing = emptyList(),
             telemetry = emptyList(),
@@ -172,7 +173,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     fun selectVodSession(vod:VodSession)=viewModelScope.launch{
          val session=Session(vod.contentId,vod.title,vod.series,"Replay",false,_ui.value.selectedSeason?.year,vod.eventPageId,vod.series,vod.type,_ui.value.selectedEvent?.meetingNumber,vod.artworkUrl?:_ui.value.selectedEvent?.artworkUrl, vod.backgroundArtworkUrl?:_ui.value.selectedEvent?.backgroundArtworkUrl)
          val resume=continueStore.entries.first().firstOrNull { it.contentId == vod.contentId }
-         _ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,pendingResume=resume)
+         _ui.value=_ui.value.copy(session=session,streams=emptyList(),selectedStreamIds=emptyList(),mainStreamId=null,providerError=null,replayTimingError=null,pendingResume=resume)
          loadReplayTiming(session)
          loadStreams(session, autoSelectFeeds = true)
      }
@@ -654,7 +655,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
             _ui.value = _ui.value.copy(
                 timing=emptyList(), trackPositions=emptyList(), telemetry=emptyList(), driverInfo=emptyList(),
                 liveSessionInfo=LiveSessionInfo(), weather=TimingWeather(), trackStatus=TrackStatusInfo(),
-                currentLap=0, totalLaps=0, trackGeometry=null, trackPositionMappingValid=null, syncOffsetMs=0L, replayPlayheadMs=0L, replayDataOffsetMs=0L, replaySyncCalibrated=false, timingStatus="REPLAY_LOADING", providerError=null
+                currentLap=0, totalLaps=0, trackGeometry=null, trackPositionMappingValid=null, syncOffsetMs=0L, replayPlayheadMs=0L, replayDataOffsetMs=0L, replaySyncCalibrated=false, timingStatus="REPLAY_LOADING", providerError=null, replayTimingError=null
             )
             if (year == null || year <= 0 || meeting == null || meeting <= 0) {
                 val missing = buildList {
@@ -664,7 +665,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 if (_ui.value.session?.id == session.id && replayTimingClient === client) {
                     _ui.value = _ui.value.copy(
                         timingStatus="REPLAY_UNAVAILABLE",
-                        providerError="Replay timing unavailable: missing $missing for ${session.name}"
+                        providerError="Replay timing unavailable: missing $missing for ${session.name}", replayTimingError="Replay timing unavailable: missing $missing for ${session.name}"
                     )
                 }
                 AppLogger.w("ReplayTiming", "REPLAY_DATA_UNAVAILABLE sessionId=${session.id} missing=$missing")
@@ -705,7 +706,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                         replaySyncCalibrated=client.isSyncCalibrated(),
                         driverInfo=client.driverInfo(),
                         liveSessionInfo=client.sessionInfo() ?: LiveSessionInfo(),
-                        timingStatus=if (client.isSyncCalibrated()) "REPLAY" else "REPLAY_UNCALIBRATED", providerError=null
+                        timingStatus=if (client.isSyncCalibrated()) "REPLAY" else "REPLAY_UNCALIBRATED", providerError=null, replayTimingError=null
                     )
                     // Rebuild replay rows/positions against the final sync offset now that the
                     // ancillary feeds have loaded, then resolve circuit geometry from archived
@@ -722,8 +723,10 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 }
                 .onFailure {
                     if (replayTimingClient !== client || _ui.value.session?.id != session.id) return@onFailure
+                    val message = "Replay timing unavailable: " + (it.message ?: "archive not found")
                     _ui.value = _ui.value.copy(
-                        providerError="Replay timing unavailable: " + (it.message ?: "archive not found"),
+                        providerError=message,
+                        replayTimingError=message,
                         timingStatus="REPLAY_UNAVAILABLE"
                     )
                     AppLogger.w(
@@ -737,7 +740,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 if (replayTimingClient === client && _ui.value.session?.id == session.id) {
                     _ui.value = _ui.value.copy(
                         timingStatus = "REPLAY_UNAVAILABLE",
-                        providerError = "Replay timing load was cancelled before data became available"
+                        providerError = "Replay timing load was cancelled before data became available",
+                        replayTimingError = "Replay timing load was cancelled before data became available"
                     )
                     AppLogger.w("ReplayTiming", "REPLAY_LOAD_CANCELLED sessionId=${session.id}")
                 }
@@ -746,7 +750,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                 if (replayTimingClient === client && _ui.value.session?.id == session.id) {
                     _ui.value = _ui.value.copy(
                         timingStatus = "REPLAY_UNAVAILABLE",
-                        providerError = "Replay timing unavailable: " + (failure.message ?: failure.javaClass.simpleName)
+                        providerError = "Replay timing unavailable: " + (failure.message ?: failure.javaClass.simpleName),
+                        replayTimingError = "Replay timing unavailable: " + (failure.message ?: failure.javaClass.simpleName)
                     )
                     AppLogger.e("ReplayTiming", "REPLAY_LOAD_FAILED sessionId=${session.id} reason=${failure.javaClass.simpleName} message=${failure.message}")
                 }
