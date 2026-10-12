@@ -13,6 +13,16 @@ import java.util.zip.Deflater
 
 class LiveTimingClientTest {
     @Test
+    fun noDataWatchdogOnlyExpiresAnAcknowledgedOrPendingSubscription() {
+        assertEquals("NO_DATA", liveTimingNoDataStatus("SUBSCRIBED", 0L, 1_000L, 16_000L))
+        assertEquals("NO_DATA", liveTimingNoDataStatus("SUBSCRIBE_SENT", 0L, 1_000L, 16_000L))
+        assertEquals(null, liveTimingNoDataStatus("SUBSCRIBED", 0L, 1_000L, 15_999L))
+        assertEquals(null, liveTimingNoDataStatus("LIVE", 0L, 1_000L, 30_000L))
+        assertEquals(null, liveTimingNoDataStatus("SUBSCRIBED", 2_000L, 1_000L, 30_000L))
+        assertEquals(null, liveTimingNoDataStatus("SUBSCRIBED", 0L, 0L, 30_000L))
+    }
+
+    @Test
     fun decodesRawDeflateBase64SignalRFeedPayload() {
         val json = """{"Lines":{"44":{"Position":1,"Tla":"HAM","GapToLeader":"LEADER"}}}"""
         val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
