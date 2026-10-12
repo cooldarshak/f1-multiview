@@ -1357,6 +1357,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     "REPLAY_UNAVAILABLE" -> ui.replayTimingError?.takeIf { it.isNotBlank() } ?: "REPLAY TIMING UNAVAILABLE"
                     "REPLAY" -> "WAITING FOR REPLAY TIMING AT THIS PLAYHEAD"
                     "LIVE" -> "WAITING FOR LIVE TIMING DATA"
+                    "NO_DATA" -> "NO LIVE TIMING DATA RECEIVED"
                     "HANDSHAKING" -> "LIVE TIMING SOCKET OPEN · HANDSHAKING"
                     "SUBSCRIBE_SENT" -> "SUBSCRIBE SENT · WAITING FOR F1 DATA"
                     "OFFLINE", "RETRYING", "ERROR" -> "LIVE TIMING " + ui.timingStatus
