@@ -175,7 +175,7 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
             return@withContext Result.failure(failure)
         }
         clear()
-        runCatching {
+        try {
             val index=getJson("https://livetiming.formula1.com/static/$year/Index.json")
             val meetings=index.optJSONArray("Meetings") ?: error("Timing archive has no meetings")
             val meeting=(0 until meetings.length()).map{meetings.getJSONObject(it)}.firstOrNull{it.optInt("Number",-1)==meetingNumber} ?: error("Timing archive meeting not found")
@@ -229,6 +229,15 @@ class ReplayTimingClient(private val http: OkHttpClient = OkHttpClient()) {
                 // Zero is only a fallback origin, never proof of video/archive alignment.
                 0L
             }
+            Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            AppLogger.w(
+                "ReplayTiming",
+                "REPLAY_LOAD_FAILED year=$year meeting=$meetingNumber reason=${failure.javaClass.simpleName} message=${failure.message}"
+            )
+            Result.failure(failure)
         }
     }
     internal fun archiveOffsetForVideoPosition(videoPositionMs:Long):Long =
