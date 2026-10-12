@@ -248,7 +248,7 @@ fun UgisInfoPanel(
                                     Text("CLOCK "+ui.sessionClock+"  ·  LAP "+ui.currentLap+"/"+ui.totalLaps+"  ·  TRACK "+ui.trackStatus.label,color=InfoMuted,fontSize=7.sp,fontWeight=FontWeight.Bold)
                                 }
                                 val statusLabel = if (ui.session?.live == false && !ui.replaySyncCalibrated) "SYNC UNVERIFIED" else ui.timingStatus
-                                Text(statusLabel,color=when { ui.timingStatus=="LIVE" -> Color(0xFF66E07A); ui.timingStatus in setOf("STALE","ERROR","REPLAY_UNAVAILABLE") -> InfoRed; ui.timingStatus=="SUBSCRIBED" -> InfoYellow; ui.session?.live==false && !ui.replaySyncCalibrated -> InfoYellow; else -> InfoMuted },fontSize=9.sp,fontWeight=FontWeight.Black)
+                                Text(statusLabel,color=when { ui.timingStatus=="LIVE" -> Color(0xFF66E07A); ui.timingStatus in setOf("STALE","NO_DATA","ERROR","REPLAY_UNAVAILABLE") -> InfoRed; ui.timingStatus=="SUBSCRIBED" -> InfoYellow; ui.session?.live==false && !ui.replaySyncCalibrated -> InfoYellow; else -> InfoMuted },fontSize=9.sp,fontWeight=FontWeight.Black)
                             }
                         }
                     }
