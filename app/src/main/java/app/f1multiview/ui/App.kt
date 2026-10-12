@@ -2582,15 +2582,33 @@ private fun FullscreenMultiview(
     onReplayPosition: (Long) -> Unit
 ) {
     val multiviewStatus by engine.multiviewStatus.collectAsState()
-    val selected = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    val selectedCandidates = ui.selectedStreamIds.mapNotNull { id -> ui.streams.firstOrNull { it.id == id } }.take(4)
+    // Keep the native dashboard feed order stable. The layout's semantic panel placement
+    // expects main video, timing tower, then driver tracker regardless of selection order.
+    val selected = if (
+        selectedCandidates.size == 3 &&
+        selectedCandidates.any { it.kind == StreamKind.F1_DASH_DATA } &&
+        selectedCandidates.any { it.kind == StreamKind.TRACK_MAP }
+    ) {
+        val timingFeed = selectedCandidates.first { it.kind == StreamKind.F1_DASH_DATA }
+        val mapFeed = selectedCandidates.first { it.kind == StreamKind.TRACK_MAP }
+        val mainFeed = selectedCandidates.firstOrNull {
+            it.id == ui.mainStreamId && it.kind != StreamKind.F1_DASH_DATA && it.kind != StreamKind.TRACK_MAP
+        } ?: selectedCandidates.firstOrNull {
+            it.kind != StreamKind.F1_DASH_DATA && it.kind != StreamKind.TRACK_MAP
+        }
+        listOfNotNull(mainFeed, timingFeed, mapFeed)
+    } else selectedCandidates
     val selectedVideoFeedCount = selected.count { it.kind !in setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA) }
 
+    val configuration = LocalConfiguration.current
+    val compactPhone = configuration.screenWidthDp < 600
     val context = LocalContext.current
     val displayHdr = displaySupportsHdr(context)
     val screenshotMode by DebugPresentationSettings.screenshotMode.collectAsState()
 
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
-    var railOpen by rememberSaveable { mutableStateOf(true) }
+    var railOpen by rememberSaveable { mutableStateOf(!compactPhone) }
     var editSize by rememberSaveable { mutableStateOf(false) }
     var activeFeedId by rememberSaveable { mutableStateOf(ui.mainStreamId ?: selected.firstOrNull()?.id) }
     var menu by rememberSaveable { mutableStateOf<String?>(null) }
@@ -2698,67 +2716,83 @@ private fun FullscreenMultiview(
                 }
             }
     ) {
-        Row(
-            Modifier
-                .fillMaxSize()
-                .padding(
-                    top = if (controlsVisible) 52.dp else 0.dp,
-                    bottom = if (controlsVisible) 80.dp else 0.dp
-                )
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(
-                        start = 7.dp,
-                        end = if (railOpen) 3.dp else 0.dp,
-                        top = 4.dp,
-                        bottom = 4.dp
-                    )
-            ) {
+        val multiviewBounds = Modifier
+            .fillMaxSize()
+            .padding(
+                top = if (controlsVisible) 52.dp else 0.dp,
+                bottom = if (controlsVisible) 80.dp else 0.dp
+            )
+        if (compactPhone) {
+            // On portrait phones use a vertical native dashboard rather than squeezing three
+            // feeds into a narrow left/right grid. The main feed stays 16:9; full-width timing
+            // and tracker tiles share the remaining height. Desktop/TV retains its rail layout.
+            Column(multiviewBounds) {
                 CanonicalMultiviewLayout(
                     ui = ui, selected = selected, engine = engine, errors = errors,
-                    editSize = editSize,
+                    editSize = false,
                     onFocus = { id -> activeFeedId = id; menu = null },
                     activeId = activeFeedId, modifier = Modifier.fillMaxSize(),
                     surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-                    onVideoTap = { controlsVisible = !controlsVisible }
+                    onVideoTap = { controlsVisible = !controlsVisible },
+                    compactPhone = true
                 )
             }
-
-            Box(
-                Modifier
-                    .width(30.dp)
-                    .fillMaxHeight()
-            ) {
-                RailCollapseButton(
-                    open = railOpen,
-                    onClick = {
-                        railOpen = !railOpen
-                        menu = null
-                    },
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
-
-            if (railOpen) {
-                FullscreenFeedRail(
-                    ui = ui,
-                    vm = vm,
-                    activeId = activeFeedId ?: ui.mainStreamId.orEmpty(),
-                    onToggleStream = { id ->
-                        // Feed selection is deliberately separate from active-feed focus.
-                        // Clicking a right-rail item adds/removes it from the wall; it never
-                        // replaces the large left feed.
-                        vm.toggleStream(id)
-                        menu = null
-                    },
-                    modifier = Modifier
+        } else {
+            Row(multiviewBounds) {
+                Box(
+                    Modifier
+                        .weight(1f)
                         .fillMaxHeight()
-                        .weight(0.29f)
-                        .padding(end = 7.dp, top = 4.dp, bottom = 4.dp)
-                )
+                        .padding(
+                            start = 7.dp,
+                            end = if (railOpen) 3.dp else 0.dp,
+                            top = 4.dp,
+                            bottom = 4.dp
+                        )
+                ) {
+                    CanonicalMultiviewLayout(
+                        ui = ui, selected = selected, engine = engine, errors = errors,
+                        editSize = editSize,
+                        onFocus = { id -> activeFeedId = id; menu = null },
+                        activeId = activeFeedId, modifier = Modifier.fillMaxSize(),
+                        surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                        onVideoTap = { controlsVisible = !controlsVisible }
+                    )
+                }
+
+                Box(
+                    Modifier
+                        .width(30.dp)
+                        .fillMaxHeight()
+                ) {
+                    RailCollapseButton(
+                        open = railOpen,
+                        onClick = {
+                            railOpen = !railOpen
+                            menu = null
+                        },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+
+                if (railOpen) {
+                    FullscreenFeedRail(
+                        ui = ui,
+                        vm = vm,
+                        activeId = activeFeedId ?: ui.mainStreamId.orEmpty(),
+                        onToggleStream = { id ->
+                            // Feed selection is deliberately separate from active-feed focus.
+                            // Clicking a right-rail item adds/removes it from the wall; it never
+                            // replaces the large left feed.
+                            vm.toggleStream(id)
+                            menu = null
+                        },
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(0.29f)
+                            .padding(end = 7.dp, top = 4.dp, bottom = 4.dp)
+                    )
+                }
             }
         }
 
@@ -2805,11 +2839,13 @@ private fun FullscreenMultiview(
                     )
                     Spacer(Modifier.width(6.dp))
 
-                    SmallPlayerButton(if (editSize) "DONE RESIZE" else "RESIZE") {
-                        editSize = !editSize
-                        menu = null
+                    if (!compactPhone) {
+                        SmallPlayerButton(if (editSize) "DONE RESIZE" else "RESIZE") {
+                            editSize = !editSize
+                            menu = null
+                        }
+                        Spacer(Modifier.width(6.dp))
                     }
-                    Spacer(Modifier.width(6.dp))
 
                     SmallPlayerButton("SYNC ALL") {
                         engine.playAll()
