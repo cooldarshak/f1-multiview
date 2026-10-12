@@ -113,11 +113,14 @@ class TrackMapClientTest {
             .put("name", "Singapore")
             .put("aliases", JSONArray().put("Singapore").put("Singapore Grand Prix").put("Marina Bay"))
             .put("year", 2023)
+            .put("requestedYear", 2026)
             .put("rotation", 335.0)
             .put("x", x)
             .put("y", y)
             .put("corners", corners)
-        val catalogue = JSONObject().put("circuits", JSONObject().put("61", singapore))
+        val catalogue = JSONObject()
+            .put("catalogueYear", 2026)
+            .put("circuits", JSONObject().put("61", singapore))
 
         // An older geometry is accepted only because its explicit circuit key matches the
         // selected venue; point count alone is not used to infer circuit identity.
@@ -128,6 +131,8 @@ class TrackMapClientTest {
         assertEquals(335.0, geometry.rotation, 0.0)
         assertEquals(TrackMapClient.MIN_CENTERLINE_POINTS, geometry.centerline.size)
         assertEquals(3, geometry.corners.size)
+        assertNull("A 2026 bundled catalogue must not be treated as proof of 2024 geometry",
+            TrackMapClient.parseBundledGeometry(catalogue, 61, 2024))
         assertEquals(61 to "Singapore", TrackMapClient.matchBundledCircuit(catalogue, "Singapore Grand Prix", ""))
         assertNull(TrackMapClient.matchBundledCircuit(catalogue, "Unknown Grand Prix", "Unknown Circuit"))
         assertNull(TrackMapClient.parseBundledGeometry(catalogue, 999, 2026))

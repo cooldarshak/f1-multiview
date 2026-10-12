@@ -94,6 +94,15 @@ internal fun geometryLookupYears(requestedYear: Int): List<Int> = listOf(request
             val item = catalogue.optJSONObject("circuits")?.optJSONObject(circuitKey.toString()) ?: return null
             if (item.optInt("circuitKey", circuitKey) != circuitKey) return null
             val itemYear = item.optInt("year", 0)
+            // The asset is a catalogue generated for a specific requested season. "year"
+            // records when this circuit layout took effect, not the season it was requested
+            // for, so a 2026 catalogue can legitimately contain a circuit layout dated 2022.
+            // Never reuse this catalogue for a different replay/live season without a
+            // season-matched lookup; it may contain a different track configuration.
+            val catalogueRequestedYear = item.optInt("requestedYear", catalogue.optInt("catalogueYear", 0))
+            if (requestedYear > 0 && catalogueRequestedYear > 0 && catalogueRequestedYear != requestedYear) {
+                return null
+            }
             val client = TrackMapClient()
             val centerline = client.parseTrackCoordinates(item.optJSONArray("x"), item.optJSONArray("y"))
             if (centerline.size < MIN_CENTERLINE_POINTS) return null

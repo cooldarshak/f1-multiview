@@ -470,14 +470,19 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     val state = _ui.value
     val info = state.liveSessionInfo
     val selectedSession = state.session
-    val replay = selectedSession?.live == false
-    // On replay, prefer SessionInfo parsed from that replay archive. setSession/loadReplayTiming
-    // clears the old session metadata first, so this cannot accidentally reuse a previous race's key.
-    val year = if (replay) {
-        info.year?.takeIf { it > 0 } ?: selectedSession?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
-    } else {
-        info.year?.takeIf { it > 0 } ?: selectedSession?.seasonYear ?: state.selectedSeason?.year ?: java.time.Year.now().value
+    // Prefer the selected session's actual year. Do not silently substitute the device's
+    // current year: that can put markers on a newer layout during an older replay.
+    val year = info.year?.takeIf { it > 0 }
+        ?: selectedSession?.seasonYear?.takeIf { it > 0 }
+        ?: state.selectedSeason?.year?.takeIf { it > 0 }
+    if (year == null) {
+        val reason = "Track map geometry unavailable: session year is not available"
+        _ui.value = _ui.value.copy(trackGeometry = null, trackPositionMappingValid = null, providerError = reason)
+        AppLogger.w("TrackMap", "TRACK_GEOMETRY_UNAVAILABLE reason=session_year_missing meetingNamePresent=${selectedSession?.name?.isNotBlank() == true}")
+        return@launch
     }
+    // SessionInfo metadata is cleared on session change, so a previous race's circuit
+    // identifier can never be used as a fallback.
     val metadataMeeting = info.meeting.takeUnless { it.isBlank() || it == "-" }
     val meeting = metadataMeeting ?: selectedSession?.name.orEmpty()
     val circuitName = info.circuitName.takeUnless { it.isBlank() || it == "-" }.orEmpty()
