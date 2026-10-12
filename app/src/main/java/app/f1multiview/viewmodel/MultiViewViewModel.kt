@@ -299,8 +299,18 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
             { sources ->
                 val mainSource = sources.firstOrNull { it.kind == StreamKind.WORLD } ?: sources.firstOrNull()
                 val nativeDataKinds = setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
+                val nativeDataSources = sources
+                    .filter { it.kind in nativeDataKinds }
+                    .sortedBy { if (it.kind == StreamKind.F1_DASH_DATA) 0 else 1 }
                 val playableSources = sources.filter { it.kind !in nativeDataKinds }
-                val selected = if (autoSelectFeeds) listOfNotNull(mainSource?.id) + playableSources.filter { it.id != mainSource?.id }.take(3).map { it.id } else listOfNotNull(mainSource?.id)
+                // The standard three-panel replay view is main video + native timing tower +
+                // native driver tracker. Keep the order stable because the three-feed layout
+                // places feed 1 above feed 2 in the right-hand column.
+                val selected = if (autoSelectFeeds) {
+                    val base = listOfNotNull(mainSource?.id) + nativeDataSources.map { it.id }
+                    val fillCount = (3 - base.size).coerceAtLeast(0)
+                    base + playableSources.filter { it.id != mainSource?.id }.take(fillCount).map { it.id }
+                } else listOfNotNull(mainSource?.id)
                 val selectedDistinct = selected.distinct().take(4)
                 _ui.value = _ui.value.copy(streams=sources, selectedStreamIds=selectedDistinct, mainStreamId=mainSource?.id, providerError=null)
                 val sourcesToResolve = buildList {
