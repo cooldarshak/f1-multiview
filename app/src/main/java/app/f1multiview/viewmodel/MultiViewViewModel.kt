@@ -711,20 +711,21 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                     meeting,
                     session.dateLabel.takeIf { it.isNotBlank() && !it.equals("Replay", true) } ?: session.sessionType,
                     session.name
-                ) { firstVideoPositionMs ->
-                // TimingData is the critical path. Show it immediately, instead of waiting for the
-                // much larger optional telemetry/position archives to finish downloading.
+                ) { firstArchiveOffsetMs ->
+                // Publish the first archive row set as soon as TimingData is available. This
+                // timestamp belongs to the archive clock, not the video playhead: preserve the
+                // actual player position until the player poll / calibrated sync updates it.
                 if (replayTimingClient === client && _ui.value.session?.id == session.id) {
-                    val initialRows = client.rowsAt(firstVideoPositionMs)
+                    val initialRows = client.rowsAtArchiveOffset(firstArchiveOffsetMs)
+                    val videoPlayheadMs = _ui.value.replayPlayheadMs
                     _ui.value = _ui.value.copy(
                         timing = initialRows,
-                        replayPlayheadMs = firstVideoPositionMs,
-                        replayDataOffsetMs = client.archiveOffsetForVideoPosition(firstVideoPositionMs),
+                        replayDataOffsetMs = firstArchiveOffsetMs,
                         timingStatus = if (initialRows.isNotEmpty()) "REPLAY_UNCALIBRATED" else "REPLAY_LOADING"
                     )
                     AppLogger.i(
                         "ReplayTiming",
-                        "REPLAY_TIMING_ROWS_READY rows=${initialRows.size} firstOffsetMs=$firstVideoPositionMs"
+                        "REPLAY_TIMING_ROWS_READY rows=${initialRows.size} archiveOffsetMs=$firstArchiveOffsetMs videoPlayheadPreservedMs=$videoPlayheadMs"
                     )
                 }
                 }

@@ -59,15 +59,17 @@ class ReplayTimingClientTest {
     }
 
     @Test
-    fun successfulArchivePublishesRealTimingRowsAtFirstTimestamp() = runBlocking {
+    fun successfulArchivePublishesFirstArchiveTimestampWithoutConfusingItWithVideoTime() = runBlocking {
         val timing = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}}}}"""
         val client = ReplayTimingClient(archiveHttpClient(timing))
-        var callbackOffset: Long? = null
-        val result = client.load(2026, 4, "Race", "Race") { callbackOffset = it }
+        var publishedArchiveOffset: Long? = null
+        val result = client.load(2026, 4, "Race", "Race") { publishedArchiveOffset = it }
         assertTrue(result.isSuccess)
-        assertEquals(1_000L, callbackOffset)
-        assertEquals(1, client.rowsAt(1_000L).size)
-        assertEquals("VER", client.rowsAt(1_000L).single().driver)
+        assertEquals(1_000L, publishedArchiveOffset)
+        // Data exists at archive +1s, but before sync calibration video +0s maps to archive +0s.
+        assertEquals(1, client.rowsAtArchiveOffset(1_000L).size)
+        assertTrue(client.rowsAt(0L).isEmpty())
+        assertEquals("VER", client.rowsAtArchiveOffset(1_000L).single().driver)
     }
 
     @Test

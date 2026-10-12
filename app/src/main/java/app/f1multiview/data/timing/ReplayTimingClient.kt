@@ -225,7 +225,7 @@ class ReplayTimingClient(httpClient: OkHttpClient = OkHttpClient()) {
         meetingNumber: Int,
         sessionType: String,
         sessionTitle: String = sessionType,
-        onTimingRowsAvailable: suspend (firstVideoPositionMs: Long) -> Unit = {}
+        onTimingRowsAvailable: suspend (firstArchiveOffsetMs: Long) -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
         if (year <= 0 || meetingNumber <= 0) {
             val failure = IllegalArgumentException("Replay timing requires positive year and meeting number (year=$year, meeting=$meetingNumber)")
@@ -267,8 +267,8 @@ class ReplayTimingClient(httpClient: OkHttpClient = OkHttpClient()) {
             // Publish usable timing rows as soon as the primary TimingData archive is parsed.
             // CarData and Position archives are large and must not block the timing tower from
             // rendering rows already available for this replay.
-            val firstTimingOffsetMs = snapshots.first().offsetMs.coerceAtLeast(0L)
-            onTimingRowsAvailable(firstTimingOffsetMs)
+            val firstArchiveOffsetMs = snapshots.first().offsetMs.coerceAtLeast(0L)
+            onTimingRowsAvailable(firstArchiveOffsetMs)
             archivedSessionInfo=loadOptionalArchive<LiveSessionInfo?>("SessionInfo.jsonStream", null) { parseSessionInfo(getText("https://livetiming.formula1.com/static/$path/SessionInfo.jsonStream")) }
             weatherSnapshots=loadOptionalArchive("WeatherData.jsonStream", emptyList()) { parseWeatherSnapshots(getText("https://livetiming.formula1.com/static/$path/WeatherData.jsonStream")) }
             trackStatusSnapshots=loadOptionalArchive("TrackStatus.jsonStream", emptyList()) { parseTrackStatusSnapshots(getText("https://livetiming.formula1.com/static/$path/TrackStatus.jsonStream")) }
@@ -312,8 +312,12 @@ class ReplayTimingClient(httpClient: OkHttpClient = OkHttpClient()) {
     internal fun archiveOffsetForVideoPosition(videoPositionMs:Long):Long =
         (videoPositionMs + syncOffsetMs).coerceAtLeast(0L)
 
-    fun rowsAt(videoPositionMs:Long):List<TimingRow> {
-        val target=archiveOffsetForVideoPosition(videoPositionMs)
+    fun rowsAt(videoPositionMs:Long):List<TimingRow> =
+        rowsAtArchiveOffset(archiveOffsetForVideoPosition(videoPositionMs))
+
+    /** Query directly in the archive's timestamp domain without applying video sync twice. */
+    internal fun rowsAtArchiveOffset(archiveOffsetMs:Long):List<TimingRow> {
+        val target=archiveOffsetMs.coerceAtLeast(0L)
         val rows=findSnapshot(snapshots,target){it.offsetMs}?.rows ?: return emptyList()
         val stints=findSnapshot(stintSnapshots,target){it.offsetMs}?.stints.orEmpty()
         return rows.map { row ->
