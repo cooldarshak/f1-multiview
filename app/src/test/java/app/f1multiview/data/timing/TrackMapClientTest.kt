@@ -142,7 +142,7 @@ class TrackMapClientTest {
         val onTrack = listOf(
             TrackDriverPosition(number = "1", x = 5.0, y = 5.0, updatedAtMs = 1L),
             TrackDriverPosition(number = "4", x = 10.0, y = 2.0, updatedAtMs = 1L),
-            TrackDriverPosition(number = "44", x = 32.0, y = 7.0, updatedAtMs = 1L)
+            TrackDriverPosition(number = "44", x = 32.0, y = 0.0, updatedAtMs = 1L)
         )
         val valid = TrackMapClient.validatePositionCoordinateMapping(centerline, onTrack)
         assertEquals(true, valid.valid)

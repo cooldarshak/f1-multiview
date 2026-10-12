@@ -69,13 +69,15 @@ internal fun resolveReplayArchiveSession(
         val name = normalize(candidate.name)
         val type = canonical(candidate.type)
         if (name.isBlank() || candidate.path.isBlank()) return@mapNotNull null
+        // Keep score bands disjoint: an exact title must always outrank a suffix candidate
+        // (e.g. "Sprint Qualifying" vs "Qualifying"), regardless of candidate-name length.
         val (score, reason) = when {
-            title.isNotBlank() && title == name -> 140 to "exact-title-name"
-            title.isNotBlank() && title.endsWith(name) -> 130 + name.length.coerceAtMost(20) to "title-suffix-name"
-            title.isNotBlank() && title.contains(name) -> 110 + name.length.coerceAtMost(20) to "title-contains-name"
-            name == wantedType -> 100 to "exact-name"
-            type == wantedType -> 80 to "exact-type"
-            name.contains(wantedType) || wantedType.contains(name) -> 60 to "name-containment"
+            title.isNotBlank() && title == name -> 4_000 to "exact-title-name"
+            title.isNotBlank() && title.endsWith(name) -> 3_000 + name.length.coerceAtMost(20) to "title-suffix-name"
+            title.isNotBlank() && title.contains(name) -> 2_000 + name.length.coerceAtMost(20) to "title-contains-name"
+            name == wantedType -> 1_500 to "exact-name"
+            type == wantedType -> 1_000 to "exact-type"
+            name.contains(wantedType) || wantedType.contains(name) -> 500 + name.length.coerceAtMost(20) to "name-containment"
             else -> 0 to "no-match"
         }
         Triple(candidate, score, reason)

@@ -33,7 +33,7 @@ class LiveTimingClientTest {
         val client = LiveTimingClient(CoroutineScope(SupervisorJob()))
         val decoded = client.decodeFeedObject(encoded)
 
-        assertEquals("1", decoded?.getJSONObject("Lines")?.getJSONObject("44")?.getString("Position"))
+        assertEquals("1", decoded?.getJSONObject("Lines")?.getJSONObject("44")?.optString("Position"))
         assertEquals("HAM", decoded?.getJSONObject("Lines")?.getJSONObject("44")?.getString("Tla"))
     }
 

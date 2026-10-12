@@ -158,11 +158,16 @@ object AppLogger {
             _entries.value = (_entries.value + line).takeLast(MAX_MEMORY_ENTRIES)
             append(line)
         }
-        when (level) {
-            "ERROR" -> Log.e(TAG, line)
-            "WARN" -> Log.w(TAG, line)
-            "INFO" -> Log.i(TAG, line)
-            else -> Log.d(TAG, line)
+        // android.util.Log is a platform sink, not part of the timing pipeline.
+        // Local JVM tests and restricted platform builds can expose the Android stub here;
+        // diagnostics must never abort parsing, playback, geometry resolution or recovery.
+        runCatching {
+            when (level) {
+                "ERROR" -> Log.e(TAG, line)
+                "WARN" -> Log.w(TAG, line)
+                "INFO" -> Log.i(TAG, line)
+                else -> Log.d(TAG, line)
+            }
         }
     }
 
