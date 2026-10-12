@@ -472,7 +472,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     val selectedSession = state.session
     // Resolve the actual year of this session. Only replay/VOD may fall back to the season
     // selected in the VOD browser; live mode must never inherit a stale VOD season.
-    val year = resolveGeometrySeasonYear(
+    val year = TrackMapClient.resolveGeometrySeasonYear(
         sessionInfoYear = info.year,
         selectedSessionYear = selectedSession?.seasonYear,
         selectedVodSeasonYear = state.selectedSeason?.year,
