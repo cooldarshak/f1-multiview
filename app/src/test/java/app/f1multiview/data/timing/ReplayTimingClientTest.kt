@@ -2,6 +2,7 @@ package app.f1multiview.data.timing
 
 import app.f1multiview.model.TrackDriverPosition
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -61,6 +62,18 @@ class ReplayTimingClientTest {
         assertEquals(1_000L, callbackOffset)
         assertEquals(1, client.rowsAt(1_000L).size)
         assertEquals("VER", client.rowsAt(1_000L).single().driver)
+    }
+
+    @Test
+    fun cancellationFromTimingRowsCallbackPropagatesToTheCaller() = runBlocking {
+        val timing = """00:00:01.000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER"}}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing))
+        val failure = runCatching {
+            client.load(2026, 4, "Race", "Race") {
+                throw CancellationException("test cancellation")
+            }
+        }.exceptionOrNull()
+        assertTrue(failure is CancellationException)
     }
 
     @Test
