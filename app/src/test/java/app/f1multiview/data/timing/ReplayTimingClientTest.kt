@@ -1,6 +1,7 @@
 package app.f1multiview.data.timing
 
 import app.f1multiview.model.TrackDriverPosition
+import app.f1multiview.model.DriverInfo
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -20,12 +21,17 @@ import java.util.zip.Deflater
 import org.junit.Assert.assertTrue
 
 class ReplayTimingClientTest {
-    private fun archiveHttpClient(timingData: String, timingStatus: Int = 200): OkHttpClient =
+    private fun archiveHttpClient(
+        timingData: String,
+        timingStatus: Int = 200,
+        driverListData: String = "{}"
+    ): OkHttpClient =
         OkHttpClient.Builder().addInterceptor(Interceptor { chain ->
             val request = chain.request()
             val url = request.url.toString()
             val (status, body) = when {
                 url.endsWith("/Index.json") -> 200 to """{"Meetings":[{"Number":4,"Key":"2026/test-meeting","Sessions":[{"Name":"Race","Type":"Race","Path":"2026/test-meeting/race","Key":"Race"}]}]}"""
+                url.endsWith("/DriverList.jsonStream") -> 200 to driverListData
                 url.endsWith("/TimingData.jsonStream") -> timingStatus to timingData
                 url.contains("api.multiviewer.app") -> 404 to "not found"
                 else -> 200 to "{}"
@@ -62,6 +68,33 @@ class ReplayTimingClientTest {
         assertEquals(1_000L, callbackOffset)
         assertEquals(1, client.rowsAt(1_000L).size)
         assertEquals("VER", client.rowsAt(1_000L).single().driver)
+    }
+
+    @Test
+    fun replayTimingRowsResolveNumericDriverKeysThroughArchivedDriverList() = runBlocking {
+        val timing = """00:00:01.250{"Lines":{"1":{"Position":1,"GapToLeader":"LEADER","LastLapTime":{"Value":"1:32.100"}}}}"""
+        val driverList = """00:00:00:000{"1":{"RacingNumber":"1","Tla":"VER","FullName":"Max Verstappen","TeamName":"Red Bull Racing","TeamColour":"3671C6"}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing, driverListData = driverList))
+        var publishedOffset: Long? = null
+
+        val result = client.load(2026, 4, "Race", "Race") { publishedOffset = it }
+
+        assertTrue(result.isSuccess)
+        assertEquals(1_250L, publishedOffset)
+        assertEquals(1, client.rowsAt(1_250L).size)
+        assertEquals("VER", client.rowsAt(1_250L).single().driver)
+        assertEquals("1", client.rowsAt(1_250L).single().driverNumber)
+        assertEquals("VER", client.driverInfo().single().acronym)
+    }
+
+    @Test
+    fun replayTimingParserSupportsColonMillisAndMicrosecondTimestampPrecision() {
+        val stream = """00:00:01:250000{"Lines":{"1":{"Position":1,"Tla":"VER","GapToLeader":"LEADER"}}}"""
+        val snapshots = ReplayTimingClient().parse(stream)
+
+        assertEquals(1, snapshots.size)
+        assertEquals(1_250L, snapshots.single().offsetMs)
+        assertEquals("VER", snapshots.single().rows.single().driver)
     }
 
     @Test
