@@ -17,6 +17,7 @@ import app.f1multiview.data.timing.ReplayTimingClient
 import app.f1multiview.data.timing.TrackMapClient
 import app.f1multiview.media.AppLogger
 import app.f1multiview.model.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -625,7 +626,8 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         val client = ReplayTimingClient()
         replayTimingClient = client
         replayTimingLoadJob = viewModelScope.launch {
-            client.clear()
+            try {
+                client.clear()
             val stateAtLoad = _ui.value
             val matchingVod = stateAtLoad.vodSessions.firstOrNull { it.contentId == session.id }
             val eventPageId = session.eventPageId ?: matchingVod?.eventPageId
@@ -713,9 +715,29 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                     )
                     AppLogger.w(
                         "ReplayTiming",
-                        "REPLAY_DATA_UNAVAILABLE year=$year meeting=$meeting reason=${it.javaClass.simpleName}"
+                        "REPLAY_DATA_UNAVAILABLE year=$year meeting=$meeting reason=${it.javaClass.simpleName} message=${it.message}"
                     )
                 }
+            } catch (cancelled: CancellationException) {
+                // A replaced session owns its own state. Only terminate loading if this
+                // cancelled request still belongs to the currently selected replay.
+                if (replayTimingClient === client && _ui.value.session?.id == session.id) {
+                    _ui.value = _ui.value.copy(
+                        timingStatus = "REPLAY_UNAVAILABLE",
+                        providerError = "Replay timing load was cancelled before data became available"
+                    )
+                    AppLogger.w("ReplayTiming", "REPLAY_LOAD_CANCELLED sessionId=${session.id}")
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (replayTimingClient === client && _ui.value.session?.id == session.id) {
+                    _ui.value = _ui.value.copy(
+                        timingStatus = "REPLAY_UNAVAILABLE",
+                        providerError = "Replay timing unavailable: " + (failure.message ?: failure.javaClass.simpleName)
+                    )
+                    AppLogger.e("ReplayTiming", "REPLAY_LOAD_FAILED sessionId=${session.id} reason=${failure.javaClass.simpleName} message=${failure.message}")
+                }
+            }
         }
     }
     fun sync(delta:Long){replayTimingClient.nudge(delta);_ui.value=_ui.value.copy(syncOffsetMs=_ui.value.syncOffsetMs+delta,replaySyncCalibrated=replayTimingClient.isSyncCalibrated(),timingStatus=if(replayTimingClient.isSyncCalibrated())"REPLAY" else "REPLAY_UNCALIBRATED")}
