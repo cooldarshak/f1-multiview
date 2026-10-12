@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import app.f1multiview.model.*
 import app.f1multiview.data.timing.interpolateLivePosition
 import app.f1multiview.data.timing.isLivePositionStale
+import app.f1multiview.media.AppLogger
 import app.f1multiview.viewmodel.UiState
 import kotlin.math.cos
 import kotlin.math.max
@@ -224,6 +225,25 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
     replayPlayheadMs:Long = 0L, replayDataOffsetMs:Long = 0L
 ){
     var frameTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val latestDrivers by rememberUpdatedState(drivers)
+    LaunchedEffect(isLive) {
+        if (!isLive) return@LaunchedEffect
+        var lastStaleLogAtMs = 0L
+        while (true) {
+            delay(1_000L)
+            val nowMs = System.currentTimeMillis()
+            val current = latestDrivers
+            val stale = current.filter { isLivePositionStale(it, nowMs) }
+            if (stale.isNotEmpty() && nowMs - lastStaleLogAtMs >= 2_000L) {
+                lastStaleLogAtMs = nowMs
+                val oldestAgeMs = stale.maxOf { (nowMs - it.updatedAtMs).coerceAtLeast(0L) }
+                AppLogger.w(
+                    "LiveTiming",
+                    "LIVE_POSITION_STALE stale=${stale.size} total=${current.size} oldestAgeMs=$oldestAgeMs"
+                )
+            }
+        }
+    }
     LaunchedEffect(isLive, drivers.isNotEmpty()) {
         if (!isLive || drivers.isEmpty()) return@LaunchedEffect
         while (true) {

@@ -64,6 +64,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
     private val _ui=MutableStateFlow(UiState());val ui=_ui.asStateFlow()
     private var livePlaybackSyncActive=false
     private var lastPositionMappingSignature: String? = null
+    private var lastReplayPlayheadLogAtMs: Long = 0L
     init{
         _ui.value=_ui.value.copy(customRadioUrl=prefs.getString("radio_url","").orEmpty(),radioDelayMs=prefs.getLong("radio_delay_ms",0L),preferCustomRadio=prefs.getBoolean("radio_prefer",false),selectedSeries=prefs.getString("series_filter","F1").orEmpty())
         timingClient.start()
@@ -598,6 +599,14 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
         val telemetry = replayTimingClient.telemetryAt(positionMs)
         val positions = replayTimingClient.positionsAt(positionMs)
         val metadataState = replayTimingClient.metadataAt(positionMs)
+        val nowMs = System.currentTimeMillis()
+        if (nowMs - lastReplayPlayheadLogAtMs >= 2_000L) {
+            lastReplayPlayheadLogAtMs = nowMs
+            AppLogger.i(
+                "ReplayTiming",
+                "REPLAY_PLAYHEAD_QUERY videoMs=$positionMs archiveMs=${replayTimingClient.archiveOffsetForVideoPosition(positionMs)} rows=${rows.size} telemetry=${telemetry.size} positions=${positions.size}"
+            )
+        }
         val metadata = _ui.value.driverInfo.associateBy { it.number }
         val rowsByNumber = rows.associateBy { it.driverNumber }
         val telemetryByNumber = telemetry.associateBy { it.driver }
@@ -638,6 +647,7 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
     }
 
     fun loadReplayTiming(session: Session) {
+        lastReplayPlayheadLogAtMs = 0L
         livePlaybackSyncActive=false
         replayTimingLoadJob?.cancel()
         val client = ReplayTimingClient()
@@ -728,7 +738,11 @@ fun loadTrackMapGeometry()=viewModelScope.launch {
                     loadTrackMapGeometry()
                     AppLogger.i(
                         "ReplayTiming",
-                        "REPLAY_TIMING_SNAPSHOT_COUNT count=${client.snapshotCount()} positionSnapshots=${client.positionSnapshotCount()}"
+                        "REPLAY_TIMING_SNAPSHOT_COUNT count=${client.snapshotCount()}"
+                    )
+                    AppLogger.i(
+                        "ReplayTiming",
+                        "REPLAY_POSITION_SNAPSHOT_COUNT count=${client.positionSnapshotCount()}"
                     )
                 }
                 .onFailure {

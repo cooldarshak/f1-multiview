@@ -105,13 +105,14 @@ class ReplayTimingClientTest {
     }
 
     @Test
-    fun preservesOfficialTimingRowsWhenDriverListIsUnavailable() {
-        val stream = """00:00:03.703{"Lines":{"3":{"Position":"1","RacingNumber":"3","GapToLeader":"","Line":1,"Sectors":[{"Value":"","Status":0},{"Value":"","Status":0},{"Value":"","Status":0}]}}}"""
+    fun preservesOfficialTimingRowsWhenDriverListIsUnavailable() = runBlocking {
+        val timing = """00:00:03.703{"Lines":{"3":{"Position":"1","RacingNumber":"3","GapToLeader":"","Line":1,"Sectors":[{"Value":"","Status":0},{"Value":"","Status":0},{"Value":"","Status":0}]}}}"""
+        val client = ReplayTimingClient(archiveHttpClient(timing, driverListData = ""))
 
-        val snapshots = ReplayTimingClient().parse(stream)
+        val result = client.load(2026, 4, "Race", "Race")
 
-        assertEquals(1, snapshots.size)
-        val row = snapshots.single().rows.single()
+        assertTrue(result.isSuccess)
+        val row = client.rowsAt(3_703L).single()
         assertEquals(1, row.position)
         assertEquals("3", row.driver)
         assertEquals("3", row.driverNumber)
