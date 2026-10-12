@@ -624,3 +624,17 @@ class AuthorizedF1TvGateway(private val context: Context) : PlaybackGateway {
     private fun mapSessionType(subtype:String,videoType:String,title:String):String{val s=subtype+" "+videoType+" "+title.lowercase();return when{"sprint" in s->"sprint";"qualifying" in s||"quali" in s->"qualifying";"practice" in s||"fp1" in s||"fp2" in s||"fp3" in s->"practice";"race" in s->"race";else->"other"}}
     private fun normalizeSeries(raw:String):String=when(raw.uppercase().trim()){"FORMULA 1",""->"F1";"FORMULA 2"->"F2";"FORMULA 3"->"F3";"F1 ACADEMY"->"F1 Academy";"PORSCHE"->"Porsche Supercup";else->raw}
 }
+
+/**
+ * Merge app-owned native data panels into a session when its UI is meant to expose
+ * a timing tower and tracker. These entries have no media URL or content id.
+ */
+internal fun mergeAppOwnedDashboardSources(
+    sessionId: String,
+    sources: List<StreamSource>,
+    includeNativeDashboard: Boolean
+): List<StreamSource> {
+    if (!includeNativeDashboard) return sources
+    return (sources + appOwnedDashboardSources(sessionId)).distinctBy { it.id }
+}
+

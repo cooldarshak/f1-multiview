@@ -313,9 +313,7 @@ class MultiViewViewModel(application:Application):AndroidViewModel(application){
                 // enter the DRM player or decoder scheduling path.
                 val exposeNativeDashboard = session.live ||
                     (autoSelectFeeds && shouldLoadReplayTiming(session))
-                val sources = if (exposeNativeDashboard) {
-                    (returnedSources + appOwnedDashboardSources(session.id)).distinctBy { it.id }
-                } else returnedSources
+                val sources = mergeAppOwnedDashboardSources(session.id, returnedSources, exposeNativeDashboard)
                 val mainSource = sources.firstOrNull { it.kind == StreamKind.WORLD } ?: sources.firstOrNull()
                 val nativeDataKinds = setOf(StreamKind.TRACK_MAP, StreamKind.F1_DASH_DATA)
                 val nativeDataSources = sources
