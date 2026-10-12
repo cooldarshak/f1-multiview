@@ -17,6 +17,18 @@ import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
+internal fun liveTimingNoDataStatus(
+    status: String,
+    lastTimingRowsAtMs: Long,
+    subscriptionStartedAtMs: Long,
+    nowMs: Long,
+    thresholdMs: Long = 15_000L
+): String? {
+    if (lastTimingRowsAtMs != 0L || subscriptionStartedAtMs <= 0L) return null
+    if (nowMs - subscriptionStartedAtMs < thresholdMs) return null
+    return "NO_DATA".takeIf { status == "SUBSCRIBE_SENT" || status == "SUBSCRIBED" }
+}
+
 data class LiveTimingSnapshot(
     val capturedAtMs:Long,
     val rows:List<TimingRow>,
@@ -230,10 +242,12 @@ class LiveTimingClient(private val scope:CoroutineScope, private val authHeaders
                             if (last > 0L && now - last > 5_000L && _status.value == "LIVE") {
                                 _status.value = "STALE"
                                 AppLogger.w("LiveTiming", "LIVE_TIMING_STALE lastTimingUpdateMs=${last} staleAfterMs=5000")
-                            } else if (last == 0L && started > 0L &&
-                                now - started > 15_000L && _status.value in setOf("SUBSCRIBE_SENT", "SUBSCRIBED")) {
-                                _status.value = "NO_DATA"
-                                AppLogger.w("LiveTiming", "LIVE_TIMING_NO_DATA receivedTimingRows=false waitMs=${now - started}")
+                            } else {
+                                val noDataStatus = liveTimingNoDataStatus(_status.value, last, started, now)
+                                if (noDataStatus != null) {
+                                    _status.value = noDataStatus
+                                    AppLogger.w("LiveTiming", "LIVE_TIMING_NO_DATA receivedTimingRows=false waitMs=${now - started}")
+                                }
                             }
                         }
                     }
