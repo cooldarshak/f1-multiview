@@ -287,7 +287,7 @@ class TrackMapClientTest {
 
     @Test
     fun geometryYearResolutionNeverUsesVodSeasonForLiveSession() {
-        assertNull(resolveGeometrySeasonYear(
+        assertNull(TrackMapClient.resolveGeometrySeasonYear(
             sessionInfoYear = null,
             selectedSessionYear = null,
             selectedVodSeasonYear = 2026,
@@ -297,13 +297,13 @@ class TrackMapClientTest {
 
     @Test
     fun geometryYearResolutionUsesCurrentSessionMetadataBeforeVodFilter() {
-        assertEquals(2025, resolveGeometrySeasonYear(
+        assertEquals(2025, TrackMapClient.resolveGeometrySeasonYear(
             sessionInfoYear = 2025,
             selectedSessionYear = 2024,
             selectedVodSeasonYear = 2026,
             replay = true
         ))
-        assertEquals(2024, resolveGeometrySeasonYear(
+        assertEquals(2024, TrackMapClient.resolveGeometrySeasonYear(
             sessionInfoYear = null,
             selectedSessionYear = 2024,
             selectedVodSeasonYear = 2026,
@@ -313,13 +313,13 @@ class TrackMapClientTest {
 
     @Test
     fun geometryYearResolutionAllowsVodSeasonFallbackOnlyForReplay() {
-        assertEquals(2024, resolveGeometrySeasonYear(
+        assertEquals(2024, TrackMapClient.resolveGeometrySeasonYear(
             sessionInfoYear = null,
             selectedSessionYear = null,
             selectedVodSeasonYear = 2024,
             replay = true
         ))
-        assertNull(resolveGeometrySeasonYear(
+        assertNull(TrackMapClient.resolveGeometrySeasonYear(
             sessionInfoYear = null,
             selectedSessionYear = null,
             selectedVodSeasonYear = null,
