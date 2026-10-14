@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,8 @@ fun F1BrowserLogin(
     vm: MultiViewViewModel,
     errorMessage: String? = null
 ) {
+    val context = LocalContext.current
+    LaunchedEffect(context) { context.deleteSharedPreferences(PREFS) }
     val handler = remember { Handler(Looper.getMainLooper()) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -149,7 +152,6 @@ fun F1BrowserLogin(
                         FrameLayout(context).apply {
                             val webView = WebView(context).apply {
                         webViewRef = this
-                        context.deleteSharedPreferences(PREFS)
                         var capturedToken = false
 
                         settings.domStorageEnabled = true
