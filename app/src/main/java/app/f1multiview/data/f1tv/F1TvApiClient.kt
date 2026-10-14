@@ -200,7 +200,9 @@ class F1TvApiClient {
                     "AUTHORIZED_STREAM_RESOLVED contentId=$contentId platform=$platform apiVersion=$apiVersion " +
                         "manifest=$manifestKind drmConfigured=${!parsed.licenseUrl.isNullOrBlank()} " +
                         "drmType=${parsed.drmType ?: "unknown"} streamType=${parsed.streamType ?: "unknown"} " +
-                        "pipelineVersion=${parsed.pipelineVersion ?: -1} playTokenPresent=${!parsed.playToken.isNullOrBlank()}"
+                        "pipelineVersion=${parsed.pipelineVersion ?: -1} " +
+                        "providerTiledMetadata=${parsed.providerTiledMetadataPresent} " +
+                        "playTokenPresent=${!parsed.playToken.isNullOrBlank()}"
                 )
                 return parsed
             }catch(t:Throwable){
@@ -236,7 +238,13 @@ class F1TvApiClient {
         val playApiVersion=sources.asSequence().mapNotNull { firstString(it,"playApiVersion","playAPIVersion") }.firstOrNull()
         val platform=sources.asSequence().mapNotNull { firstString(it,"platform") }.firstOrNull()?:requestedPlatform
         val drmType=sources.asSequence().mapNotNull { firstString(it,"drmType") }.firstOrNull()
-        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType,drmType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType)
+        // The production APK's CONTENT/PLAY model carries a distinct `tme` payload.
+        // Record only its presence; its opaque contents do not establish a usable
+        // app-owned HEVC tile source or grant access to protected samples.
+        val providerTiledMetadataPresent=sources.any { source ->
+            source.has("tme") && !source.isNull("tme")
+        }
+        return PlaybackResponse(manifest,license?:fallbackLicense(contentId,channelId,platform,pipelineVersion,streamType,drmType),drmToken,playEntitlement,playToken,streamType,pipelineVersion,playApiVersion,platform,drmType,providerTiledMetadataPresent=providerTiledMetadataPresent)
     }
     suspend fun fetchPage(pageId:Int):org.json.JSONArray{
         val response=execute(BASE+"/2.0/R/"+LANG+"/WEB_DASH/ALL/PAGE/"+pageId+"/"+entitlement+"/"+groupId,"GET",null,authHeaders());ensureSuccess(response,"archive page "+pageId)
@@ -356,6 +364,6 @@ class F1TvApiClient {
     }
     private fun firstString(obj:JSONObject,vararg keys:String):String?=keys.firstNotNullOfOrNull{key->obj.optString(key).takeIf{it.isNotBlank()}}
 }
-data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val requestedApiVersion:String?=null,val httpStatus:Int?=null)
+data class PlaybackResponse(val manifestUrl:String,val licenseUrl:String?,val drmToken:String?,val entitlementToken:String?,val playToken:String?,val streamType:String?,val pipelineVersion:Int?=null,val playApiVersion:String?=null,val platform:String?=null,val drmType:String?=null,val requestedApiVersion:String?=null,val httpStatus:Int?=null,val providerTiledMetadataPresent:Boolean=false)
 data class HttpResponse(val code:Int,val isSuccessful:Boolean,val body:String)
 class F1TvException(message:String):Exception(message)

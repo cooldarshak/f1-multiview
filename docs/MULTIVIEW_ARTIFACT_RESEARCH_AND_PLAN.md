@@ -21,6 +21,12 @@ MultiViewer's packaged architecture is consistent with separately instantiated b
 
 [F1OpenViewer](https://github.com/npanu420/F1OpenViewer) is an MIT licensed Electron/Shaka example of authorized F1 feed selection and synchronization, but it creates independent player instances and does not provide one-decoder compressed-domain multiview. [GPAC's HEVC merger](https://github.com/gpac/gpac/wiki/hevcmerge) is another standards-oriented tile-combination reference. Neither repository replaces a compatible source contract or Android secure playback validation.
 
+### Additional APK model inspection
+
+Local JADX 1.5.6 inspection of the supplied APK found a separate `tme` field in the production `CONTENT/PLAY` response model. Its typed representation contains a channel, feed entries with URL/UUID/encoder ID, optional tile-size configuration, and content metadata. The production tiled-player adapter passes the JSON payload to its vendor `ContentItemConfig`; if it has no suitable payload it falls back to the ordinary manifest URL. Its DRM configuration and request headers are attached at that boundary. This explains why an ordinary `url`/`laURL` pair alone does not describe the production multiview source. JADX reported 382 decompilation errors across roughly 16,159 classes, so these are scoped observations from the named models and adapter, not a complete app execution trace.
+
+The branch now records only whether `tme` exists in an authorized playback response. It never logs that JSON or its feed URLs. Presence is a lead for source-contract investigation, not proof of compatible HEVC tiles, license access, or one secure decoder.
+
 An [AWS account of F1 TV Premium](https://aws.amazon.com/blogs/media/f1-sets-new-standard-in-sports-streaming-with-f1-tv-premium-using-aws/) describes upstream HEVC tile encoding with aligned tile settings and client bitstream rewriting/merging. That public description explains why a single decoder could consume selected tiles. It does not prove that the authorized URLs currently returned to this project contain compatible tile representations.
 
 ## Current branch diagnosis
