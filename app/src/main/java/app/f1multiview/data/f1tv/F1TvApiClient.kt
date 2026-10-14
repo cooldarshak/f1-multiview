@@ -1,9 +1,11 @@
 package app.f1multiview.data.f1tv
 
 import android.util.Base64
+import android.net.Uri
 import android.webkit.CookieManager
 import app.f1multiview.core.network.HttpClient
 import app.f1multiview.media.AppLogger
+import app.f1multiview.media.AuthorizedDashManifestResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
@@ -276,6 +278,21 @@ class F1TvApiClient {
             }?.takeIf{it.length>=4}?.let{playToken=it}
             val license=extractLicenseUrl(body)
             val protected = containsWidevineUuid(body)
+            if (response.isSuccessful && body.isNotBlank()) {
+                runCatching {
+                    AuthorizedDashManifestResolver.inspect(Uri.parse(manifestUrl), body.toByteArray(Charsets.UTF_8))
+                }.onSuccess { inventory ->
+                    val video = inventory.videoCapabilities
+                    AppLogger.i(
+                        "F1ManifestInventory",
+                        "videoRepresentations=${video.size} hevc=${video.count { it.isHevc }} " +
+                            "widevineInitData=${video.count { it.hasWidevineInitData }} " +
+                            "indexed=${video.count { it.hasSegmentIndex }} tileCompatibility=UNVERIFIED"
+                    )
+                }.onFailure { failure ->
+                    AppLogger.w("F1ManifestInventory", "parseFailed=${failure.javaClass.simpleName}")
+                }
+            }
             ManifestProbe(response.isSuccessful,playToken,license,protected)
         }
     }
