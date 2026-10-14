@@ -17,7 +17,7 @@ import androidx.media3.ui.PlayerView
 import app.f1multiview.media.AppLogger
 import java.io.File
 
-/** Clear fixture proof: two encoded tile inputs were merged into one HEVC stream off device. */
+/** Clear fixture proof: one upstream encoder produced a two-tile HEVC stream. */
 @OptIn(UnstableApi::class)
 class SingleDecoderTileProofActivity : Activity() {
     private var player: ExoPlayer? = null
@@ -89,7 +89,7 @@ class SingleDecoderTileProofActivity : Activity() {
 
     private fun renderStatus() {
         status.text = buildString {
-            append("CLEAR HEVC TILE PROOF · two inputs / one video track\n")
+            append("OWN HEVC TILE ENCODER · two inputs / one video track\n")
             append("Video decoder initializations: $decoderInitializations · $decoderName\n")
             append("First frame rendered: $firstFrameRendered")
             error?.let { append("\nPlayback error: $it") }

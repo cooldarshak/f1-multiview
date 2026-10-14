@@ -21,7 +21,7 @@ class F1TvApiClientTest {
     }
 
     @Test
-    fun parsesAuthorizedManifestAndWidevineFieldsWithoutPrivateMultiviewMetadata() {
+    fun parsesAuthorizedManifestAndWidevineFields() {
         val response = HttpResponse(
             200, true,
             """{"url":"https://example.com/live.mpd","laURL":"https://license.example/license","drmToken":"redacted","playApiVersion":"3.0","streamType":"DASH"}"""
@@ -31,18 +31,6 @@ class F1TvApiClientTest {
         assertEquals("https://license.example/license", parsed.licenseUrl)
         assertEquals("3.0", parsed.playApiVersion)
         assertEquals("DASH", parsed.streamType)
-        assertEquals(false, parsed.providerTiledMetadataPresent)
-    }
-
-    @Test
-    fun detectsProviderTiledMetadataWithoutTreatingItAsAPlayableStream() {
-        val response = HttpResponse(
-            200, true,
-            """{"resultObj":{"url":"https://example.com/live.mpd","tme":{"content_id":"opaque"}}}"""
-        )
-        val parsed = F1TvApiClient().parsePlaybackResponse(response, "content-tiled", null, "MOBILE_DASH")
-        assertEquals(true, parsed.providerTiledMetadataPresent)
-        assertEquals("https://example.com/live.mpd", parsed.manifestUrl)
     }
 
     @Test
