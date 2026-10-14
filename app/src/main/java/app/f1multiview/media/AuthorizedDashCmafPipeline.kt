@@ -64,6 +64,14 @@ internal class AuthorizedDashCmafPipeline(
                 failure
             )
         }
+        val capabilities = plan.inspection.videoCapabilities
+        AppLogger.i(
+            "ManifestCapability",
+            "videoRepresentations=${capabilities.size} hevc=${capabilities.count { it.isHevc }} " +
+                "widevineInitData=${capabilities.count { it.hasWidevineInitData }} " +
+                "segmentIndex=${capabilities.count { it.hasSegmentIndex }} " +
+                "tileCompatibility=UNVERIFIED"
+        )
         val extraction = AuthorizedCmafSegmentExtractor(dataSourceFactory)
             .extractFirstSegment(plan, output)
         val hasDrmInitData = output.sampleQueues.values.any { it.upstreamFormat?.drmInitData != null }

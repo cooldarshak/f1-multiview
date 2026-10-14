@@ -19,6 +19,8 @@ REA opened the APK as an archive and confirmed its hash. REA's JADX-backed Andro
 
 MultiViewer's packaged architecture is consistent with separately instantiated browser players that are synchronized at the application layer. Its ability to show multiple feeds is **not evidence of one decoder**. The F1 TV APK has a distinct tiled playback path, but the static package inventory does **not** establish the exact protected bitstream transformation or its source/license contract. Do not transplant ClearVR code, metadata, or protocol into this app.
 
+[F1OpenViewer](https://github.com/npanu420/F1OpenViewer) is an MIT licensed Electron/Shaka example of authorized F1 feed selection and synchronization, but it creates independent player instances and does not provide one-decoder compressed-domain multiview. [GPAC's HEVC merger](https://github.com/gpac/gpac/wiki/hevcmerge) is another standards-oriented tile-combination reference. Neither repository replaces a compatible source contract or Android secure playback validation.
+
 An [AWS account of F1 TV Premium](https://aws.amazon.com/blogs/media/f1-sets-new-standard-in-sports-streaming-with-f1-tv-premium-using-aws/) describes upstream HEVC tile encoding with aligned tile settings and client bitstream rewriting/merging. That public description explains why a single decoder could consume selected tiles. It does not prove that the authorized URLs currently returned to this project contain compatible tile representations.
 
 ## Current branch diagnosis
@@ -37,6 +39,14 @@ The existing plan records selected authorized feeds as AVC in prior device logs 
 ### Architecture decision
 
 The Android device should run **one video decoder** for one coded tiled stream. Encoding happens upstream. If the user means a single *encoder* running on the Android device, that would require decoding the separate inputs first and would not solve the decoder-capacity problem; protected F1 pixels may also be unavailable for re-encoding. If no authorized tile-compatible source or permitted upstream packaging route exists, keep the production multiview gate closed and report that dependency instead of presenting synchronized independent players as a one-decoder solution.
+
+## Clear two-tile progress and source inspection
+
+[Eyevinn/hi265](https://github.com/Eyevinn/hi265) provides an MIT licensed HEVC retile tool. Its inputs must meet strict coding constraints: matching parameters, tile/CTB alignment, and either independently coded frames or compliant motion constraints. This is a promising standards-based packager for **controlled clear test inputs**, not proof that normal F1 feed renditions can be merged.
+
+Under `C:\Darshak\AI\Tools\project\synthetic-tiles`, two distinct 320×160 clear HEVC feeds were generated using `hi265gen`, merged 2×1 using `hi265retile -verify`, and remuxed to a single 320×320 MP4. Verification reported pixel-perfect tile matches for all 12 frames. A 9,277-byte copy is packaged only in debug APKs as `single-decoder-hevc-tile-proof.mp4`. The Settings debug proof screen plays that **one** file with **one** Media3 player and reports video decoder initialization and first frame. Device results are still needed; packaging a file does not prove a physical Android decoder count.
+
+`AuthorizedDashManifestResolver.inspect` now inventories video codec, size, index/init availability, and Widevine init-data presence from an already-authorized DASH MPD. The inspection reports `tileCompatibilityProven=false` because those MPD fields cannot establish compressed-domain compatibility. The protected multiview gate therefore remains closed.
 
 ## Next concrete task
 

@@ -20,6 +20,29 @@ import java.io.ByteArrayInputStream
  */
 @OptIn(UnstableApi::class)
 internal object AuthorizedDashManifestResolver {
+    /** Metadata only. An HEVC codec string does not establish tile compatibility. */
+    data class VideoCapability(
+        val periodIndex: Int,
+        val codec: String?,
+        val sampleMimeType: String?,
+        val width: Int,
+        val height: Int,
+        val hasSegmentIndex: Boolean,
+        val hasInitialization: Boolean,
+        val hasWidevineInitData: Boolean
+    ) {
+        val isHevc: Boolean get() = codec?.startsWith("hvc1", true) == true ||
+            codec?.startsWith("hev1", true) == true
+    }
+
+    data class Inspection(val videoCapabilities: List<VideoCapability>) {
+        val hasHevcRepresentation: Boolean get() = videoCapabilities.any { it.isHevc }
+        val hasWidevineInitData: Boolean get() = videoCapabilities.any { it.hasWidevineInitData }
+        // DASH codec and DRM declarations do not prove tile topology, bitstream compatibility,
+        // usable license keys, or that a single secure decoder can play a merged result.
+        val tileCompatibilityProven: Boolean get() = false
+    }
+
     data class SegmentRequest(
         val dataSpec: DataSpec,
         val presentationTimeUs: Long,
@@ -32,8 +55,15 @@ internal object AuthorizedDashManifestResolver {
         val firstMediaSegment: SegmentRequest,
         val periodIndex: Int,
         val dynamicManifest: Boolean,
-        val manifestDeclaredDrmInitData: Boolean
+        val manifestDeclaredDrmInitData: Boolean,
+        val inspection: Inspection = Inspection(emptyList())
     )
+
+    fun inspect(manifestUri: Uri, manifestBytes: ByteArray): Inspection {
+        require(manifestBytes.isNotEmpty()) { "DASH manifest is empty" }
+        val manifest = DashManifestParser().parse(manifestUri, ByteArrayInputStream(manifestBytes))
+        return inspectParsed(manifest)
+    }
 
     fun resolve(
         manifestUri: Uri,
@@ -49,6 +79,7 @@ internal object AuthorizedDashManifestResolver {
 
         val manifest = DashManifestParser().parse(manifestUri, ByteArrayInputStream(manifestBytes))
         require(manifest.periodCount > 0) { "DASH manifest contains no periods" }
+        val inspection = inspectParsed(manifest)
 
         for (periodIndex in 0 until manifest.periodCount) {
             val period = manifest.getPeriod(periodIndex)
@@ -67,11 +98,7 @@ internal object AuthorizedDashManifestResolver {
             if (candidates.isEmpty()) continue
 
             val protectedCandidates = candidates.filter { representation ->
-                val drm = representation.format.drmInitData
-                drm != null && (0 until drm.schemeDataCount).any { index ->
-                    val schemeData = drm.get(index)
-                    schemeData.matches(C.WIDEVINE_UUID) && schemeData.data?.isNotEmpty() == true
-                }
+                hasWidevineInitData(representation.format)
             }
             if (requireWidevineInitData && protectedCandidates.isEmpty()) {
                 throw IllegalArgumentException(
@@ -119,7 +146,8 @@ internal object AuthorizedDashManifestResolver {
                 ),
                 periodIndex = periodIndex,
                 dynamicManifest = manifest.dynamic,
-                manifestDeclaredDrmInitData = selected.format.drmInitData != null
+                manifestDeclaredDrmInitData = selected.format.drmInitData != null,
+                inspection = inspection
             )
         }
 
@@ -127,6 +155,37 @@ internal object AuthorizedDashManifestResolver {
             "No supported DASH video representation with both an MPD-backed segment index and " +
                 "initialization URI; external-index-only and non-CMAF paths remain unsupported"
         )
+    }
+
+    private fun inspectParsed(manifest: androidx.media3.exoplayer.dash.manifest.DashManifest): Inspection =
+        Inspection(buildList {
+            for (periodIndex in 0 until manifest.periodCount) {
+                manifest.getPeriod(periodIndex).adaptationSets
+                    .filter { it.type == C.TRACK_TYPE_VIDEO }
+                    .forEach { adaptation ->
+                        adaptation.representations.forEach { representation ->
+                            val format = representation.format
+                            add(VideoCapability(
+                                periodIndex = periodIndex,
+                                codec = format.codecs,
+                                sampleMimeType = format.sampleMimeType,
+                                width = format.width,
+                                height = format.height,
+                                hasSegmentIndex = representation.getIndex() != null,
+                                hasInitialization = representation.getInitializationUri() != null,
+                                hasWidevineInitData = hasWidevineInitData(format)
+                            ))
+                        }
+                    }
+            }
+        })
+
+    private fun hasWidevineInitData(format: Format): Boolean {
+        val drm = format.drmInitData ?: return false
+        return (0 until drm.schemeDataCount).any { index ->
+            val schemeData = drm.get(index)
+            schemeData.matches(C.WIDEVINE_UUID) && schemeData.data?.isNotEmpty() == true
+        }
     }
 
     private fun dataSpec(

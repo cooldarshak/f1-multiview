@@ -73,6 +73,22 @@ class AuthorizedDashManifestResolverTest {
     }
 
     @Test
+    fun inventorySeparatesCodecEvidenceFromTileProof() {
+        val mixedManifest = manifest.replace(
+            "<Representation id=\"high\" bandwidth=\"1200000\" width=\"1920\" height=\"1080\" codecs=\"avc1.640028\"/>",
+            "<Representation id=\"high\" bandwidth=\"1200000\" width=\"1920\" height=\"1080\" codecs=\"hvc1.1.6.L120.B0\"/>"
+        )
+        val inventory = AuthorizedDashManifestResolver.inspect(manifestUri, mixedManifest.toByteArray())
+
+        assertEquals(2, inventory.videoCapabilities.size)
+        assertTrue(inventory.hasHevcRepresentation)
+        assertFalse(inventory.hasWidevineInitData)
+        assertFalse(inventory.tileCompatibilityProven)
+        assertEquals(1, inventory.videoCapabilities.count { it.isHevc })
+        assertTrue(inventory.videoCapabilities.all { it.hasInitialization && it.hasSegmentIndex })
+    }
+
+    @Test
     fun protectedResolutionAcceptsWidevinePsshDeclaredOnAdaptationSet() {
         val protectedManifest = manifest
             .replace(
@@ -94,6 +110,8 @@ class AuthorizedDashManifestResolverTest {
         )
 
         assertTrue(plan.manifestDeclaredDrmInitData)
+        assertTrue(plan.inspection.hasWidevineInitData)
+        assertFalse(plan.inspection.tileCompatibilityProven)
         assertEquals(640, plan.format.width)
         assertEquals(360, plan.format.height)
     }

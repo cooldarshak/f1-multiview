@@ -1,6 +1,7 @@
 package app.f1multiview.viewmodel
 
 import app.f1multiview.data.f1tv.appOwnedDashboardSources
+import app.f1multiview.data.f1tv.mergeAppOwnedDashboardSources
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel

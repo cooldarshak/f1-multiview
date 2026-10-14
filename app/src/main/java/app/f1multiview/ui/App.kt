@@ -1301,7 +1301,12 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
         val headerHeight = maxHeight.coerceIn(42.dp, 62.dp)
         val tabHeight = 28.dp
         val rowHeight = if (rows.isEmpty()) 28.dp else ((maxHeight - headerHeight - tabHeight) / rows.size.coerceAtLeast(1)).coerceIn(24.dp, 68.dp)
-        Column(Modifier.fillMaxSize()) {
+        // Keep the reference tower's data columns readable when this feed is placed in a
+        // narrow phone tile. The entire panel scrolls horizontally instead of shrinking
+        // sector times and controls to illegible widths.
+        val towerWidth = if (maxWidth < 600.dp) 690.dp else maxWidth
+        Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
+        Column(Modifier.width(towerWidth).fillMaxHeight()) {
             Row(
                 Modifier.fillMaxWidth().height(headerHeight).background(Color(0xFF17181A)).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1480,6 +1485,7 @@ private fun F1DashReferenceLayout(ui: UiState, isTv: Boolean, modifier: Modifier
                     }
                 }
             }
+        }
         }
     }
 }

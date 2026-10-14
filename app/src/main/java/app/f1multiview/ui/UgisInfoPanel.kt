@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import android.content.Intent
 import app.f1multiview.SyntheticMultiviewPrototypeActivity
+import app.f1multiview.SingleDecoderTileProofActivity
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -104,6 +105,21 @@ fun UgisInfoPanel(
             }
             if(section=="settings"){
                 if (BuildConfig.DEBUG) {
+                    Surface(
+                        color = InfoSurface,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Single Decoder Tile Proof", color = InfoWhite, fontWeight = FontWeight.Bold)
+                                Text("Two clear HEVC tile inputs merged into one video stream. Shows decoder diagnostics on device.", color = InfoMuted, fontSize = 10.sp)
+                            }
+                            InfoButton(false, "RUN TEST") {
+                                context.startActivity(Intent(context, SingleDecoderTileProofActivity::class.java))
+                            }
+                        }
+                    }
                     Surface(
                         color = InfoSurface,
                         shape = RoundedCornerShape(10.dp),

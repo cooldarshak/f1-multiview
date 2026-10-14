@@ -292,26 +292,40 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             val path=Path()
             path.moveTo(centerline.first().x,centerline.first().y)
             centerline.drop(1).forEach{path.lineTo(it.x,it.y)}
-            drawPath(path,color=MapTrackEdge,style=Stroke(width=18f))
-            drawPath(path,color=MapTrack,style=Stroke(width=11f))
+            val trackWidth = (min(size.width, size.height) * .017f).coerceIn(5f, 13f)
+            drawPath(path,color=MapTrackEdge,style=Stroke(width=trackWidth + 5f))
+            drawPath(path,color=MapTrack,style=Stroke(width=trackWidth))
+            drawPath(path,color=Color(0xFF22252A),style=Stroke(width=(trackWidth - 4f).coerceAtLeast(2f)))
         }
         // Corner labels are annotations anchored to the same telemetry coordinate system;
         // they are never joined into a synthetic polygon.
         geometry?.corners?.forEach{corner->
             if(corner.number<=0)return@forEach
             val p=screen(TrackPoint(corner.x,corner.y))
-            drawCircle(Color.White.copy(alpha=.55f),radius=7f,center=p)
+            val badgeWidth = if (size.width < 350f) 12f else 16f
+            drawRect(
+                color = Color(0xFF3B3E42),
+                topLeft = Offset(p.x - badgeWidth / 2f, p.y - badgeWidth / 2f),
+                size = androidx.compose.ui.geometry.Size(badgeWidth, badgeWidth)
+            )
+            drawRect(
+                color = Color(0xFFB8BBC0),
+                topLeft = Offset(p.x - badgeWidth / 2f, p.y - badgeWidth / 2f),
+                size = androidx.compose.ui.geometry.Size(badgeWidth, badgeWidth),
+                style = Stroke(width = 1f)
+            )
             drawIntoCanvas{
                 val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
                     color=android.graphics.Color.WHITE
-                    textSize=18f
+                    textSize=if (size.width < 350f) 8f else 10f
                     textAlign=Paint.Align.CENTER
                     typeface=android.graphics.Typeface.DEFAULT_BOLD
                 }
-                drawContext.canvas.nativeCanvas.drawText(corner.number.toString()+corner.letter,p.x,p.y-10f,paint)
+                drawContext.canvas.nativeCanvas.drawText(corner.number.toString()+corner.letter,p.x,p.y+3f,paint)
             }
         }
 
+        val markerRadius = (min(size.width, size.height) * .023f).coerceIn(7f, 15f)
         drivers.forEach{source->
             val d = if (isLive) interpolateLivePosition(source, frameTimeMs) else source
             val stale = if (isLive) {
@@ -321,34 +335,33 @@ private fun raceSeverityColor(value:String)=when(value.lowercase()){
             }
             val p=screen(TrackPoint(d.x,d.y))
             val color=teamColor(d.teamColor).copy(alpha=if (stale) 0.35f else 1f)
-            source.trail.takeLast(6).forEachIndexed{index,t->
-                val alpha=(index+1)/10f
-                drawCircle(color.copy(alpha=alpha),radius=2.5f,center=screen(t))
-            }
-            // Square telemetry markers match the supplied MultiViewer map instead of oversized
-            // decorative bubbles. All positions remain sourced from the live timing feed.
-            if(d.number==selectedNumber){
-                drawRect(
-                    color = MapWhite,
-                    topLeft = Offset(p.x - 6.5f, p.y - 6.5f),
-                    size = androidx.compose.ui.geometry.Size(13f, 13f),
-                    style = Stroke(width = 2f)
+            val trail = source.trail.takeLast(10).map(::screen)
+            trail.zipWithNext().forEachIndexed{index,(from,to)->
+                drawLine(
+                    color = color.copy(alpha = .22f + .58f * (index + 1) / trail.size.coerceAtLeast(1)),
+                    start = from,
+                    end = to,
+                    strokeWidth = (markerRadius * .28f).coerceAtLeast(2f)
                 )
             }
-            drawRect(
-                color = color,
-                topLeft = Offset(p.x - 4f, p.y - 4f),
-                size = androidx.compose.ui.geometry.Size(8f, 8f)
+            val selectedMarker = d.number == selectedNumber
+            drawCircle(color = Color.Black.copy(alpha = .75f), radius = markerRadius + 2.5f, center = p)
+            drawCircle(color = color, radius = markerRadius, center = p)
+            if (selectedMarker) drawCircle(
+                color = MapWhite,
+                radius = markerRadius + 2f,
+                center = p,
+                style = Stroke(width = 2f)
             )
-            drawIntoCanvas{canvas->
+            drawIntoCanvas{
                 val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                    this.color=android.graphics.Color.WHITE
-                    textSize=13f
+                    this.color=if (color.red * .2126f + color.green * .7152f + color.blue * .0722f > .62f)
+                        android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                    textSize=(markerRadius * .83f).coerceIn(7f, 12f)
                     textAlign=Paint.Align.CENTER
                     typeface=android.graphics.Typeface.DEFAULT_BOLD
-                    setShadowLayer(4f,0f,0f,android.graphics.Color.BLACK)
                 }
-                drawContext.canvas.nativeCanvas.drawText(d.acronym,p.x,p.y-7f,paint)
+                drawContext.canvas.nativeCanvas.drawText(d.acronym.take(3).uppercase(),p.x,p.y + paint.textSize * .34f,paint)
             }
         }
     }
