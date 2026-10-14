@@ -7,7 +7,6 @@ import android.os.Handler
 import android.widget.FrameLayout
 import android.os.Looper
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -17,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,10 +32,6 @@ private val White = Color(0xFFF5F5F7)
 
 private const val F1_LOGIN_URL = "https://account.formula1.com/#/en/login"
 private const val PREFS = "f1_browser_login"
-private const val KEY_LOGIN = "login"
-private const val KEY_PASSWORD = "password"
-private const val AUTO_FILL_RETRY_DELAY_MS = 2_000L
-private const val AUTO_FILL_RETRY_ATTEMPTS = 8
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -48,6 +44,9 @@ fun F1BrowserLogin(
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
+    var directLogin by remember { mutableStateOf(true) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
 
     Box(Modifier.fillMaxSize().background(Bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -64,7 +63,7 @@ fun F1BrowserLogin(
                     Spacer(Modifier.width(16.dp))
                     Text("SIGN IN", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
-                    if (loading) {
+                    if (loading && !directLogin) {
                         CircularProgressIndicator(
                             Modifier.size(18.dp),
                             color = Red,
@@ -72,7 +71,10 @@ fun F1BrowserLogin(
                         )
                         Spacer(Modifier.width(10.dp))
                     }
-                    TextButton(onClick = { reloadKey++ }) {
+                    TextButton(onClick = { directLogin = !directLogin }) {
+                        Text(if (directLogin) "BROWSER SIGN IN" else "DIRECT SIGN IN", color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (!directLogin) TextButton(onClick = { reloadKey++ }) {
                         Text("RELOAD", color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -93,7 +95,40 @@ fun F1BrowserLogin(
                 }
             }
 
-            loadError?.let { message ->
+            if (directLogin) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Sign in to your F1 TV account", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text("Email") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp)
+                    )
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp)
+                    )
+                    Button(
+                        onClick = {
+                            val submittedPassword = password
+                            password = ""
+                            vm.signIn(username, submittedPassword)
+                        },
+                        enabled = username.isNotBlank() && password.isNotBlank()
+                    ) { Text("SIGN IN") }
+                    Text("Your password is sent to F1 for this sign-in and is not saved by this app.", color = White, fontSize = 11.sp)
+                }
+            }
+
+            if (!directLogin) loadError?.let { message ->
                 Surface(
                     Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
                     color = Color(0xFF2A1114)
@@ -107,14 +142,14 @@ fun F1BrowserLogin(
                 }
             }
 
-            key(reloadKey) {
+            if (!directLogin) key(reloadKey) {
                 AndroidView(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     factory = { context: Context ->
                         FrameLayout(context).apply {
                             val webView = WebView(context).apply {
                         webViewRef = this
-                        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        context.deleteSharedPreferences(PREFS)
                         var capturedToken = false
 
                         settings.domStorageEnabled = true
@@ -127,17 +162,6 @@ fun F1BrowserLogin(
 
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-
-                        addJavascriptInterface(object {
-                            @JavascriptInterface
-                            fun saveCredentials(username: String, password: String) {
-                                if (username.isBlank() || password.isBlank()) return
-                                prefs.edit()
-                                    .putString(KEY_LOGIN, username)
-                                    .putString(KEY_PASSWORD, password)
-                                    .apply()
-                            }
-                        }, "Android")
 
                         fun captureToken() {
                             if (capturedToken) return
@@ -242,132 +266,6 @@ fun F1BrowserLogin(
                             )
                         }
 
-                        fun captureCredentials() {
-                            evaluateJavascript(
-                                """
-                                (function() {
-                                    var loginButton =
-                                        document.querySelector('button.btn.btn-primary[type="submit"]') ||
-                                        document.querySelector('button[type="submit"]');
-
-                                    if (loginButton && !loginButton.hasAttribute('data-f1-capture-installed')) {
-                                        loginButton.setAttribute('data-f1-capture-installed', 'true');
-                                        loginButton.addEventListener('click', function() {
-                                            var loginInput =
-                                                document.querySelector('.txtLogin') ||
-                                                document.querySelector('input[type="email"]') ||
-                                                document.querySelector('input[name="email"]');
-                                            var passwordInput =
-                                                document.querySelector('.txtPassword') ||
-                                                document.querySelector('input[type="password"]');
-
-                                            var login = loginInput ? loginInput.value : '';
-                                            var password = passwordInput ? passwordInput.value : '';
-                                            if (login && password && window.Android) {
-                                                window.Android.saveCredentials(login, password);
-                                            }
-                                        });
-                                    }
-                                    return loginButton ? 'capture-installed' : 'login-button-not-found';
-                                })();
-                                """.trimIndent(),
-                                null
-                            )
-                        }
-
-                        fun fillLoginForm(login: String, password: String, autoSubmit: Boolean) {
-                            val loginJs = JSONObject.quote(login)
-                            val passwordJs = JSONObject.quote(password)
-                            val submitJs = autoSubmit.toString()
-
-                            evaluateJavascript(
-                                """
-                                (function() {
-                                    function setNativeValue(element, value) {
-                                        if (!element) return false;
-                                        var prototype = element.tagName === 'TEXTAREA'
-                                            ? window.HTMLTextAreaElement.prototype
-                                            : window.HTMLInputElement.prototype;
-                                        var descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
-                                        if (descriptor && descriptor.set) descriptor.set.call(element, value);
-                                        else element.value = value;
-
-                                        ['input','change','blur'].forEach(function(eventName) {
-                                            element.dispatchEvent(new Event(eventName, { bubbles: true }));
-                                        });
-                                        return true;
-                                    }
-
-                                    function findLoginField() {
-                                        return document.querySelector('.txtLogin') ||
-                                            document.querySelector('input[type="email"]') ||
-                                            document.querySelector('input[name="email"]');
-                                    }
-
-                                    function findPasswordField() {
-                                        return document.querySelector('.txtPassword') ||
-                                            document.querySelector('input[type="password"]');
-                                    }
-
-                                    function findSubmitButton() {
-                                        return document.querySelector('button.btn.btn-primary[type="submit"]') ||
-                                            document.querySelector('button[type="submit"]');
-                                    }
-
-                                    function tryFill() {
-                                        var loginField = findLoginField();
-                                        var passwordField = findPasswordField();
-                                        var loginButton = findSubmitButton();
-
-                                        var loginFilled = setNativeValue(loginField, ${loginJs});
-                                        var passwordFilled = setNativeValue(passwordField, ${passwordJs});
-
-                                        if (!loginFilled || !passwordFilled) return false;
-
-                                        if (${submitJs} && loginButton) {
-                                            setTimeout(function() { loginButton.click(); }, 500);
-                                        }
-                                        return true;
-                                    }
-
-                                    if (tryFill()) return 'filled-now';
-
-                                    var attempts = 0;
-                                    var intervalId = setInterval(function() {
-                                        attempts++;
-                                        if (tryFill() || attempts >= 15) clearInterval(intervalId);
-                                    }, 1000);
-                                    return 'scheduled-retries';
-                                })();
-                                """.trimIndent(),
-                                null
-                            )
-                        }
-
-                        fun autoFillCredentials() {
-                            val login = prefs.getString(KEY_LOGIN, null)
-                            val password = prefs.getString(KEY_PASSWORD, null)
-
-                            if (login.isNullOrBlank() || password.isNullOrBlank()) {
-                                captureCredentials()
-                                return
-                            }
-
-                            captureCredentials()
-                            fillLoginForm(login, password, autoSubmit = true)
-
-                            handler.postDelayed(object : Runnable {
-                                var attempt = 0
-                                override fun run() {
-                                    if (capturedToken || !url.orEmpty().startsWith(F1_LOGIN_URL)) return
-                                    attempt++
-                                    if (attempt > AUTO_FILL_RETRY_ATTEMPTS) return
-                                    fillLoginForm(login, password, autoSubmit = true)
-                                    handler.postDelayed(this, AUTO_FILL_RETRY_DELAY_MS)
-                                }
-                            }, AUTO_FILL_RETRY_DELAY_MS)
-                        }
-
                         webViewClient = object : WebViewClient() {
                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                 super.onPageStarted(view, url, favicon)
@@ -383,10 +281,6 @@ fun F1BrowserLogin(
                                 installCookieConsentAutomation()
                                 captureToken()
 
-                                if (url.orEmpty().startsWith(F1_LOGIN_URL)) {
-                                    captureCredentials()
-                                    autoFillCredentials()
-                                }
                             }
 
                             override fun onReceivedError(
